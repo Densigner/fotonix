@@ -1,0 +1,11 @@
+{
+  "attempts": {
+    "::ffff:127.0.0.1": {
+      "2025-10-20": 1
+    }
+  },
+  "cache": {
+    "39c280652d82112dfcb260c48bad5971": "{\"items\":[{\"startSec\":0,\"endSec\":5,\"issue\":\"Weak or slow hook — first 3 seconds have low energy, small text, and no clear value proposition. Framing is wide so the subject is hard to read on small screens; audio level dips and there's no distinct sound cue.\",\"suggestion\":\"Recut/re-shoot the opening so the value is explicit in 0–2s: use a tight close‑up, big readable caption (large sans‑serif, high contrast), and a loud audio cue or voice‑over stating the benefit. Start on an action or surprising visual, add a 0.25s sound punch on frame 1, and cut to a 1–2s visual that proves the hook. Keep motion simple (push in / quick jump cut) to maximize retention on mobile.\"}],\"educationalResources\":[{\"topic\":\"YouTube Creator Academy — Shorts & Hooks\",\"url\":\"https://creatoracademy.youtube.com/\"},{\"topic\":\"How to Hook Viewers Quickly (InVideo guide)\",\"url\":\"https://invideo.io/blog/how-to-hook-viewers/\"},{\"topic\":\"Short‑form video best practices (Adobe Express)\",\"url\":\"https://www.adobe.com/express/learn/video/short-form-video-tips\"}],\"nextSteps\":[\"Reshoot 0–5s: film a close‑up with the on‑screen benefit spoken in one sentence, add a 0.25s audio punch at 0s, and display a single large caption that matches the spoken hook.\",\"Create two variant opens (A/B): Variant A = bold visual + voice hook; Variant B = question + text overlay. Upload both and compare retention after 24–48 hours.\",\"Add subtitles (editable text overlay) and a high‑contrast thumbnail frame pulled from the 0–3s mark.\",\"Watch the three linked resources and implement one lighting/frame adjustment and one sound cue change before the next upload.\"],\"meta\":{\"model\":\"gpt-5-mini\",\"duration\":80,\"attemptsLeft\":2}}"
+  },
+  "ratings": []
+}

@@ -1,0 +1,41 @@
+OPENAI_API_KEY present: true
+SKIP_OPENAI dev fallback enabled: false
+openaiImageProxy prototype listening on 0.0.0.0:5002
+DEBUG /api/edit-image-upload raw req.body keys: [ 'prompt', 'silhouette', 'autoMask' ] values sample: {
+  "prompt": "Replace the monkeys in this image with snakes; keep all colors, lighting, and the background unchanged. Do not produce a silhouette.",
+  "silhouette": "false",
+  "autoMask": "true"
+}
+autoMask (upload): generated mask at C:\Users\joshm\AppData\Local\Temp\mask-auto-1757404256932-i8hsk7.png size: 1024x1536
+DEBUG edit-image form fields: [ 'prompt', 'silhouette', 'autoMask' ] autoMaskFlag= true silhouetteFlag= false
+Forwarding multipart (upload endpoint) to OpenAI - parts: [
+  {
+    "field": "image",
+    "filename": "MonkeyBBQ.png",
+    "contentType": "image/png",
+    "size": 3139370
+  },
+  {
+    "field": "mask",
+    "filename": "mask-auto-1757404256932-i8hsk7.png",
+    "contentType": "image/png",
+    "size": 60999
+  },
+  {
+    "field": "prompt",
+    "value": "Replace the monkeys in this image with snakes; keep all colors, lighting, and the background unchanged. Do not produce a silhouette."
+  },
+  {
+    "field": "size",
+    "value": "1024x1024"
+  },
+  {
+    "field": "n",
+    "value": "1"
+  }
+]
+DEBUG upload endpoint flags: autoMaskFlag= true silhouetteFlag= false req.body keys= [ 'prompt', 'silhouette', 'autoMask' ]
+Form headers (upload endpoint): {
+  'content-type': 'multipart/form-data; boundary=--------------------------29f4ca048339c5fca06e31e7'
+}
+Form content-length (approx) (upload endpoint): { length: 3201205 }

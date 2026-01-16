@@ -1,0 +1,21 @@
+{
+  "JOSH_ORDER_001": {
+    "amountCents": 12760,
+    "currency": "GBP",
+    "status": "completed",
+    "paidAt": "2025-10-29T13:15:00.000Z"
+  },
+  "JOSH_ORDER_002": {
+    "amountCents": 2500,
+    "currency": "GBP",
+    "status": "completed", 
+    "paidAt": "2025-10-29T12:30:00.000Z"
+  },
+  "JOSH_ORDER_003": {
+    "amountCents": 1800,
+    "currency": "GBP",
+    "status": "refunded",
+    "paidAt": "2025-10-29T11:45:00.000Z",
+    "refundedAt": "2025-10-29T12:45:00.000Z"
+  }
+}

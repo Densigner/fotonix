@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="300" viewBox="0 0 1400 300">
+  <!-- Badge with moderate right padding -->
+  <rect x="10" y="10" width="1380" height="280" rx="70" fill="#FFD200" stroke="#0B0B0B" stroke-width="14" stroke-linejoin="round"/>
+  
+  <!-- Left icon -->
+  <g transform="translate(70,60)">
+    <rect width="180" height="180" rx="36" fill="#0B0B0B"/>
+    <g transform="translate(90,90)">
+      <path d="M0,-58 L17,-18 L63,-18 L25,6 L37,48 L0,24 L-37,48 L-25,6 L-63,-18 L-17,-18 Z" fill="#FFD200"/>
+    </g>
+  </g>
+
+  <!-- Text: centered vertically, adjusted for reduced padding -->
+  <text x="300" y="150" font-family="Inter, Arial, Helvetica, sans-serif" font-weight="700" font-size="120"
+        fill="#0B0B0B" dominant-baseline="middle">Endorsed.Review
+  <tspan font-family="Inter, Arial, Helvetica, sans-serif" font-size="72" dx="-23" dy="-36">®</tspan>
+  </text>
+</svg>

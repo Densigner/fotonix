@@ -1,0 +1,284 @@
+
+
+2) Create PayPal Order (inject affiliate click id)
+
+src/routes/paypal-create.ts
+
+/* Copilot: Express Router to create a PayPal order for checkout.
+
+Imports:
+- Router from "express"
+- { getClient } from "../paypal"
+- { toCents, parseCurrency } from "../utils"
+
+POST /api/paypal/create-order
+- Body { items: { name: string, unitAmount: number, quantity: number }[], currency?: string }
+- Compute total from items (unitAmount * qty); currency = parseCurrency(body.currency)
+- Read signed cookie "aff_click" -> clickId string or ""
+- Build OrdersCreateRequest with:
+  - intent: "CAPTURE"
+  - purchase_units[0]:
+      amount.value in decimal string (convert cents to string dollars)
+      amount.currency_code = currency
+      custom_id = clickId  // carry affiliate click id here
+      invoice_id optional (e.g., generate)
+  - application_context: return urls optional (not required if using JS SDK)
+- Execute client().execute(request)
+- Return { id: orderID } to the frontend
+
+Export default router.
+*/
+
+
+The key is purchase_units[0].custom_id = clickId. That’s how we recover the affiliate on the webhook.
+
+Mount in src/index.ts like your other routers.
+
+3) (Optional) Capture on server
+
+If you prefer server capture instead of the client auto-capture:
+
+src/routes/paypal-capture.ts
+
+/* Copilot: Express Router to capture a PayPal order.
+
+POST /api/paypal/capture-order
+- Body { orderId: string }
+- Create OrdersCaptureRequest(orderId); set prefer "return=representation"
+- Execute via client
+- Return capture payload
+
+Export default router.
+*/
+
+
+You can also let the client JS SDK approve and capture then rely on the webhook for attribution (recommended).
+
+4) Webhook handler (verify + attribute)
+
+src/routes/paypal-webhook.ts
+
+/* Copilot: Express Router to handle PayPal webhooks with verification.
+
+Imports:
+- Router from "express"
+- prisma from "../db"
+- { sha256, toCents } from "../utils"
+- { getClient } from "../paypal"
+- node-fetch (or global fetch) to call PayPal verify webhook signature API if SDK helper not present
+
+IMPORTANT:
+- Use express.raw({ type: "application/json" }) for this route so we can verify the signature with the raw body.
+
+POST /api/paypal/webhook
+Steps:
+1) Read required headers:
+   - paypal-transmission-id
+   - paypal-transmission-time
+   - paypal-cert-url
+   - paypal-transmission-sig
+   - paypal-auth-algo
+2) Get PAYPAL_WEBHOOK_ID from env
+3) Call PayPal verify endpoint /v1/notifications/verify-webhook-signature with:
+   {
+     auth_algo, cert_url, transmission_id, transmission_sig, transmission_time,
+     webhook_id: PAYPAL_WEBHOOK_ID,
+     webhook_event: <parsed JSON body>
+   }
+4) If verification_status !== "SUCCESS" -> return 400.
+
+5) Handle event types:
+   - "PAYMENT.CAPTURE.COMPLETED"
+   - (optionally) "CHECKOUT.ORDER.APPROVED" or "CHECKOUT.ORDER.COMPLETED"
+
+6) Extract:
+   - resource.purchase_units[0].custom_id as clickId (affiliate click id)
+   - resource.supplementary_data.related_ids.order_id (or resource.id)
+   - amount.value (decimal string) and currency_code
+7) Upsert Order by orderNumber = resource.id (or the order_id)
+   - amountCents = Math.round(parseFloat(amount.value) * 100)
+   - currency = currency_code
+   - paidAt = now
+8) If clickId present:
+   - find Click by clickId; get its Affiliate and ratePct
+   - commission = Math.round(amountCents * ratePct / 100)
+   - create Attribution { orderId, affiliateId, clickId, commissionCents, ratePct, status: "pending" }
+9) Return { ok: true }
+
+Secure: no admin token; rely on PayPal signature verification only.
+
+Export default router.
+*/
+
+
+Mount with raw body in src/index.ts:
+
+/* Copilot: For the PayPal webhook only, mount:
+   app.post("/api/paypal/webhook", express.raw({ type: "application/json" }), paypalWebhookRouter);
+   // Keep express.json() before other routes; ensure this raw handler is mounted explicitly.
+*/
+>>>>>>>>>><><><><><<><><>?<>
+5) Frontend: load PayPal JS SDK, create order via your API
+
+If you use the PayPal Buttons (client-side), wire them to your backend create endpoint:
+
+src/paypalButtons.tsx (frontend)
+(adjust paths; keep it brief so Copilot fills in imports)
+
+/* Copilot: React component that renders PayPal Buttons.
+   - Loads PayPal JS SDK with client-id from env (VITE_PAYPAL_CLIENT_ID)
+   - createOrder: POST to /api/paypal/create-order with items; return order id from JSON
+   - onApprove: call actions.order.capture() or hit /api/paypal/capture-order
+   - onError: console.error
+   - The affiliate clickId is injected server-side via cookie in create-order; nothing to do here
+   Export component.
+*/
+
+
+Pair it with your existing useAffiliateCapture hook so the aff_click cookie is already set before they click PayPal.
+
+6) Replace the generic “orders webhook” with PayPal webhook
+
+Since PayPal sends the authoritative payment event, you can stop using the generic /api/orders/webhook for PayPal flows (keep it if you also run Stripe/etc.). Your attribution now lives entirely in paypal-webhook.ts using the custom_id.
+
+7) Quick smoke tests (manual)
+
+In browser, visit a URL with ?ref=ALEX10 so your click endpoint drops the aff_click cookie.
+
+Start checkout → your “Create Order” route should embed custom_id=<clickId>.
+
+Approve + capture payment → PayPal hits your webhook → you should see a new Order and an Attribution (pending).
+
+8) Tiny Copilot add-ons (paste where relevant)
+
+Void commission on refund:
+
+/* Copilot: In paypal-webhook handler, if event.type === "PAYMENT.CAPTURE.REFUNDED",
+   find Order by related_ids and set any attributions to status="void" with notes="refund".
+*/
+
+
+Self-referral block:
+
+/* Copilot: Before creating Attribution, if order.customerEmailHash === sha256(affiliate.email),
+   set status="void" and notes="self referral".
+*/
+
+
+
+
+
+
+
+Coupon override (if you pass coupon via custom_id or metadata):
+
+/* Copilot: If custom_id is empty but resource has seller_receivable_breakdown or item-level sku/coupon,
+   map coupon -> affiliate and attribute accordingly (override last-click).
+*/
+---====[ PRE-PRODUCTION / DEPLOYMENT CHECKLIST & COPILOT REMINDER ]====---
+
+Purpose: A concise, readable checklist and an expanded set of actionable todos to complete before
+you (or I) push this PayPal affiliate integration into a production/staging environment.
+Paste this in the repo so future sessions or maintainers can follow it step-by-step.
+
+High-level goals before production:
+- Ensure PayPal webhook signature verification is enforced (no dev bypass).
+- Confirm webhook URL is registered with the correct `PAYPAL_WEBHOOK_ID` in PayPal dashboard.
+- Ensure persistence is robust (move off JSON files to a DB for production).
+- Add integration tests and monitoring; document runbook and rollback strategy.
+
+Quick "readable" summary for humans:
+1) Start your staging server and expose it publicly (ngrok or staging host).
+2) In PayPal Developer Dashboard (Sandbox/Live), create or update a Webhook pointing at
+   your `/api/paypal/webhook` endpoint. Copy the webhook id into your production environment
+   as `PAYPAL_WEBHOOK_ID`.
+3) Remove any dev bypass flags in production: `DISABLE_PAYPAL_WEBHOOK_VERIFY` must be absent
+   and `NODE_ENV` must be `production`.
+4) Run PayPal's "Send test event" (type `PAYMENT.CAPTURE.COMPLETED`) against the webhook URL
+   and confirm your server logs show a successful verification and an attribution record.
+5) Migrate JSON data to a proper relational DB and add a unique constraint on (`orderId`,`clickId`,`affiliateId`).
+
+Detailed pre-production checklist (actionable, ordered):
+
+1) Environment & secrets
+   - Do NOT commit secrets to the repo. Store the following in your hosting provider's secret store:
+     `PAYPAL_ENV` (sandbox|live), `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`,
+     `COOKIE_SECRET`, and any encryption keys.
+   - Set `NODE_ENV=production` on the host. Remove or *never set* `DISABLE_PAYPAL_WEBHOOK_VERIFY`.
+
+2) Confirm webhook route uses raw body
+   - Ensure in `server/index.js` the webhook route is mounted explicitly with `express.raw({ type: 'application/json' })`:
+     `app.post('/api/paypal/webhook', express.raw({ type: 'application/json' }), paypalWebhookRouter)`
+   - Verify `express.json()` is used for the rest of the app but does not intercept this route.
+
+3) Register the webhook in PayPal
+   - In PayPal Developer Dashboard, add a webhook URL for the appropriate environment.
+   - Add only the event types you need (e.g., `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.REFUNDED`).
+   - Save the webhook and copy the returned `webhook_id` into your production env as `PAYPAL_WEBHOOK_ID`.
+
+4) Remove dev bypass & harden verification
+   - Confirm code does not accept requests lacking PayPal signature headers in production.
+   - If you used a development bypass (e.g., `DISABLE_PAYPAL_WEBHOOK_VERIFY`), ensure it's only allowed in local dev and the code requires both `NODE_ENV === 'development'` and the flag set to '1'.
+   - Add a startup-time check that fails to start the server when `NODE_ENV === 'production'` and `PAYPAL_WEBHOOK_ID` is missing.
+
+5) Test with PayPal
+   - Expose the server publicly. With ngrok: `ngrok http 4000` (or your port). Ensure a single ngrok session for your account.
+   - In PayPal dashboard, use "Send test event" with `PAYMENT.CAPTURE.COMPLETED` and the event body matching shape used in your code.
+   - Check server logs for verification success and for the created Order and Attribution entries.
+
+6) Idempotency & dedupe
+   - Ensure `server/db.js#createAttribution()` is idempotent by unique key or pre-check.
+   - Run `node server/scripts/dedupe-attributions.js` to dedupe historical JSON records.
+   - When migrating to SQL, add UNIQUE(orderId, clickId, affiliateId) and use an upsert pattern.
+
+7) Data migration & backups
+   - Export `server/data/*.json` (orders, clicks, attributions) and keep a timestamped backup.
+   - Add a migration script to import JSON into your chosen DB schema. Test migration on staging.
+
+8) Tests & CI
+   - Add unit tests for `verifyWebhookSignature()` (mock SDK + REST fallback), `createAttribution()` idempotency.
+   - Add integration tests that simulate a raw PayPal webhook (use fixture bytes and headers) and assert database state.
+   - Run tests in CI on PRs and before merges to master/main.
+
+9) Logging, alerts & observability
+   - Log verification failures with full headers + transmission_id (avoid logging secrets).
+   - Save failed verification payloads to a retry queue / DB table for manual inspection.
+   - Add monitoring/alerts (Sentry, Datadog, or similar) for repeated verification failures or sudden increases in voided attributions.
+
+10) Post-deploy smoke tests & runbook
+   - After deploy, run these steps:
+     a) Send PayPal "Send test event" -> expect 200 OK and `{ok:true}` in response.
+     b) Run a real sandbox purchase (create order -> approve -> capture) and verify an attribution is created.
+     c) Verify refund/void flow: send a `PAYMENT.CAPTURE.REFUNDED` event and confirm attributions are voided.
+   - If verification fails, follow rollback steps: disable webhook in PayPal dashboard, rollback code, and investigate logs.
+
+11) Optional improvements (future tasks)
+   - Add message queue for webhook processing to handle spikes and retries (e.g., RabbitMQ, SQS).
+   - Add cryptographic idempotency keys (store PayPal transmission_id or event id) to prevent replay.
+   - Harden self-referral checks and fraud detection (compare hashed emails, rate-limit affiliates, require payout verification).
+
+Machine-friendly checklist (for automation or CI preflight)
+ - [ ] `PAYPAL_WEBHOOK_ID` present in env when `NODE_ENV=production`
+ - [ ] `DISABLE_PAYPAL_WEBHOOK_VERIFY` not set in production
+ - [ ] Server mounts webhook with `express.raw({ type: 'application/json' })`
+ - [ ] `server/scripts/dedupe-attributions.js` executed and attributions deduped
+ - [ ] Backups of `server/data/*.json` completed
+ - [ ] Integration tests pass locally and on CI
+
+Developer notes & Copilot remember-me section (keep these concise so next session picks up quickly):
+ - Entry points:
+   - Server main: `server/index.js`
+   - Webhook router: `server/routes/webhook.js` (ensure raw body)
+   - DB shim: `server/db.js` (file-backed; migrate to SQL ASAP)
+   - Test senders: `server/scripts/send-test-webhook.js` (raw TCP) and `server/scripts/dedupe-attributions.js`
+ - Files to inspect when something breaks:
+   - `server/data/attributions.json`, `server/data/orders.json`, `server/data/clicks.json`
+   - `server/logs` (if present) or terminal output when running server
+ - Local dev tips:
+   - Use PowerShell to set envs on separate lines (Windows quoting issues):
+     `$env:PAYPAL_WEBHOOK_ID = 'your-id'`\n`$env:NODE_ENV = 'development'`\n`node server/index.js`
+   - If PayPal events fail, verify headers are present and the raw body is the exact bytes PayPal sends.
+
+If you want, I can compress these into a short `README_PRODUCTION.md` and add a simple CI job to run the machine-friendly checklist automatically.
+
+---====[ END OF PRE-PROD INSTRUCTIONS ]====---

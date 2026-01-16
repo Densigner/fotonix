@@ -1,0 +1,1231 @@
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  closestCenter,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { v4 as uuidv4 } from "uuid";
+import {
+  Plus,
+  Settings2,
+  Trash2,
+  Laptop,
+  Smartphone,
+  Tablet,
+  Download,
+  Upload,
+  Eye,
+  LayoutTemplate,
+  Copy,
+  Save,
+  Undo2,
+  Redo2,
+  Play,
+  Edit3,
+  Sparkles,
+  Image as ImageIcon,
+  Type,
+  Link,
+  Mail,
+  SquareStack,
+  Rows3,
+  ArrowUpRight,
+  GripVertical,
+} from "lucide-react";
+import { useSearchParams } from 'react-router-dom';
+import { getStarterBlocks } from './templateRegistry';
+// Firebase storage helper (upload images to the project storage bucket)
+import { storage } from '../../../firebase';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+
+// local funnel icons (used in the create-funnel modal)
+import funnelAudienceIcon from './funnel-icon_audience.svg';
+import funnelSellIcon from './funnel-icon_sell_canopy.svg';
+import funnelCustomIcon from './funnel-icon_custom.svg';
+import funnelWebinarIcon from './funnel-icon_webinar.png';
+
+// shadcn/ui (use relative paths to avoid alias resolution issues in CRA)
+import { Button } from "../../shared/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../shared/ui/card";
+import { Separator } from "../../shared/ui/separator";
+
+// Minimal inline fallbacks for shadcn/ui components not present in this repo.
+// These are intentionally simple — replace with full components when available.
+const Input = ({ value, onChange, placeholder, className, ...rest }) => (
+  <input value={value} onChange={onChange} placeholder={placeholder} className={className || 'w-full rounded-md border border-gray-200 px-2 py-1'} {...rest} />
+);
+const Label = ({ children, className }) => <label className={className || 'block text-xs font-semibold text-gray-600'}>{children}</label>;
+const Switch = ({ checked, onCheckedChange }) => (
+  <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange && onCheckedChange(e.target.checked)} />
+);
+const Tabs = ({ children }) => <div>{children}</div>;
+const TabsList = ({ children }) => <div className="flex gap-2">{children}</div>;
+const TabsTrigger = ({ children, onClick, className }) => <button onClick={onClick} className={className}>{children}</button>;
+const TabsContent = ({ children }) => <div>{children}</div>;
+const Textarea = ({ value, onChange, className, ...rest }) => <textarea value={value} onChange={onChange} className={className || 'w-full rounded-md border p-2'} {...rest} />;
+const Slider = ({ value, onValueChange, min = 0, max = 100 }) => (
+  <input type="range" min={min} max={max} value={Array.isArray(value) ? value[0] : value} onChange={(e) => onValueChange && onValueChange([Number(e.target.value)])} />
+);
+const Tooltip = ({ children }) => <span>{children}</span>;
+const TooltipProvider = ({ children }) => <>{children}</>;
+const TooltipTrigger = ({ children }) => <span>{children}</span>;
+const TooltipContent = ({ children }) => <div>{children}</div>;
+const Dialog = ({ open, children, onOpenChange }) => {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={() => onOpenChange && onOpenChange(false)} />
+      <div className="relative z-10 w-full max-w-md mx-auto px-4">{children}</div>
+    </div>
+  );
+};
+
+const DialogContent = ({ children, className }) => (
+  <div className={`bg-white shadow-xl rounded-2xl ${className || ''}`}>{children}</div>
+);
+const DialogFooter = ({ children }) => <div className="mt-4">{children}</div>;
+const DialogHeader = ({ children }) => <div className="mb-2">{children}</div>;
+const DialogTitle = ({ children }) => <h3 className="text-lg font-medium">{children}</h3>;
+const DialogTrigger = ({ children }) => <>{children}</>;
+const DropdownMenu = ({ children }) => <div>{children}</div>;
+const DropdownMenuTrigger = ({ children }) => <>{children}</>;
+const DropdownMenuContent = ({ children }) => <div>{children}</div>;
+const DropdownMenuItem = ({ children }) => <div>{children}</div>;
+const ScrollArea = ({ children, className }) => <div className={className} style={{ maxHeight: '60vh', overflow: 'auto' }}>{children}</div>;
+const Badge = ({ children }) => <span className="inline-block bg-gray-200 px-2 py-1 rounded">{children}</span>;
+
+/*****************************************
+ * FunnelBuilder – Single‑file React app
+ * - Drag‑and‑drop block editor (dnd-kit)
+ * - Live responsive preview (mobile/tablet/desktop)
+ * - Right‑pane property inspector
+ * - Export/Import JSON schema
+ * - LocalStorage autosave, undo/redo, duplicating
+ * - A/B Variants (A, B) toggle
+ * - Minimal runtime dependencies; Tailwind styles
+ *****************************************/
+
+// ----- Block registry ----- //
+const BLOCKS = {
+  hero: {
+    name: "Hero",
+    icon: Sparkles,
+    defaults: () => ({
+      headline: "Launch your product in minutes",
+      subhead: "A blazing‑fast funnel built with our drag‑and‑drop editor.",
+      ctaLabel: "Get Started",
+      ctaHref: "#",
+      image: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=1200&auto=format&fit=crop",
+      align: "center",
+      gradient: true,
+    }),
+    render: ({ data, onChange, editable }) => (
+      <section className={`relative overflow-hidden rounded-2xl border border-gray-200 ${
+        data.gradient ? "bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10" : "bg-white"
+      } p-8 md:p-12`}>
+        <div className={`mx-auto ${data.align === "center" ? "text-center max-w-2xl" : "text-left grid md:grid-cols-2 gap-8 items-center"}`}>
+          <div>
+            <h1
+              contentEditable={editable}
+              suppressContentEditableWarning={true}
+              onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+              className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
+            >
+              {data.headline}
+            </h1>
+
+            <p
+              contentEditable={editable}
+              suppressContentEditableWarning={true}
+              onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+              className="mt-3 text-gray-600 text-base md:text-lg focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+            >
+              {data.subhead}
+            </p>
+            <div className={`mt-5 ${data.align === "center" ? "justify-center" : "justify-start"} flex gap-3`}>
+              <Button asChild>
+                <a href={data.ctaHref} className="inline-flex items-center gap-2">
+                  {data.ctaLabel}
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+              </Button>
+            </div>
+          </div>
+
+          {/* Editable image pattern */}
+          <div className="relative group">
+            {data.align !== "center" && (
+              <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" />
+            )}
+
+            {data.align === "center" && (
+              <img src={data.image} alt="Hero" className="w-full mt-8 rounded-xl shadow-md" />
+            )}
+
+            {editable && (
+              <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+            )}
+          </div>
+        </div>
+      </section>
+    ),
+    inspector: ({ data, onChange }) => (
+  <div className="space-y-4">
+        <Field label="Headline">
+          <Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} />
+        </Field>
+        <Field label="Sub‑headline">
+          <Textarea value={data.subhead} onChange={e=>onChange({ subhead: e.target.value })} />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="CTA Label">
+            <Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} />
+          </Field>
+          <Field label="CTA Link">
+            <Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} />
+          </Field>
+        </div>
+        <Field label="Image URL">
+          <Input value={data.image} onChange={e=>onChange({ image: e.target.value })} />
+        </Field>
+        <Field label="Alignment">
+          <div className="flex items-center gap-2">
+            <Button variant={data.align === "center" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "center" })}>Center</Button>
+            <Button variant={data.align === "left" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "left" })}>Left</Button>
+          </div>
+        </Field>
+        <ToggleField label="Gradient background" checked={data.gradient} onCheckedChange={(v)=>onChange({ gradient: v })} />
+      </div>
+    )
+  },
+  volunteerHero: {
+    name: "Volunteer Hero",
+    icon: Sparkles,
+    defaults: () => ({
+      showHeader: true,
+      logoText: "VOLUNTEER",
+      links: ["Home", "About", "Opportunities", "How to Volunteer", "Contact"],
+      ctaLabel: "Start Now",
+      ctaHref: "#",
+      headline: "Volunteer in your Community",
+      subhead:
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Autem dolore, alias, numquam enim ab voluptate id quam.",
+      buttonLabel: "Contact Us",
+      buttonHref: "#",
+      placeholder: "Email",
+      background:
+        "https://images.unsplash.com/photo-1600055701524-4040df79c3d3?q=80&w=1200&auto=format&fit=crop",
+      overlay: true,
+      darkText: false,
+      align: "left",
+    }),
+    render: ({ data }) => (
+      <section className="relative flex h-[85vh] min-h-[520px] w-full flex-col overflow-hidden rounded-2xl">
+        {/* Background */}
+        <img src={data.background} alt="Volunteer background" className="absolute inset-0 h-full w-full object-cover" />
+        {data.overlay && <div className="absolute inset-0 bg-black/50" />}
+
+        {/* Header/Nav */}
+        {data.showHeader && (
+          <nav className="relative z-20 flex w-full items-center justify-between px-8 py-5 text-white">
+            {/* Logo */}
+            <div className="text-lg font-bold tracking-tight uppercase">{data.logoText}</div>
+
+            {/* Links */}
+            <div className="hidden md:flex gap-6 text-sm font-medium opacity-90">
+              {data.links.map((link, idx) => (
+                <a key={idx} href="#" className="transition hover:opacity-100 hover:underline">{link}</a>
+              ))}
+            </div>
+
+            {/* CTA */}
+            <Button asChild className="bg-red-600 hover:bg-red-700 text-white text-sm px-5 py-2 rounded-md">
+              <a href={data.ctaHref}>{data.ctaLabel}</a>
+            </Button>
+          </nav>
+        )}
+
+        {/* Hero Text */}
+        <div className={`relative z-10 mx-auto flex flex-col items-${data.align} justify-center h-full max-w-3xl px-6 text-${data.align} ${data.darkText ? "text-gray-900" : "text-white"}`}>
+          <h1 className="text-4xl md:text-6xl font-bold leading-tight">{data.headline}</h1>
+          <p className="mt-3 text-base md:text-lg opacity-90">{data.subhead}</p>
+
+          {/* Email + Button */}
+          <form onSubmit={(e) => e.preventDefault()} className={`mt-6 flex max-w-md flex-col gap-3 ${data.align === "center" ? "mx-auto" : ""} sm:flex-row`}>
+            <Input placeholder={data.placeholder} className="flex-1 bg-white/90 text-black placeholder-gray-500" />
+            <Button className="bg-indigo-600 hover:bg-indigo-700">{data.buttonLabel}</Button>
+          </form>
+        </div>
+      </section>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <ToggleField label="Show header" checked={data.showHeader} onCheckedChange={(v) => onChange({ showHeader: v })} />
+        {data.showHeader && (
+          <>
+            <Field label="Logo text">
+              <Input value={data.logoText} onChange={(e) => onChange({ logoText: e.target.value })} />
+            </Field>
+            <Field label="Navigation links (comma separated)">
+              <Input value={data.links.join(', ')} onChange={(e) => onChange({ links: e.target.value.split(',').map((l) => l.trim()) })} />
+            </Field>
+            <Field label="CTA label">
+              <Input value={data.ctaLabel} onChange={(e) => onChange({ ctaLabel: e.target.value })} />
+            </Field>
+            <Field label="CTA link">
+              <Input value={data.ctaHref} onChange={(e) => onChange({ ctaHref: e.target.value })} />
+            </Field>
+          </>
+        )}
+        <Separator />
+        <Field label="Headline">
+          <Input value={data.headline} onChange={(e) => onChange({ headline: e.target.value })} />
+        </Field>
+        <Field label="Subheadline">
+          <Textarea value={data.subhead} onChange={(e) => onChange({ subhead: e.target.value })} />
+        </Field>
+        <Field label="Email placeholder">
+          <Input value={data.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />
+        </Field>
+        <Field label="Button label">
+          <Input value={data.buttonLabel} onChange={(e) => onChange({ buttonLabel: e.target.value })} />
+        </Field>
+        <Field label="Button link">
+          <Input value={data.buttonHref} onChange={(e) => onChange({ buttonHref: e.target.value })} />
+        </Field>
+        <Field label="Background image">
+          <Input value={data.background} onChange={(e) => onChange({ background: e.target.value })} />
+        </Field>
+        <ToggleField label="Overlay" checked={data.overlay} onCheckedChange={(v) => onChange({ overlay: v })} />
+        <ToggleField label="Dark text" checked={data.darkText} onCheckedChange={(v) => onChange({ darkText: v })} />
+        <Field label="Alignment">
+          <div className="flex gap-2">
+            {["left", "center"].map((align) => (
+              <Button key={align} size="sm" variant={data.align === align ? "default" : "outline"} className="text-black" onClick={() => onChange({ align })}>{align}</Button>
+            ))}
+          </div>
+        </Field>
+      </div>
+    ),
+  },
+  heading: {
+    name: "Heading",
+    icon: Type,
+    defaults: () => ({ text: "Powerful headline", size: 36, align: "center" }),
+    render: ({ data }) => (
+      <h2 className={`w-full font-semibold tracking-tight ${
+        data.align === "center" ? "text-center" : data.align === "right" ? "text-right" : "text-left"
+      }`} style={{ fontSize: `${data.size}px` }}>{data.text}</h2>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Text"><Input value={data.text} onChange={e=>onChange({ text: e.target.value })} /></Field>
+        <Field label="Size"><Slider value={[data.size]} min={16} max={72} step={1} onValueChange={(v)=>onChange({ size: v[0] })} /></Field>
+        <Field label="Align">
+          <div className="flex gap-2">
+            {['left','center','right'].map(al=> (
+              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className="text-black" onClick={()=>onChange({ align: al })}>{al}</Button>
+            ))}
+          </div>
+        </Field>
+      </div>
+    )
+  },
+  paragraph: {
+    name: "Paragraph",
+    icon: Rows3,
+    defaults: () => ({ text: "Explain your offer in a concise, benefit‑driven way.", width: 700, align: "center" }),
+    render: ({ data }) => (
+      <p className={`text-gray-600 leading-7 ${
+        data.align === "center" ? "mx-auto text-center" : data.align === "right" ? "ml-auto text-right" : "text-left"
+      }`} style={{ maxWidth: data.width }}>{data.text}</p>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Text"><Textarea value={data.text} onChange={e=>onChange({ text: e.target.value })} /></Field>
+        <Field label="Max width">
+          <Slider value={[data.width]} min={320} max={1000} step={10} onValueChange={(v)=>onChange({ width: v[0] })} />
+        </Field>
+        <Field label="Align">
+          <div className="flex gap-2">
+            {['left','center','right'].map(al=> (
+              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className="text-black" onClick={()=>onChange({ align: al })}>{al}</Button>
+            ))}
+          </div>
+        </Field>
+      </div>
+    )
+  },
+  image: {
+    name: "Image",
+    icon: ImageIcon,
+    defaults: () => ({ url: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1200&auto=format&fit=crop", radius: 16, shadow: true }),
+    render: ({ data, onChange, editable }) => (
+      <div className="relative group">
+        <img src={data.url} alt="" className={`w-full ${data.shadow? 'shadow-md':''}`} style={{ borderRadius: data.radius }} />
+        {editable && (
+              <UploadImage onUploaded={(url) => onChange && onChange({ url })} />
+        )}
+      </div>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Image URL"><Input value={data.url} onChange={e=>onChange({ url: e.target.value })} /></Field>
+        <Field label="Corner radius"><Slider value={[data.radius]} min={0} max={32} step={1} onValueChange={(v)=>onChange({ radius: v[0] })} /></Field>
+        <ToggleField label="Shadow" checked={data.shadow} onCheckedChange={(v)=>onChange({ shadow: v })} />
+      </div>
+    )
+  },
+  button: {
+    name: "Button",
+    icon: Link,
+    defaults: () => ({ label: "Get started", href: "#", style: "default", full: false }),
+    render: ({ data }) => (
+      <div className={`flex ${data.full? '':'justify-center'}`}>
+        <Button asChild className={data.full? 'w-full':''} variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}>
+          <a href={data.href}>{data.label}</a>
+        </Button>
+      </div>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Label"><Input value={data.label} onChange={e=>onChange({ label: e.target.value })} /></Field>
+        <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
+        <Field label="Style">
+          <div className="flex gap-2">
+            {['default','outline','ghost'].map(s=> (
+              <Button key={s} size="sm" variant={data.style===s? 'default':'outline'} onClick={()=>onChange({ style: s })}>{s}</Button>
+            ))}
+          </div>
+        </Field>
+        <ToggleField label="Full width" checked={data.full} onCheckedChange={(v)=>onChange({ full: v })} />
+      </div>
+    )
+  },
+  emailCapture: {
+    name: "Email Capture",
+    icon: Mail,
+    defaults: () => ({ headline: "Get early access", placeholder: "you@example.com", button: "Notify me", success: "Thanks! Check your inbox." }),
+    render: ({ data }) => (
+      <div className="mx-auto max-w-md w-full">
+        <h3 className="text-xl font-semibold tracking-tight text-center">{data.headline}</h3>
+        <form onSubmit={(e)=>e.preventDefault()} className="mt-3 flex gap-2">
+          <Input placeholder={data.placeholder} className="flex-1" />
+          <Button type="submit">{data.button}</Button>
+        </form>
+  <p className="text-xs text-gray-600 mt-2 text-center">We respect your privacy.</p>
+      </div>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Headline"><Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} /></Field>
+        <Field label="Placeholder"><Input value={data.placeholder} onChange={e=>onChange({ placeholder: e.target.value })} /></Field>
+        <Field label="Button text"><Input value={data.button} onChange={e=>onChange({ button: e.target.value })} /></Field>
+        <Field label="Success message"><Input value={data.success} onChange={e=>onChange({ success: e.target.value })} /></Field>
+      </div>
+    )
+  },
+  features: {
+    name: "Features",
+    icon: SquareStack,
+    defaults: () => ({
+      title: "Why people love this",
+      items: [
+        { id: uuidv4(), title: "Fast to build", desc: "Create a page in minutes." },
+        { id: uuidv4(), title: "Responsive", desc: "Looks great on any device." },
+        { id: uuidv4(), title: "Integrated", desc: "Connect payments, email, analytics." },
+      ],
+    }),
+    render: ({ data }) => (
+      <div className="w-full">
+        <h3 className="text-xl font-semibold tracking-tight text-center">{data.title}</h3>
+        <div className="grid md:grid-cols-3 gap-4 mt-4">
+          {data.items.map((it, i)=> (
+            <Card key={it.id} className="h-full">
+              <CardHeader className="pb-2"><CardTitle className="text-base">{it.title}</CardTitle></CardHeader>
+              <CardContent className="text-sm text-gray-600">{it.desc}</CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Title"><Input value={data.title} onChange={e=>onChange({ title: e.target.value })} /></Field>
+        <Separator />
+        <div className="space-y-3">
+          {data.items.map((it, idx)=> (
+            <div className="p-3 rounded-lg border" key={it.id}>
+              <Field label={`Item ${idx+1} Title`}>
+                <Input value={it.title} onChange={e=>{
+                  const items=[...data.items]; items[idx]={...it,title:e.target.value}; onChange({ items })
+                }} />
+              </Field>
+              <Field label="Description">
+                <Textarea value={it.desc} onChange={e=>{ const items=[...data.items]; items[idx]={...it,desc:e.target.value}; onChange({ items }) }} />
+              </Field>
+              <div className="flex justify-between mt-2">
+                <Button size="sm" variant="outline" onClick={()=>{
+                  const items=[...data.items]; items.splice(idx+1,0,{id:uuidv4(), title:"New feature", desc:"Describe it..."}); onChange({ items });
+                }}>Add below</Button>
+                <Button size="sm" variant="destructive" onClick={()=>{ const items=data.items.filter((_,i)=>i!==idx); onChange({ items }); }}><Trash2 className="h-4 w-4"/></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  },
+};
+
+// (Templates gallery removed — templates are now managed in the separate TemplatesPage)
+
+// ----- Utilities ----- //
+const Field = ({ label, children }) => (
+  <div className="space-y-1">
+    <Label className="text-xs uppercase tracking-wider text-gray-600">{label}</Label>
+    {children}
+  </div>
+);
+const ToggleField = ({ label, checked, onCheckedChange }) => (
+  <div className="flex items-center justify-between py-1">
+    <Label className="text-xs uppercase tracking-wider text-gray-600">{label}</Label>
+    <Switch checked={checked} onCheckedChange={onCheckedChange} />
+  </div>
+);
+
+// ----- Sortable item wrapper ----- //
+function SortableItem({ id, children, selected, onSelect }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    cursor: 'grab'
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group relative rounded-xl border ${selected ? 'ring-2 ring-indigo-500' : ''} bg-white hover:bg-gray-50`}
+      onMouseDown={onSelect}
+      onTouchStart={onSelect}
+      {...attributes}
+    >
+      <div
+        {...listeners}
+        className="absolute left-2 top-2 cursor-grab opacity-60 group-hover:opacity-100"
+        title="Drag"
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+// ----- Main App ----- //
+export default function FunnelBuilder({ initialTemplateId = null }) {
+  // Map simple template ids (from the TemplatesPage) to block type arrays.
+  const TEMPLATE_MAP = {
+    volunteer: ['volunteerHero', 'paragraph'],
+    wildlife: ['hero', 'heading', 'paragraph', 'features', 'cta'],
+    women: ['hero', 'heading', 'paragraph', 'features', 'cta'],
+    productLaunch: ['hero', 'features', 'emailCapture'],
+    webinar: ['hero', 'emailCapture'],
+    storefront: ['hero', 'features', 'image'],
+    custom: [],
+    // fallback for older keys
+    simpleLaunch: ['hero', 'features', 'emailCapture'],
+  };
+  const [variant, setVariant] = useState('A');
+  const [device, setDevice] = useState('desktop');
+  const [blocks, setBlocks] = useState(()=>loadInitial(initialTemplateId));
+  const [selectedId, setSelectedId] = useState(null);
+  // showCreateModal is false by default; open it when the user clicks "Create"
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [funnelData, setFunnelData] = useState({
+    name: "",
+    domain: "<storename>.fotonix.co.uk",
+    goal: "",
+    currency: "Euro",
+  });
+  const [showExport, setShowExport] = useState(false);
+  const [importText, setImportText] = useState("");
+  // edit mode enables inline editable regions in the canvas
+  const [editMode, setEditMode] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [future, setFuture] = useState([]);
+
+  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 5 } }), useSensor(TouchSensor));
+
+  useEffect(()=>{ localStorage.setItem('funnel.blocks', JSON.stringify(blocks)); },[blocks]);
+
+  // If the URL contains a ?template=... param (navigated from TemplatesPage),
+  // hydrate the editor with the starter blocks from the central registry.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    try {
+      const tmpl = searchParams.get('template');
+      if (tmpl) {
+        const starter = getStarterBlocks(tmpl);
+        if (Array.isArray(starter) && starter.length > 0) {
+          const hydrated = starter.map((b) => ({ id: uuidv4(), type: b.type, data: b.data }));
+          setBlocks(hydrated);
+        }
+      }
+    } catch (e) {
+      // ignore and leave existing blocks
+    }
+  }, [searchParams]);
+
+  const pushHistory = useCallback((next)=>{ setHistory((h)=>[...h, blocks]); setFuture([]); setBlocks(next); },[blocks]);
+
+  function loadInitial(templateId){
+      if (templateId) {
+        // Prefer the centralized template registry first — it contains the
+        // canonical, full starter schemas (hero + features + etc.). This
+        // ensures the App's onSelectTemplate flow and ?template=... navigation
+        // both hydrate the editor with the full starter when available.
+        try {
+          const starter = getStarterBlocks(templateId);
+          if (Array.isArray(starter) && starter.length > 0) {
+            return starter.map((b) => ({ id: uuidv4(), type: b.type, data: b.data }));
+          }
+        } catch (e) {
+          // ignore and fall back to TEMPLATE_MAP below
+        }
+
+        // Fallback: if registry didn't provide a starter, use the faster
+        // TEMPLATE_MAP (legacy inline mapping) when present.
+        if (TEMPLATE_MAP[templateId] !== undefined) {
+          const types = TEMPLATE_MAP[templateId] || [];
+          if (types.length === 0) return [];
+          return types.map((t) => makeBlock(t)).filter(Boolean);
+        }
+      }
+
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('funnel.blocks') : null;
+    if (stored) { try { return JSON.parse(stored); } catch(e) {} }
+    return [
+      makeBlock('hero'),
+      makeBlock('features'),
+      makeBlock('emailCapture'),
+    ];
+  }
+
+  function makeBlock(type){
+    const def = BLOCKS[type];
+    return { id: uuidv4(), type, data: def.defaults() };
+  }
+
+  // drag handlers
+  const [activeId, setActiveId] = useState(null);
+  const activeBlock = blocks.find(b=>b.id===activeId);
+
+  function handleDragStart(event){ setActiveId(event.active.id); }
+  function handleDragEnd(event){
+    const { active, over } = event; setActiveId(null);
+    if (!over || active.id===over.id) return;
+    const oldIndex = blocks.findIndex(b=>b.id===active.id);
+    const newIndex = blocks.findIndex(b=>b.id===over.id);
+    pushHistory(arrayMove(blocks, oldIndex, newIndex));
+  }
+
+  function updateBlock(id, patch){
+    pushHistory(blocks.map(b=> b.id===id ? { ...b, data: { ...b.data, ...patch } } : b));
+  }
+
+  function duplicate(id){
+    const idx = blocks.findIndex(b=>b.id===id); if (idx<0) return;
+    const copy = { ...blocks[idx], id: uuidv4(), data: JSON.parse(JSON.stringify(blocks[idx].data)) };
+    pushHistory([ ...blocks.slice(0, idx+1), copy, ...blocks.slice(idx+1) ]);
+  }
+
+  function remove(id){ pushHistory(blocks.filter(b=>b.id!==id)); if (selectedId===id) setSelectedId(null); }
+
+  function addBlock(type){ pushHistory([ ...blocks, makeBlock(type) ]); }
+
+  function doUndo(){ if (!history.length) return; const prev = history[history.length-1]; setHistory(history.slice(0,-1)); setFuture([blocks, ...future]); setBlocks(prev); }
+  function doRedo(){ if (!future.length) return; const next = future[0]; setFuture(future.slice(1)); setHistory([...history, blocks]); setBlocks(next); }
+
+  // Use a responsive width for the preview canvas. For desktop use 100% so
+  // full-bleed sections (hero with background images) can span the full
+  // preview area without an empty side gutter. Tablet/mobile keep fixed
+  // preview widths to simulate device sizes.
+  const containerWidth = device === 'desktop' ? '100%' : device === 'tablet' ? '768px' : '380px';
+
+  // Export schema
+  const schema = useMemo(()=> JSON.stringify({ variant, blocks }, null, 2), [variant, blocks]);
+
+  function importSchema(){ try { const obj = JSON.parse(importText); if (obj?.blocks) { setBlocks(obj.blocks); setVariant(obj.variant||'A'); setShowExport(false);} } catch(e){ alert('Invalid JSON'); } }
+
+  const CreateFunnelModal = () => (
+    <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+      <DialogContent className="max-w-md rounded-2xl p-6">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-semibold">Create funnel</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-4">
+          <Field label="Name">
+            <Input
+              placeholder="Name"
+              value={funnelData.name}
+              onChange={(e) => setFunnelData({ ...funnelData, name: e.target.value })}
+            />
+          </Field>
+
+          <Field label="Funnel domain">
+            <Input
+              value={funnelData.domain}
+              onChange={(e) => setFunnelData({ ...funnelData, domain: e.target.value })}
+            />
+          </Field>
+
+          <Field label="Choose your funnel goal">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { id: "audience", title: "Build an audience", desc: "Collect email addresses and build your email list.", icon: funnelAudienceIcon },
+                { id: "sell", title: "Sell", desc: "Sell a product or a service.", icon: funnelSellIcon },
+                { id: "custom", title: "Custom", desc: "Build a custom funnel from scratch.", icon: funnelCustomIcon },
+                { id: "webinar", title: "Run an evergreen webinar", desc: "Run webinars to automate your business.", icon: funnelWebinarIcon },
+              ].map((goal) => (
+                <button
+                  key={goal.id}
+                  onClick={() => setFunnelData({ ...funnelData, goal: goal.id })}
+                  className={`rounded-lg border p-3 text-left transition hover:bg-gray-50 ${
+                    funnelData.goal === goal.id ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-200"
+                  }`}
+                >
+                  {/* Icon above the card text */}
+                  <div className="flex items-center justify-center mb-3">
+                    <img src={goal.icon} alt={goal.title} className="w-14 h-10 object-contain opacity-95" />
+                  </div>
+                  <h4 className="font-medium text-sm">{goal.title}</h4>
+                  <p className="text-xs text-gray-600 mt-1">{goal.desc}</p>
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field label="Currency">
+            <select
+              value={funnelData.currency}
+              onChange={(e) => setFunnelData({ ...funnelData, currency: e.target.value })}
+              className="w-full rounded-md border border-gray-200 px-2 py-1"
+            >
+              <option>Euro</option>
+              <option>USD</option>
+              <option>GBP</option>
+            </select>
+          </Field>
+
+          <div className="flex justify-end mt-6">
+            <Button
+              disabled={!funnelData.name || !funnelData.goal}
+              onClick={() => setShowCreateModal(false)}
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
+  return (
+    <TooltipProvider>
+      <div className="min-h-screen bg-gradient-to-b from-white to-gray-100">
+  <div className="w-full px-0 py-5">
+          <EditorHeader
+            variant={variant}
+            setVariant={setVariant}
+            setShowCreateModal={setShowCreateModal}
+            device={device}
+            setDevice={setDevice}
+            doUndo={doUndo}
+            doRedo={doRedo}
+            showExport={showExport}
+            setShowExport={setShowExport}
+            schema={schema}
+            importText={importText}
+            setImportText={setImportText}
+            importSchema={importSchema}
+            editMode={editMode}
+            setEditMode={setEditMode}
+          />
+
+          <div className="pt-[72px] md:pt-[86px]">
+
+          {/* Editor grid: two columns — left toggles between Blocks and Inspector, right is the canvas */}
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-4">
+            {/* Left: Blocks or Inspector (toggle) */}
+            <Card className="h-[calc(100vh-180px)] overflow-hidden">
+              <CardHeader className="pb-2 flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    {selectedId ? <Settings2 className="h-4 w-4"/> : <LayoutTemplate className="h-4 w-4"/>}
+                    {selectedId ? 'Inspector' : 'Blocks'}
+                  </CardTitle>
+                  {/* Quick toggle back to Blocks when inspector is open */}
+                  <div>
+                    {selectedId && (
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)} className="text-sm">
+                        Show Blocks
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+              <Separator />
+              <CardContent className="p-0">
+                <ScrollArea className="h-[calc(100vh-240px)] p-3">
+                  {selectedId ? (
+                    <div className="p-4">
+                      <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(BLOCKS).map(([key, def])=> (
+                        <button key={key} className="group rounded-xl border border-gray-200 p-3 hover:bg-gray-50 text-left transition"
+                        onClick={()=>addBlock(key)}>
+                          <div className="flex items-center gap-2">
+                            <def.icon className="h-4 w-4 text-gray-600"/>
+                            <span className="text-sm font-medium">{def.name}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600">Add {def.name} block</p>
+                          <span className="opacity-0 group-hover:opacity-100 inline-flex items-center text-xs text-indigo-600 mt-2">Add <Plus className="h-3 w-3 ml-1"/></span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Right: Canvas (fuller, better fill) */}
+            <Card className="relative h-[calc(100vh-180px)] overflow-hidden">
+  <CardContent className="p-0 h-full">
+    <div className="relative flex items-start h-full overflow-auto bg-white rounded-none">
+      <div className="relative w-full h-full overflow-y-auto" style={{ width: containerWidth }}>
+        {/* Full-bleed content frame */}
+        <div className="min-h-full bg-white rounded-none border border-gray-200">
+          <div className="p-6 space-y-6">
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              collisionDetection={closestCenter}
+            >
+              <SortableContext
+                items={blocks.map((b) => b.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {blocks.map((block) => (
+                  <SortableItem
+                    key={block.id}
+                    id={block.id}
+                    selected={selectedId === block.id}
+                    onSelect={() => setSelectedId(block.id)}
+                  >
+                    <BLOCKRenderer
+                      block={block}
+                      editable={editMode}
+                      onChange={(patch) => updateBlock(block.id, patch)}
+                    />
+                    <div className="mt-3 flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-black"
+                        onClick={() => duplicate(block.id)}
+                      >
+                        Duplicate
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => remove(block.id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  </SortableItem>
+                ))}
+
+                {blocks.length === 0 && (
+                  <div className="text-center text-gray-500 py-20">
+                    Add blocks from the left to start building.
+                  </div>
+                )}
+              </SortableContext>
+
+              <DragOverlay>
+                {activeBlock ? (
+                  <div className="rounded-xl border bg-white p-4 shadow-xl opacity-90">
+                    <BLOCKRenderer
+                      block={activeBlock}
+                      editable={editMode}
+                      onChange={(patch) =>
+                        updateBlock(activeBlock.id, patch)
+                      }
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </div>
+        </div>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+          </div>
+        </div>
+      </div>
+    </div>
+      {showCreateModal && <CreateFunnelModal />}
+    </TooltipProvider>
+  );
+}
+
+function BLOCKRenderer({ block, editable = false, onChange }){
+  const def = BLOCKS[block.type];
+  if (!def) return <div className="text-red-500">Unknown block: {block.type}</div>;
+  return (
+    <AnimatePresence mode="popLayout">
+      <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+        {def.render({ data: block.data, onChange, editable })}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function Inspector({ block, onChange }){
+  if (!block) return null;
+  const def = BLOCKS[block.type];
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h4 className="font-medium">{def.name}</h4>
+        <Badge variant="secondary" className="uppercase">{block.type}</Badge>
+      </div>
+      {def.inspector({ data: block.data, onChange })}
+    </div>
+  );
+}
+
+// Lightweight Sortable implementation using dnd-kit primitives
+function DraggableItem({ id, children }){
+  // Implement a minimal wrapper that provides an id and CSS transform via dataset
+  return (
+    <div id={id} data-id={id} style={{ transform: CSS.Translate.toString({ x: 0, y: 0, scaleX: 1, scaleY: 1 }) }}>
+      {children}
+    </div>
+  );
+}
+
+function TooltipWrap({ label, children }){
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+// UploadImage — small helper that opens a file picker and uploads the image
+function UploadImage({ onUploaded, accept = 'image/*', className }){
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e){
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      setUploading(true);
+      const path = `uploads/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g,'')}`;
+      const sRef = storageRef(storage, path);
+      const task = uploadBytesResumable(sRef, file);
+      await new Promise((res, rej) => {
+        task.on('state_changed', null, (err)=> rej(err), ()=> res());
+      });
+      const url = await getDownloadURL(task.snapshot.ref);
+      if (onUploaded) onUploaded(url);
+    } catch (err) {
+      console.error('Upload failed', err);
+      alert('Image upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = null;
+    }
+  }
+
+  return (
+    <>
+      <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
+      <button
+        type="button"
+        className={`absolute top-2 right-2 p-1.5 bg-white/80 rounded-md opacity-0 group-hover:opacity-100 transition ${className||''}`}
+        onClick={() => inputRef.current && inputRef.current.click()}
+        title={uploading ? 'Uploading...' : 'Upload image'}
+      >
+        <ImageIcon className="h-4 w-4 text-gray-700" />
+      </button>
+    </>
+  );
+}
+
+/* CompactControls — small, glassy control pill with Undo/Redo + device toggle */
+
+const TT = ({ label, children }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>{children}</TooltipTrigger>
+    <TooltipContent className="px-2 py-1 text-xs rounded-md bg-gray-900 text-white shadow">{label}</TooltipContent>
+  </Tooltip>
+);
+
+export function CompactControls({ device, setDevice, doUndo, doRedo }) {
+  const deviceOpts = [
+    { key: "desktop", Icon: Laptop, label: "Desktop" },
+    { key: "tablet", Icon: Tablet, label: "Tablet" },
+    { key: "mobile", Icon: Smartphone, label: "Mobile" },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="
+        flex items-center gap-3
+        bg-white/70 backdrop-blur-md border border-gray-200
+        rounded-xl px-2 py-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.06)]
+      "
+    >
+      {/* Undo / Redo */}
+      <div className="flex items-center gap-1">
+        <TT label="Undo (⌘/Ctrl+Z)">
+          <button
+            type="button"
+            onClick={doUndo}
+            className="h-8 w-8 grid place-items-center rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:scale-[.97] transition-all"
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+        </TT>
+
+        <TT label="Redo (⌘/Ctrl+Shift+Z)">
+          <button
+            type="button"
+            onClick={doRedo}
+            className="h-8 w-8 grid place-items-center rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:scale-[.97] transition-all"
+          >
+            <Redo2 className="h-4 w-4" />
+          </button>
+        </TT>
+      </div>
+
+      <span className="h-5 w-px bg-gray-200 mx-1" aria-hidden />
+
+      {/* Device preview buttons */}
+      <div className="flex items-center gap-1">
+        {deviceOpts.map(({ key, Icon, label }) => {
+          const active = device === key;
+          return (
+            <TT key={key} label={label}>
+              <button
+                type="button"
+                onClick={() => setDevice(key)}
+                className={`
+                  h-8 w-9 grid place-items-center rounded-md transition-all
+                  ${active
+                    ? "bg-gray-900 text-white shadow-sm"
+                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  }
+                `}
+                title={label}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            </TT>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ========= EDITOR HEADER ========= */
+function IconBtn({ label, onClick, children }) {
+  return (
+    <TooltipWrap label={label}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        onClick={onClick}
+      >
+        {children}
+      </Button>
+    </TooltipWrap>
+  );
+}
+
+/* Segmented control (variants + device) */
+function Segmented({ options, value, onChange, compact = false }) {
+  return (
+    <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1">
+      {options.map((opt) => {
+        const active = value === opt.key;
+        return (
+          <button
+            key={opt.key}
+            onClick={() => onChange(opt.key)}
+            className={`
+              px-3 py-1.5 rounded-md text-sm font-medium transition-all
+              ${active 
+                ? "bg-white text-gray-900 shadow-sm" 
+                : "text-gray-600 hover:text-gray-800"
+              }
+            `}
+          >
+            {opt.icon && <span className="mr-1">{opt.icon}</span>}
+            {opt.label || opt.key}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EditorHeader({
+  variant,
+  setVariant,
+  setShowCreateModal,
+  device,
+  setDevice,
+  doUndo,
+  doRedo,
+  showExport,
+  setShowExport,
+  schema,
+  importText,
+  setImportText,
+  importSchema,
+  editMode,
+  setEditMode,
+}) {
+  return (
+    <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/80 border-b border-gray-200 shadow-sm">
+      <div className="max-w-[1400px] mx-auto h-14 px-4 md:px-6 flex items-center justify-between gap-4">
+        {/* Left Section — Brand */}
+        <div className="flex items-center gap-3">
+          <span className="text-sm md:text-base font-semibold tracking-tight text-gray-800 flex items-center gap-1">
+            ⚡ <span>Funnel Builder</span>
+          </span>
+
+          <div className="hidden sm:flex items-center gap-2 ml-4">
+            <Segmented
+              options={[
+                { key: "A", label: "Variant A" },
+                { key: "B", label: "Variant B" },
+              ]}
+              value={variant}
+              onChange={setVariant}
+            />
+
+            <Button
+              size="sm"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+              onClick={() => setShowCreateModal(true)}
+            >
+              + Create
+            </Button>
+
+            <Button
+              variant={editMode ? "default" : "outline"}
+              size="icon"
+              onClick={() => setEditMode(!editMode)}
+              className="transition-all hover:scale-105"
+            >
+              <Edit3 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Secondary row (compact + pretty) */}
+        <div className="h-12 px-4 md:px-6 flex items-center justify-start">
+          <CompactControls device={device} setDevice={setDevice} doUndo={doUndo} doRedo={doRedo} />
+        </div>
+
+        {/* Right — Actions */}
+        <div className="flex items-center gap-2">
+          <Dialog open={showExport} onOpenChange={setShowExport}>
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden sm:inline-flex text-gray-700 hover:text-gray-900"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Export / Import Schema</DialogTitle>
+              </DialogHeader>
+              <Tabs defaultValue="export">
+                <TabsList className="mb-3">
+                  <TabsTrigger value="export">Export</TabsTrigger>
+                  <TabsTrigger value="import">Import</TabsTrigger>
+                </TabsList>
+                <TabsContent value="export">
+                  <Textarea
+                    className="h-80 font-mono text-xs"
+                    value={schema}
+                    readOnly
+                  />
+                </TabsContent>
+                <TabsContent value="import">
+                  <Textarea
+                    className="h-80 font-mono text-xs"
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    placeholder="Paste your JSON schema here"
+                  />
+                  <div className="mt-3 flex justify-end">
+                    <Button onClick={importSchema}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import
+                    </Button>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </DialogContent>
+          </Dialog>
+
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-md hover:shadow-lg transition-all">
+            <Play className="h-4 w-4 mr-2" />
+            Publish
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}

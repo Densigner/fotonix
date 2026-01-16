@@ -1,0 +1,14 @@
+This is a placeholder for the £10,000 Affiliate Revenue Playbook PDF.
+
+In production, replace this file with the actual PDF containing:
+
+1. The "Magnetic Affiliate" recruitment system
+2. Commission structures that attract top performers  
+3. 7 email templates with 40%+ open rates
+4. Legal compliance checklist (avoid costly mistakes)
+5. Performance tracking spreadsheet templates
+6. Case study: £0 to £10k/month in 90 days
+
+The PDF should be professionally designed and provide genuine value to justify the lead capture.
+
+File location: /public/assets/lead-magnets/affiliate-revenue-playbook.pdf

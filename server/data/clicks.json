@@ -1,0 +1,51 @@
+{
+  "click_1761743200000_1001": {
+    "id": "click_1761743200000_1001",
+    "affiliateId": "JOSHMARSUE0",
+    "productId": "p_josh_1",
+    "ratePct": 12.5,
+    "createdAt": "2025-10-29T13:00:00.000Z"
+  },
+  "click_1761743300000_1002": {
+    "id": "click_1761743300000_1002", 
+    "affiliateId": "JOSHMARSUE0",
+    "productId": "p_josh_2",
+    "ratePct": 11.0,
+    "createdAt": "2025-10-29T12:15:00.000Z"
+  },
+  "click_1761743400000_1003": {
+    "id": "click_1761743400000_1003",
+    "affiliateId": "JOSHMARSUE0", 
+    "productId": "p_josh_3",
+    "ratePct": 10.0,
+    "createdAt": "2025-10-29T11:30:00.000Z"
+  },
+  "click_1761743500000_1004": {
+    "id": "click_1761743500000_1004",
+    "affiliateId": "JOSHMARSUE0",
+    "productId": "p_josh_1",
+    "ratePct": 12.5,
+    "createdAt": "2025-10-29T10:45:00.000Z"
+  },
+  "click_1761743600000_1005": {
+    "id": "click_1761743600000_1005",
+    "affiliateId": "JOSHMARSUE0",
+    "productId": "p_josh_2",
+    "ratePct": 11.0,
+    "createdAt": "2025-10-29T10:00:00.000Z"
+  },
+  "click_1761743700000_1006": {
+    "id": "click_1761743700000_1006",
+    "affiliateId": "JOSHMARSUE0",
+    "productId": "p_josh_1",
+    "ratePct": 12.5,
+    "createdAt": "2025-10-29T09:30:00.000Z"
+  },
+  "click_1761743800000_1007": {
+    "id": "click_1761743800000_1007",
+    "affiliateId": "JOSHMARSUE0",
+    "productId": "p_josh_3",
+    "ratePct": 10.0,
+    "createdAt": "2025-10-29T08:45:00.000Z"
+  }
+}

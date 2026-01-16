@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256" fill="none">
+  <defs>
+    <style>.s{stroke:#FF2D95;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;fill:none}</style>
+  </defs>
+  <!-- Headset + microphone icon -->
+  <path class="s" d="M8 36v-2a20 20 0 0 1 40 0v2" />
+  <path class="s" d="M20 36v8a6 6 0 0 1-6 6H12" />
+  <path class="s" d="M44 36v8a6 6 0 0 0 6 6h2" />
+  <path class="s" d="M14 46v-6" />
+  <path class="s" d="M50 46v-6" />
+  <path class="s" d="M26 44c2 0 4-1 4-3s-2-3-4-3" />
+</svg>

@@ -1,0 +1,72 @@
+{
+  "prod_1": {
+    "title": "Fotonix LED Light-Up Acrylic Display",
+    "sku": "FOTONIX-LED-001",
+    "price": 29.99,
+    "commissionRate": 0.15,
+    "status": "active",
+    "clicks": 1250,
+    "conversions": 89,
+    "itemsSold": 95,
+    "earnings": 427.86,
+    "ownerUid": "test_user_1",
+    "description": "Premium LED-illuminated acrylic display for photos and artwork",
+    "imageUrl": "https://example.com/fotonix-display.jpg"
+  },
+  "prod_2": {
+    "title": "Custom Photo Crystal Block",
+    "sku": "CRYSTAL-PHT-002",
+    "price": 19.99,
+    "commissionRate": 0.12,
+    "status": "active",
+    "clicks": 840,
+    "conversions": 52,
+    "itemsSold": 58,
+    "earnings": 139.33,
+    "ownerUid": "test_user_1",
+    "description": "Personalized 3D crystal photo block with premium finish",
+    "imageUrl": "https://example.com/crystal-block.jpg"
+  },
+  "prod_3": {
+    "title": "Glow Serum Pro",
+    "sku": "GLW-PRO-003",
+    "price": 24.99,
+    "commissionRate": 0.18,
+    "status": "paused",
+    "clicks": 2100,
+    "conversions": 156,
+    "itemsSold": 172,
+    "earnings": 772.55,
+    "ownerUid": "test_user_1",
+    "description": "Advanced skincare serum with vitamin C and hyaluronic acid",
+    "imageUrl": "https://example.com/glow-serum.jpg"
+  },
+  "prod_4": {
+    "title": "Digital Frame Pro",
+    "sku": "DIG-FRAME-004",
+    "price": 149.99,
+    "commissionRate": 0.10,
+    "status": "out_of_stock",
+    "clicks": 320,
+    "conversions": 18,
+    "itemsSold": 18,
+    "earnings": 270.0,
+    "ownerUid": "test_user_1",
+    "description": "WiFi-enabled digital photo frame with cloud sync",
+    "imageUrl": "https://example.com/digital-frame.jpg"
+  },
+  "prod_5": {
+    "title": "Artisan Candle Set",
+    "sku": "CANDLE-SET-005",
+    "price": 34.99,
+    "commissionRate": 0.14,
+    "status": "active",
+    "clicks": 650,
+    "conversions": 42,
+    "itemsSold": 45,
+    "earnings": 218.93,
+    "ownerUid": "different_user_123",
+    "description": "Hand-poured soy candles with essential oils",
+    "imageUrl": "https://example.com/candle-set.jpg"
+  }
+}

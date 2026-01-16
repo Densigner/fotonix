@@ -1,0 +1,35 @@
+[
+  {
+    "id": "attr_1761743300000_1001",
+    "orderId": "JOSH_ORDER_001",
+    "clickId": "click_1761743200000_1001",
+    "affiliateId": "JOSHMARSUE0",
+    "commissionCents": 1595,
+    "ratePct": 12.5,
+    "status": "pending",
+    "createdAt": "2025-10-29T13:15:00.000Z"
+  },
+  {
+    "id": "attr_1761743400000_1002", 
+    "orderId": "JOSH_ORDER_002",
+    "clickId": "click_1761743300000_1002",
+    "affiliateId": "JOSHMARSUE0",
+    "commissionCents": 275,
+    "ratePct": 11.0,
+    "status": "approved",
+    "createdAt": "2025-10-29T12:30:00.000Z",
+    "approvedAt": "2025-10-29T13:10:00.000Z"
+  },
+  {
+    "id": "attr_1761743500000_1003",
+    "orderId": "JOSH_ORDER_003", 
+    "clickId": "click_1761743400000_1003",
+    "affiliateId": "JOSHMARSUE0",
+    "commissionCents": 180,
+    "ratePct": 10.0,
+    "status": "void",
+    "createdAt": "2025-10-29T11:45:00.000Z",
+    "voidedAt": "2025-10-29T12:45:00.000Z",
+    "voidReason": "refund"
+  }
+]

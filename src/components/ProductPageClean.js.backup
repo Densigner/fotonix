@@ -1,0 +1,1088 @@
+import React, { useState, useEffect, useRef } from 'react';
+// Backup copy: do not import 'fabric' here to avoid duplicate definitions at runtime.
+const fabric = (typeof window !== 'undefined' && window.fabric) || null;
+import { useAuth } from '../contexts/AuthContext';
+
+// Firebase configuration - should be moved to environment variables in production
+const firebaseConfig = {
+  apiKey: "AIzaSyB9ehjykma-ZIrOavYvhYyZBIc98B73tac",
+  authDomain: "fotonix-97544.firebaseapp.com",
+  projectId: "fotonix-97544",
+  storageBucket: "fotonix-97544.firebasestorage.app",
+  messagingSenderId: "1003654054250",
+  appId: "1:1003654054250:web:e5c905e6a194f1d4202513",
+  measurementId: "G-8B0PPFCRTD"
+};
+
+function ProductPageClean({ onRequireAuth }) {
+  const { user } = useAuth();
+  const canvasRef = useRef(null);
+  const uploaderRef = useRef(null);
+  const paypalRef = useRef(null);
+  const [canvas, setCanvas] = useState(null);
+  const [newTextCounter, setNewTextCounter] = useState(0);
+  const [firebase, setFirebase] = useState(null);
+  const [storage, setStorage] = useState(null);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [orientation, setOrientation] = useState('landscape'); // 'landscape' or 'portrait'
+  const [selectedSize, setSelectedSize] = useState('30x15');
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [paypalLoaded, setPaypalLoaded] = useState(false);
+
+  // Google Fonts list for easier management
+  const googleFonts = [
+    'Dancing Script',
+    'Pacifico',
+    'Lobster',
+    'Great Vibes',
+    'Satisfy',
+    'Kaushan Script',
+    'Righteous',
+    'Fredoka One',
+    'Comfortaa',
+    'Caveat',
+    'Patrick Hand',
+    'Indie Flower',
+    'Amatic SC',
+    'Courgette',
+    'Gloria Hallelujah',
+    'Alfa Slab One',
+    'Bebas Neue',
+    'Creepster',
+    'Orbitron',
+    'Bungee',
+    'Yellowtail',
+    'Shadows Into Light',
+    'Permanent Marker',
+    'Rock Salt',
+    'Audiowide',
+    'Bangers',
+    'Chewy',
+    'Press Start 2P',
+    'Monoton',
+    'Abril Fatface'
+  ];
+
+  // Initialize Firebase and Canvas
+  useEffect(() => {
+    // Load Google Fonts
+    const loadGoogleFonts = () => {
+      // Load fonts in smaller chunks to avoid URL length issues
+      const fontUrls = [
+        'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Pacifico&family=Lobster&family=Great+Vibes&family=Satisfy&family=Kaushan+Script&family=Righteous&family=Fredoka+One:wght@400&family=Comfortaa:wght@300;400;700&family=Caveat:wght@400;700&display=swap',
+        'https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Indie+Flower&family=Amatic+SC:wght@400;700&family=Courgette&family=Gloria+Hallelujah&family=Alfa+Slab+One&family=Bebas+Neue&family=Creepster&family=Orbitron:wght@400;700;900&family=Bungee&display=swap',
+        'https://fonts.googleapis.com/css2?family=Yellowtail&family=Shadows+Into+Light&family=Permanent+Marker&family=Rock+Salt&family=Audiowide&family=Bangers&family=Chewy&family=Press+Start+2P&family=Monoton&family=Abril+Fatface&display=swap'
+      ];
+      
+      fontUrls.forEach((url, index) => {
+        if (!document.querySelector(`link[href="${url}"]`)) {
+          const fontLink = document.createElement('link');
+          fontLink.href = url;
+          fontLink.rel = 'stylesheet';
+          document.head.appendChild(fontLink);
+        }
+      });
+    };
+
+    const initializeFirebase = async () => {
+      try {
+        // Dynamically import Firebase to avoid SSR issues
+        const firebaseApp = await import('firebase/compat/app');
+        await import('firebase/compat/storage');
+        
+        if (!firebaseApp.default.apps.length) {
+          firebaseApp.default.initializeApp(firebaseConfig);
+        }
+        
+        const firebaseInstance = firebaseApp.default;
+        const storageInstance = firebaseInstance.storage();
+        
+        setFirebase(firebaseInstance);
+        setStorage(storageInstance);
+      } catch (error) {
+        console.error('Firebase initialization error:', error);
+      }
+    };
+
+    const initializeCanvas = () => {
+      if (canvasRef.current) {
+        // Calculate canvas dimensions based on orientation
+        const baseWidth = orientation === 'landscape' ? 600 : 300;
+        const baseHeight = orientation === 'landscape' ? 300 : 600;
+        
+        const fabricCanvas = new fabric.Canvas(canvasRef.current, {
+          width: baseWidth,
+          height: baseHeight,
+          containerClass: 'metallic-button'
+        });
+        
+        // Ensure drawing mode is off by default
+        fabricCanvas.isDrawingMode = false;
+        fabricCanvas.defaultCursor = 'default';
+        fabricCanvas.hoverCursor = 'move';
+        fabricCanvas.moveCursor = 'move';
+        
+        fabricCanvas.renderAll();
+        setCanvas(fabricCanvas);
+        
+        return () => {
+          fabricCanvas.dispose();
+        };
+      }
+    };
+
+    loadGoogleFonts();
+    initializeFirebase();
+    const cleanup = initializeCanvas();
+    
+    return cleanup;
+  }, [orientation]); // Re-initialize canvas when orientation changes
+
+  // Initialize PayPal button
+  useEffect(() => {
+    const initializePayPal = () => {
+      if (window.paypal && paypalRef.current && !paypalLoaded) {
+        try {
+          window.paypal.HostedButtons({
+            hostedButtonId: "W8DEQZMTGJZFW",
+          }).render(paypalRef.current);
+          setPaypalLoaded(true);
+        } catch (error) {
+          console.error('PayPal initialization error:', error);
+        }
+      }
+    };
+
+    // Check if PayPal is already loaded
+    if (window.paypal) {
+      initializePayPal();
+    } else {
+      // Wait for PayPal to load
+      const checkPayPal = setInterval(() => {
+        if (window.paypal) {
+          initializePayPal();
+          clearInterval(checkPayPal);
+        }
+      }, 100);
+
+      return () => clearInterval(checkPayPal);
+    }
+  }, [paypalLoaded]);
+
+  // Handle file upload
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file || !canvas) return;
+
+    processImageFile(file);
+  };
+
+  // Process image file (shared logic for upload and drag/drop)
+  const processImageFile = (file) => {
+    if (!file || !canvas) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const image = new Image();
+      image.src = e.target.result;
+      image.onload = () => {
+        const img = new fabric.Image(image);
+        img.set({
+          left: 100,
+          top: 60
+        });
+        img.scaleToWidth(200);
+        img.scaleToHeight(200);
+
+        // Apply filters
+        const bw = new fabric.Image.filters.BlackWhite();
+        const gs = new fabric.Image.filters.Grayscale();
+        const contrast = new fabric.Image.filters.Contrast({ contrast: 1 });
+        const whiteFilter = new fabric.Image.filters.RemoveColor({
+          color: '#FFFFFF',
+          distance: 1
+        });
+
+        img.filters.push(bw, gs, contrast, whiteFilter);
+        
+        fabric.textureSize = 6552236;
+        img.applyFilters();
+
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        canvas.renderAll();
+      };
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle drag and drop events
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      processImageFile(files[0]);
+    }
+  };
+
+  // Handle font selection
+  const handleFontSelection = (font) => {
+    if (!canvas) return;
+
+    if (newTextCounter >= 5) {
+      alert("Max text additions reached");
+      return;
+    }
+
+    // Calculate safe positioning based on canvas dimensions and orientation
+    const canvasWidth = canvas.getWidth();
+    const canvasHeight = canvas.getHeight();
+    const safeLeft = Math.min(50, canvasWidth * 0.1);
+    const safeTop = Math.min(50 + (newTextCounter * 40), canvasHeight - 100);
+
+    const textConfig = {
+      fontFamily: font,
+      fontSize: 24,
+      left: safeLeft,
+      top: safeTop,
+      fill: '#000000',
+      strokeWidth: newTextCounter > 0 ? 2 : 0
+    };
+
+    const text = new fabric.IText('Click Me Twice To edit Text', textConfig);
+    canvas.add(text);
+    canvas.renderAll();
+    setNewTextCounter(prev => prev + 1);
+  };
+
+  // Toggle drawing mode
+  const handleDrawMode = () => {
+    if (!canvas) return;
+    
+    const newDrawingMode = !isDrawingMode;
+    setIsDrawingMode(newDrawingMode);
+    
+    canvas.isDrawingMode = newDrawingMode;
+    
+    if (newDrawingMode) {
+      // Set drawing brush properties
+      canvas.freeDrawingBrush.color = '#000000';
+      canvas.freeDrawingBrush.width = 3;
+      canvas.defaultCursor = 'crosshair';
+    } else {
+      // Reset cursor to default
+      canvas.defaultCursor = 'default';
+    }
+    
+    canvas.renderAll();
+  };
+
+  // Turn off drawing mode explicitly
+  const handleExitDrawMode = () => {
+    if (!canvas) return;
+    
+    setIsDrawingMode(false);
+    canvas.isDrawingMode = false;
+    canvas.defaultCursor = 'default';
+    canvas.renderAll();
+  };
+
+  // Delete active object
+  const deleteActiveObject = () => {
+    if (!canvas) return;
+    
+    const activeObject = canvas.getActiveObject();
+    if (activeObject) {
+      canvas.remove(activeObject);
+    }
+  };
+
+  // Convert dataURL to Blob
+  const dataURLtoBlob = (dataURL) => {
+    const byteString = atob(dataURL.split(',')[1]);
+    const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
+    const arrayBuffer = new ArrayBuffer(byteString.length);
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    for (let i = 0; i < byteString.length; i++) {
+      uint8Array[i] = byteString.charCodeAt(i);
+    }
+    
+    return new Blob([arrayBuffer], { type: mimeString });
+  };
+
+  // Handle orientation change
+  const handleOrientationChange = (newOrientation) => {
+    setOrientation(newOrientation);
+  };
+
+  // Extract black and save
+  const handleExtractBlack = () => {
+    // Require authentication for downloads
+    if (!user) {
+      if (onRequireAuth) {
+        onRequireAuth();
+      }
+      return;
+    }
+
+    if (!canvas || !storage) return;
+
+    canvas.setBackgroundColor('#FFFFFF');
+    canvas.renderAll();
+    
+    const imgData = canvas.toDataURL();
+    const imgElement = new Image();
+
+    imgElement.src = imgData;
+    imgElement.onload = () => {
+      const tempCanvas = document.createElement('canvas');
+      const ctx = tempCanvas.getContext('2d');
+
+      tempCanvas.width = 1750;
+      tempCanvas.height = 1750;
+
+      ctx.drawImage(imgElement, 0, 0, 1750, 1750);
+
+      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const newImageData = ctx.createImageData(tempCanvas.width, tempCanvas.height);
+
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+
+        // Check if the pixel is predominantly black
+        if (r < 200 && g < 200 && b < 200) {
+          newImageData.data[i] = 0;     // Set red to 0
+          newImageData.data[i + 1] = 0; // Set green to 0
+          newImageData.data[i + 2] = 0; // Set blue to 0
+          newImageData.data[i + 3] = 255; // Fully opaque
+        } else {
+          newImageData.data[i + 3] = 0; // Make this pixel transparent
+        }
+      }
+
+      ctx.putImageData(newImageData, 0, 0);
+
+      // Prepare the downloadable link
+      const dataURL = tempCanvas.toDataURL('image/png');
+      sessionStorage.setItem('myImage', dataURL);
+      
+      // Upload to Firebase
+      const blob = dataURLtoBlob(dataURL);
+      const storageRef = storage.ref(`image-${Date.now()}.png`);
+      
+      storageRef.put(blob).then((snapshot) => {
+        console.log('Uploaded a blob or file!', snapshot);
+      }).catch((error) => {
+        console.error('Upload failed:', error);
+      });
+
+      // Download link
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = 'SavedMirror.png';
+      link.click();
+    };
+  };
+
+  return (
+    <div className="product-page-clean" style={{
+      display: 'flex',
+      minHeight: '100vh',
+      gap: '30px',
+      padding: '20px',
+      backgroundColor: '#f5f5f5'
+    }}>
+      {/* Left Column - Product Information */}
+      <div className="product-column" style={{
+        flex: '1',
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        padding: '30px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+        height: 'fit-content'
+      }}>
+        <div className="product-image" style={{
+          width: '100%',
+          height: '300px',
+          backgroundColor: '#e9ecef',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '20px',
+          border: '2px dashed #dee2e6'
+        }}>
+          <div style={{
+            textAlign: 'center',
+            color: '#6c757d',
+            fontSize: '48px'
+          }}>
+            🪞
+            <p style={{ fontSize: '16px', margin: '10px 0 0 0' }}>
+              Fotonix Smart Mirror
+            </p>
+          </div>
+        </div>
+        
+        <div className="product-info">
+          <h1 style={{
+            fontSize: '28px',
+            fontWeight: 'bold',
+            color: '#2c3e50',
+            marginBottom: '10px'
+          }}>
+            Fotonix Lumina Mirror
+          </h1>
+          
+          <div className="price" style={{
+            fontSize: '24px',
+            fontWeight: 'bold',
+            color: '#ff1493',
+            marginBottom: '15px'
+          }}>
+            £24.99
+          </div>
+          
+          <div className="product-description" style={{
+            fontSize: '16px',
+            lineHeight: '1.6',
+            color: '#495057',
+            marginBottom: '25px'
+          }}>
+            <p>Transform your daily routine with our revolutionary smart mirror technology. Perfect for personalized messages, motivational quotes, and custom designs.</p>
+            
+            <ul style={{ paddingLeft: '20px', marginTop: '15px' }}>
+              <li>Interactive touch display</li>
+              <li>Custom text and image support</li>
+              <li>High-quality LED backlighting</li>
+              <li>Easy installation</li>
+            </ul>
+          </div>
+          
+          <div className="product-features" style={{
+            backgroundColor: '#f8f9fa',
+            padding: '15px',
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <h4 style={{ margin: '0 0 10px 0', color: '#495057' }}>Features:</h4>
+            <div style={{ fontSize: '14px', color: '#6c757d' }}>
+              ✨ Customizable text with 30+ Google Fonts<br/>
+              🎨 Drawing and image editing tools<br/>
+              💾 Cloud storage integration<br/>
+              📱 Easy-to-use interface
+            </div>
+            
+            {!user && (
+              <div style={{
+                marginTop: '15px',
+                padding: '12px',
+                backgroundColor: '#e3f2fd',
+                borderRadius: '6px',
+                border: '1px solid #bbdefb'
+              }}>
+                <div style={{ fontSize: '14px', color: '#1565c0', fontWeight: '500' }}>
+                  💡 Create an account to:
+                </div>
+                <div style={{ fontSize: '13px', color: '#1976d2', marginTop: '5px' }}>
+                  • Download your designs • Save shipping details • Track orders
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Right Column - Canvas and Controls */}
+      <div className="canvas-column" style={{
+        flex: '1',
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        padding: '30px',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+      }}>
+        <h2 style={{
+          fontSize: '24px',
+          fontWeight: 'bold',
+          color: '#2c3e50',
+          marginBottom: '20px',
+          textAlign: 'center'
+        }}>
+          Design Your Mirror
+        </h2>
+        
+        <div className="canvas-container" style={{ marginBottom: '30px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '20px'
+          }}>
+            {/* Vertical measurement line - left side */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <div style={{
+                width: '2px',
+                height: orientation === 'landscape' ? '100px' : '200px',
+                backgroundColor: '#000',
+                position: 'relative'
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  top: '0',
+                  left: '-5px',
+                  width: '12px',
+                  height: '2px',
+                  backgroundColor: '#000'
+                }}></div>
+                <div style={{
+                  position: 'absolute',
+                  bottom: '0',
+                  left: '-5px',
+                  width: '12px',
+                  height: '2px',
+                  backgroundColor: '#000'
+                }}></div>
+              </div>
+              <span style={{ 
+                fontSize: '14px', 
+                fontWeight: 'bold', 
+                color: '#495057',
+                transform: 'rotate(-90deg)',
+                whiteSpace: 'nowrap'
+              }}>
+                {orientation === 'landscape' ? '15cm' : '30cm'}
+              </span>
+            </div>
+
+            {/* Canvas with mirror effect */}
+            <div style={{
+              display: 'inline-block',
+              position: 'relative',
+              padding: '20px',
+              background: 'linear-gradient(145deg, #f0f0f0, #cacaca)',
+              borderRadius: '15px',
+              boxShadow: '20px 20px 60px #bebebe, -20px -20px 60px #ffffff'
+            }}>
+              <canvas
+                ref={canvasRef}
+                id="canvas"
+                style={{
+                  border: '3px solid #silver',
+                  borderRadius: '8px',
+                  display: 'block',
+                  background: 'linear-gradient(145deg, #e6e6e6, #ffffff)',
+                  boxShadow: 'inset 8px 8px 16px #d1d1d1, inset -8px -8px 16px #ffffff, 0 4px 8px rgba(0,0,0,0.1)',
+                  filter: 'contrast(1.1) brightness(1.05)'
+                }}
+              />
+            </div>
+          </div>
+          
+          {/* Horizontal measurement line - bottom */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginTop: '15px',
+            gap: '10px'
+          }}>
+            <div style={{
+              width: orientation === 'landscape' ? '200px' : '100px',
+              height: '2px',
+              backgroundColor: '#000',
+              position: 'relative'
+            }}>
+              <div style={{
+                position: 'absolute',
+                left: '0',
+                top: '-5px',
+                width: '2px',
+                height: '12px',
+                backgroundColor: '#000'
+              }}></div>
+              <div style={{
+                position: 'absolute',
+                right: '0',
+                top: '-5px',
+                width: '2px',
+                height: '12px',
+                backgroundColor: '#000'
+              }}></div>
+            </div>
+            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#495057' }}>
+              {orientation === 'landscape' ? '30cm' : '15cm'}
+            </span>
+          </div>
+        </div>
+
+        <div className="controls">
+          {/* Size Selection */}
+          <div className="size-selection" style={{
+            marginBottom: '20px',
+            padding: '20px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '12px',
+            border: '1px solid #dee2e6'
+          }}>
+            <h3 style={{ 
+              color: '#495057', 
+              marginBottom: '15px',
+              fontSize: '18px',
+              fontWeight: '600'
+            }}>
+              Mirror Size
+            </h3>
+            <select
+              value={selectedSize}
+              onChange={(e) => setSelectedSize(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px 15px',
+                fontSize: '16px',
+                border: '2px solid #dee2e6',
+                borderRadius: '8px',
+                backgroundColor: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="30x15">30cm × 15cm - Smart Mirror</option>
+              <option value="60x30" disabled style={{ color: '#999', backgroundColor: '#f5f5f5' }}>
+                60cm × 30cm - Coming Soon
+              </option>
+              <option value="100x150" disabled style={{ color: '#999', backgroundColor: '#f5f5f5' }}>
+                100cm × 150cm - Coming Soon
+              </option>
+            </select>
+          </div>
+
+          {/* Orientation Selection */}
+          <div className="orientation-selection" style={{
+            marginBottom: '30px',
+            padding: '20px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '12px',
+            border: '1px solid #dee2e6'
+          }}>
+            <h3 style={{ 
+              color: '#495057', 
+              marginBottom: '15px',
+              fontSize: '18px',
+              fontWeight: '600'
+            }}>
+              Orientation
+            </h3>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => handleOrientationChange('landscape')}
+                style={{
+                  flex: 1,
+                  padding: '15px 20px',
+                  backgroundColor: orientation === 'landscape' ? '#007bff' : 'white',
+                  color: orientation === 'landscape' ? 'white' : '#495057',
+                  border: '2px solid #007bff',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                📱 Landscape
+                <div style={{
+                  width: '20px',
+                  height: '12px',
+                  border: '1px solid currentColor',
+                  borderRadius: '2px'
+                }}></div>
+              </button>
+              <button
+                onClick={() => handleOrientationChange('portrait')}
+                style={{
+                  flex: 1,
+                  padding: '15px 20px',
+                  backgroundColor: orientation === 'portrait' ? '#007bff' : 'white',
+                  color: orientation === 'portrait' ? 'white' : '#495057',
+                  border: '2px solid #007bff',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                📱 Portrait
+                <div style={{
+                  width: '12px',
+                  height: '20px',
+                  border: '1px solid currentColor',
+                  borderRadius: '2px'
+                }}></div>
+              </button>
+            </div>
+          </div>
+
+          <div className="upload-section" style={{
+            marginBottom: '30px',
+            padding: '20px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '12px',
+            border: '2px dashed #dee2e6',
+            textAlign: 'center'
+          }}>
+            <h3 style={{ 
+              color: '#495057', 
+              marginBottom: '15px',
+              fontSize: '18px',
+              fontWeight: '600'
+            }}>
+              Upload Your Image
+            </h3>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <input
+                ref={uploaderRef}
+                id="uploader"
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                style={{
+                  display: 'none'
+                }}
+              />
+              <button
+                onClick={() => uploaderRef.current?.click()}
+                style={{
+                  padding: '15px 30px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  transition: 'all 0.3s ease',
+                  boxShadow: '0 2px 4px rgba(0,123,255,0.3)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#0056b3';
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(0,123,255,0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#007bff';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(0,123,255,0.3)';
+                }}
+              >
+                📁 Choose Image File
+              </button>
+            </div>
+            <p style={{ 
+              marginTop: '10px', 
+              color: '#6c757d', 
+              fontSize: '14px',
+              fontStyle: 'italic'
+            }}>
+              Supports JPG, PNG
+            </p>
+            
+            {/* Drag and Drop Zone */}
+            <div
+              onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              style={{
+                marginTop: '15px',
+                padding: '20px',
+                width: '400px',
+                height: '100px',
+                backgroundColor: isDragOver ? '#e3f2fd' : '#f8f9fa',
+                border: isDragOver ? '2px dashed #007bff' : '2px dashed #dee2e6',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '15px auto 0 auto',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                transform: isDragOver ? 'scale(1.02)' : 'scale(1)'
+              }}
+            >
+              <div style={{
+                textAlign: 'center',
+                color: isDragOver ? '#007bff' : '#6c757d',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}>
+                📋 Drag images here
+              </div>
+            </div>
+          </div>
+
+          <div className="font-selection" style={{ marginBottom: '30px' }}>
+            <h3 style={{ color: '#495057', marginBottom: '15px' }}>Choose Your Font:</h3>
+            <div className="font-list" style={{ 
+              maxHeight: '300px', 
+              overflowY: 'auto', 
+              border: '1px solid #ddd', 
+              borderRadius: '8px',
+              padding: '10px',
+              margin: '10px 0'
+            }}>
+              {googleFonts.map((font, index) => (
+                <div
+                  key={font}
+                  onClick={() => handleFontSelection(font)}
+                  style={{
+                    fontFamily: `'${font}', sans-serif`,
+                    fontSize: '18px',
+                    padding: '12px 15px',
+                    margin: '5px 0',
+                    backgroundColor: '#f8f9fa',
+                    border: '1px solid #e9ecef',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = '#ff1493';
+                    e.target.style.color = 'white';
+                    e.target.style.transform = 'translateX(5px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = '#f8f9fa';
+                    e.target.style.color = '#000';
+                    e.target.style.transform = 'translateX(0)';
+                  }}
+                >
+                  {font}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="action-buttons" style={{ marginBottom: '30px' }}>
+            <button
+              onClick={handleDrawMode}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: isDrawingMode ? '#ff1493' : '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                margin: '5px',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
+            >
+              {isDrawingMode ? 'Exit Draw Mode' : 'Draw Mode'}
+            </button>
+
+            <button
+              onClick={deleteActiveObject}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                margin: '5px',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
+            >
+              Delete Selected
+            </button>
+
+            <button
+              id="extractBlack"
+              onClick={handleExtractBlack}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: user ? '#28a745' : '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                margin: '5px',
+                fontSize: '14px',
+                fontWeight: '500',
+                position: 'relative'
+              }}
+              title={!user ? 'Sign in to download your mirror design' : 'Download your mirror design'}
+            >
+              {user ? '💾 Download Mirror File' : '🔐 Sign In to Download'}
+            </button>
+          </div>
+
+          <div className="text-counter" style={{
+            backgroundColor: '#e9ecef',
+            padding: '10px',
+            borderRadius: '6px',
+            textAlign: 'center',
+            marginBottom: '30px'
+          }}>
+            <p style={{ margin: 0, color: '#495057' }}>Text elements added: {newTextCounter}/5</p>
+          </div>
+
+          {/* PayPal Button Section */}
+          <div className="paypal-section" style={{
+            backgroundColor: '#f8f9fa',
+            padding: '25px',
+            borderRadius: '12px',
+            border: '1px solid #dee2e6',
+            textAlign: 'center'
+          }}>
+            <h3 style={{
+              color: '#495057',
+              marginBottom: '15px',
+              fontSize: '20px',
+              fontWeight: '600'
+            }}>
+              Complete Your Purchase
+            </h3>
+            
+            <div style={{
+              fontSize: '18px',
+              fontWeight: 'bold',
+              color: '#28a745',
+              marginBottom: '20px'
+            }}>
+              Total: £24.99
+            </div>
+
+            {user ? (
+              <div style={{
+                fontSize: '14px',
+                color: '#6c757d',
+                marginBottom: '15px',
+                padding: '10px',
+                backgroundColor: '#e9ecef',
+                borderRadius: '6px'
+              }}>
+                Shipping to: {user.shippingAddress ? (
+                  `${user.shippingAddress.address}, ${user.shippingAddress.city}, ${user.shippingAddress.postalCode}`
+                ) : (
+                  user.email
+                )}
+              </div>
+            ) : (
+              <div style={{
+                fontSize: '14px',
+                color: '#6c757d',
+                marginBottom: '15px',
+                fontStyle: 'italic'
+              }}>
+                You'll be asked to sign in during checkout to provide shipping details
+              </div>
+            )}
+
+            {/* PayPal Button - always visible */}
+              <div 
+                ref={paypalRef}
+                id="paypal-container-W8DEQZMTGJZFW"
+                style={{ 
+                  minHeight: '50px',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}
+              >
+                {!paypalLoaded && (
+                  <div style={{ color: '#6c757d', fontSize: '14px' }}>
+                    Loading PayPal...
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Show sign in button for guest users
+              <button
+                onClick={onRequireAuth}
+                style={{
+                  width: '100%',
+                  padding: '15px 30px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '25px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  transition: 'all 0.3s ease',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#0056b3';
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#007bff';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                }}
+              >
+                � Sign In to Purchase
+              </button>
+            )}
+            
+            <p style={{
+              fontSize: '12px',
+              color: '#6c757d',
+              marginTop: '10px',
+              marginBottom: 0
+            }}>
+              Secure payment powered by PayPal
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default ProductPageClean;

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Inbox Navigation</title>
+</head>
+<body>
+    <h1>Test Inbox Access</h1>
+    <p>Use these links to test the inbox:</p>
+    <ul>
+        <li><a href="http://localhost:3001/#inbox" target="_blank">Direct Inbox Link</a></li>
+        <li><a href="http://localhost:3001/#mail-campaign" target="_blank">Mail Builder Dashboard (then click Inbox tab)</a></li>
+    </ul>
+    
+    <h2>API Test</h2>
+    <button onclick="testAPI()">Test Inbox API</button>
+    <pre id="result"></pre>
+    
+    <script>
+        async function testAPI() {
+            try {
+                const response = await fetch('/api/email/messages?tenant=fotonix-prod');
+                const data = await response.json();
+                document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('result').textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

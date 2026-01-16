@@ -1,0 +1,1557 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, ShieldCheck, Send, User, TrendingUp, DollarSign, Package, MousePointerClick, RefreshCcw, Filter, Download, Search, Link as LinkIcon, Eye, Image as ImageIcon } from "lucide-react";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getDatabase, ref as dbRef, get, set, runTransaction } from "firebase/database";
+import { getStorage, ref as stRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import ProductCard from '../products/ProductCard';
+import StorePageBuilder from '../store-builder/StorePageBuilder';
+import CommandPalette from '../shared/CommandPalette';
+import DeviceToolbar from '../shared/DeviceToolbar';
+import { createSection } from '../shared/sections';
+import { saveSnapshot, listSnapshots } from '../shared/versions';
+
+// Small social provider helpers
+const SOCIAL_PROVIDERS = [
+  { id: 'instagram', label: 'Instagram', placeholder: 'https://instagram.com/yourhandle' },
+  { id: 'tiktok', label: 'TikTok', placeholder: 'https://www.tiktok.com/@yourhandle' },
+  { id: 'youtube', label: 'YouTube', placeholder: 'https://youtube.com/@yourhandle' },
+  { id: 'twitter', label: 'Twitter/X', placeholder: 'https://x.com/yourhandle' },
+  { id: 'facebook', label: 'Facebook', placeholder: 'https://facebook.com/yourpage' },
+  { id: 'linkedin', label: 'LinkedIn', placeholder: 'https://linkedin.com/in/yourhandle' },
+  { id: 'pinterest', label: 'Pinterest', placeholder: 'https://pinterest.com/yourhandle' },
+  { id: 'custom', label: 'Custom', placeholder: 'https://example.com' },
+];
+
+function getSocialIcon(provider, size = 20) {
+  if (!provider) return null;
+  switch ((provider || '').toLowerCase()) {
+    case 'youtube':
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M23.5 6.2a3 3 0 0 0-2.12-2.12C19.7 3.5 12 3.5 12 3.5s-7.7 0-9.38.58A3 3 0 0 0 .5 6.2 31.7 31.7 0 0 0 0 12a31.7 31.7 0 0 0 .5 5.8 3 3 0 0 0 2.12 2.12C4.3 20.5 12 20.5 12 20.5s7.7 0 9.38-.58A3 3 0 0 0 23.5 17.8 31.7 31.7 0 0 0 24 12a31.7 31.7 0 0 0-.5-5.8z" fill="#FF0000"/>
+          <path d="M10 15l5-3-5-3v6z" fill="#fff"/>
+        </svg>
+      );
+    case 'tiktok':
+      return (<img src="/images/hero/tiktok.png" style={{ width: size, height: size, objectFit:'contain' }} alt="TikTok" />);
+    case 'instagram':
+      return (<img src="/images/hero/instalogo.jpg" alt="Instagram" style={{ width:size, height:size, objectFit:'contain' }} />);
+    case 'twitter':
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <path d="M23 4.5c-.7.3-1.5.6-2.3.7.8-.5 1.4-1.3 1.7-2.3-.8.5-1.7.8-2.6 1-1.5-1.6-4-1.6-5.5 0-1.1 1.1-1.5 2.7-1 4.1C8 8.8 4.6 6.9 2 4.1c-.9 1.6-.2 3.7 1.2 4.7-.6 0-1.2-.2-1.7-.5 0 2 1.4 3.8 3.5 4.2-.6.2-1.2.2-1.8.1.5 1.7 2 3 3.7 3-1.3 1-3 1.5-4.6 1.2 1.7 1.1 3.8 1.7 6 1.7 7.2 0 11.1-6 11.1-11.1v-.5c.8-.6 1.5-1.4 2-2.3-.7.3-1.5.5-2.3.6z" fill="#1DA1F2"/>
+        </svg>
+      );
+    case 'facebook':
+      return (<img src="/images/hero/facebook.png" alt="Facebook" style={{ width:size, height:size, objectFit:'contain' }} />);
+    case 'linkedin':
+      return (<img src="/images/hero/linkedin.png" alt="LinkedIn" style={{ width:size, height:size, objectFit:'contain' }} />);
+    case 'pinterest':
+      return (<img src="/images/hero/pinterest.png" alt="Pinterest" style={{ width:size, height:size, objectFit:'contain' }} />);
+    default:
+      return (<svg width={size} height={size} viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ccc"/></svg>);
+  }
+}
+
+// Minimal inline dropdown (no extra deps)
+function AddLinkMenu({ onAdd }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
+      >
+        + Add link
+      </button>
+      {open && (
+        <div
+          className="absolute z-10 mt-2 w-56 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          onMouseLeave={() => setOpen(false)}
+        >
+          {SOCIAL_PROVIDERS.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => { onAdd(p.id); setOpen(false); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            >
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-zinc-100 dark:bg-zinc-800">
+                {getSocialIcon(p.id, 14)}
+              </span>
+              <span>{p.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * AffiliateShopBuilderPage — a child‑friendly, pink→violet styled modal comment section.
+ */
+export default function AffiliateShopBuilderPage({
+  isOpen,
+  onClose,
+  currentUserId,
+  creatorUserId,
+  initialComments = [],
+  onSubmitComment,
+  bannedWords,
+}) {
+  const [comments, setComments] = useState(initialComments);
+  const [text, setText] = useState("");
+  const [alert, setAlert] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const listRef = useRef(null);
+
+  const defaultBanned = useMemo(
+    () =>
+      [
+        "shit",
+        "fuck",
+        "bitch",
+        "asshole",
+        "bastard",
+        "dick",
+        "piss",
+        "crap",
+        "damn",
+        "hell",
+        "slut",
+        "whore",
+      ],
+    []
+  );
+
+  const banned = useMemo(
+    () => (bannedWords && bannedWords.length ? bannedWords : defaultBanned),
+    [bannedWords, defaultBanned]
+  );
+
+  useEffect(() => {
+    if (isOpen) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [comments, isOpen]);
+
+  const hasLinkOrImage = (s) => {
+    const linkPattern = /(https?:\/\/|www\.)/i;
+    const markdownImg = /!\[[^\]]*\]\([^\)]*\)/i;
+    const htmlImg = /<\s*img\b[^>]*>/i;
+    return linkPattern.test(s) || markdownImg.test(s) || htmlImg.test(s);
+  };
+
+  const usesBannedWord = (s) => {
+    const cleaned = s.toLowerCase();
+    return banned.some((w) => new RegExp(`(^|[^a-z])${escapeRegExp(w)}([^a-z]|$)`, "i").test(cleaned));
+  };
+
+  const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const handleSubmit = async (e) => {
+    e?.preventDefault();
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    if (hasLinkOrImage(trimmed)) {
+      setAlert("Links and images aren't allowed. Please keep comments text‑only.");
+      return;
+    }
+    if (usesBannedWord(trimmed)) {
+      setAlert("Certain banned words used. Post removed.");
+      setText("");
+      return;
+    }
+
+    const newComment = {
+      id: `${Date.now()}`,
+      userId: currentUserId || "anon",
+      displayName: "You",
+      text: trimmed,
+      createdAt: Date.now(),
+    };
+
+    try {
+      setSubmitting(true);
+      setComments((prev) => [...prev, newComment]);
+      setText("");
+      if (onSubmitComment) await onSubmitComment(trimmed);
+    } catch (err) {
+      setComments((prev) => prev.filter((c) => c.id !== newComment.id));
+      setAlert("Sorry, we couldn't save your comment. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div className="fixed inset-0 z-[100] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+          <motion.div role="dialog" aria-modal="true" className="relative w-full max-w-xl overflow-hidden rounded-2xl shadow-2xl" initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }}>
+            <div className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 p-5 text-white">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" /><h2 className="text-lg font-semibold">Comments (kid‑friendly)</h2></div>
+                <button aria-label="Close comments" onClick={onClose} className="rounded-full p-1.5 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60"><X className="h-5 w-5" /></button>
+              </div>
+              <p className="mt-1 text-xs/relaxed text-white/90">No links, no images, be kind.</p>
+            </div>
+            <div className="bg-white p-4 dark:bg-zinc-900">
+              <div ref={listRef} className="max-h-80 space-y-3 overflow-y-auto pr-1">
+                {comments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-violet-200 p-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">No comments yet. Be the first to say hi!</div>
+                ) : (
+                  comments.map((c) => {
+                    const isCreator = creatorUserId && c.userId === creatorUserId;
+                    const isMe = currentUserId && c.userId === currentUserId;
+                    return (
+                      <div key={c.id} className={["rounded-2xl border p-3 shadow-sm", isCreator ? "border-pink-200 bg-pink-50 dark:border-pink-900/40 dark:bg-pink-950/30" : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"].join(" ")}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-violet-600 text-white shadow"><User className="h-4 w-4" /></div>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">{c.displayName || "User"}</span>
+                              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{new Date(c.createdAt).toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isCreator && (<span className="rounded-full bg-gradient-to-r from-pink-500 to-violet-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow">Creator</span>)}
+                            {isMe && !isCreator && (<span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">You</span>)}
+                          </div>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-800 dark:text-zinc-100">{c.text}</p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <form onSubmit={handleSubmit} className="mt-4">
+                <div className="rounded-2xl border border-zinc-200 bg-white p-2 shadow-sm focus-within:ring-2 focus-within:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900">
+                  <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 400))} placeholder="Write a kind, text‑only comment (max 400 chars)…" className="h-24 w-full resize-none rounded-xl p-3 text-sm outline-none placeholder:text-zinc-400 dark:bg-transparent dark:text-zinc-100" />
+                  <div className="flex items-center justify-between px-2 pb-1">
+                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">{400 - text.length} characters left</span>
+                    <button type="submit" disabled={submitting || !text.trim()} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50"><Send className="h-4 w-4" /> Post</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </motion.div>
+          <AnimatePresence>
+            {alert && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="fixed bottom-6 left-1/2 z-[110] w-[92%] max-w-md -translate-x-1/2 rounded-2xl border border-pink-200 bg-white p-4 text-sm text-zinc-800 shadow-xl dark:border-pink-900/40 dark:bg-zinc-900 dark:text-zinc-100">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-violet-600 text-white"><ShieldCheck className="h-4 w-4" /></div>
+                  <div className="flex-1"><p className="font-medium">Safety Check</p><p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-300">{alert}</p></div>
+                  <button onClick={() => setAlert(null)} className="rounded-full p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800" aria-label="Dismiss"><X className="h-4 w-4" /></button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ==============================
+// Affiliate Products Panel (internal dashboard)
+// ==============================
+
+export function computeDerived(
+  products,
+  query,
+  status,
+  sort
+) {
+  const q = (query || "").trim().toLowerCase();
+  let list = products.filter((p) => (status === "all" || p.status === status) && (!q || p.title.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)));
+  switch (sort) {
+    case "earnings_desc": list.sort((a, b) => b.earnings - a.earnings); break;
+    case "earnings_asc": list.sort((a, b) => a.earnings - b.earnings); break;
+    case "sold_desc": list.sort((a, b) => b.itemsSold - a.itemsSold); break;
+    case "sold_asc": list.sort((a, b) => a.itemsSold - b.itemsSold); break;
+    case "conv_desc": list.sort((a, b) => b.conversions / (b.clicks || 1) - a.conversions / (a.clicks || 1)); break;
+    case "conv_asc": list.sort((a, b) => a.conversions / (a.clicks || 1) - b.conversions / (b.clicks || 1)); break;
+  }
+  return list;
+}
+
+export function AffiliateProductsPanel({ products = [], onRefresh }) {
+  const [query, setQuery] = React.useState("");
+  const [status, setStatus] = React.useState("all");
+  const [sort, setSort] = React.useState("earnings_desc");
+  const fmt = (n) => new Intl.NumberFormat(undefined).format(n);
+  const money = (n) => new Intl.NumberFormat(undefined, { style: "currency", currency: "GBP" }).format(n);
+  const filtered = React.useMemo(() => computeDerived(products, query, status, sort), [products, query, status, sort]);
+  const totals = React.useMemo(() => {
+    const clicks = products.reduce((s, p) => s + p.clicks, 0);
+    const conv = products.reduce((s, p) => s + p.conversions, 0);
+    const sold = products.reduce((s, p) => s + p.itemsSold, 0);
+    const earn = products.reduce((s, p) => s + p.earnings, 0);
+    return { clicks, conv, sold, earn, cr: clicks ? conv / clicks : 0 };
+  }, [products]);
+
+  return (
+    <div className="w-full">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">Your Affiliate Products</h3>
+          <p className="text-xs text-zinc-500">Internal view for affiliates. Track performance, earnings, and status.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onRefresh} className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"><RefreshCcw className="h-4 w-4" /> Refresh</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard icon={DollarSign} title="Total Earnings" value={money(totals.earn)} />
+        <KpiCard icon={Package} title="Items Sold" value={fmt(totals.sold)} />
+        <KpiCard icon={MousePointerClick} title="Clicks" value={fmt(totals.clicks)} />
+        <KpiCard icon={TrendingUp} title="Conversion Rate" value={`${(totals.cr * 100).toFixed(1)}%`} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+          <input className="w-64 rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm outline-none placeholder:text-zinc-400 focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900" placeholder="Search title or SKU…" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <Filter className="h-4 w-4" />
+            <select className="bg-transparent outline-none" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="out_of_stock">Out of stock</option>
+            </select>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <span>Sort</span>
+            <select className="bg-transparent outline-none" value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="earnings_desc">Earnings ↓</option>
+              <option value="earnings_asc">Earnings ↑</option>
+              <option value="sold_desc">Sold ↓</option>
+              <option value="sold_asc">Sold ↑</option>
+              <option value="conv_desc">Conv Rate ↓</option>
+              <option value="conv_asc">Conv Rate ↑</option>
+            </select>
+          </div>
+          <ExportCsvButton products={filtered} />
+        </div>
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-200 shadow-sm dark:border-zinc-800">
+        <div className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 p-3 text-xs font-semibold uppercase tracking-wide text-white">Products</div>
+        <div className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.6fr_0.6fr_0.6fr_0.5fr_0.8fr] items-center gap-2 border-b border-zinc-200 px-3 py-2 text-[11px] text-zinc-500 dark:border-zinc-800">
+          <div>Title</div><div>SKU</div><div>Price</div><div>Clicks</div><div>Conversions</div><div>Items Sold</div><div>Conv %</div><div className="text-right">Earnings</div>
+        </div>
+        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          {filtered.map((p) => {
+            const convRate = p.clicks ? (p.conversions / p.clicks) * 100 : 0;
+            return (
+              <div key={p.id} className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.6fr_0.6fr_0.6fr_0.5fr_0.8fr] items-center gap-2 px-3 py-3 text-sm">
+                <div className="min-w-0"><div className="truncate font-medium">{p.title}</div><div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500"><StatusBadge status={p.status} /><span>{(p.commissionRate * 100).toFixed(0)}% commission</span></div></div>
+                <div className="truncate text-zinc-600">{p.sku}</div>
+                <div>{money(p.price)}</div>
+                <div>{fmt(p.clicks)}</div>
+                <div>{fmt(p.conversions)}</div>
+                <div>{fmt(p.itemsSold)}</div>
+                <div>{convRate.toFixed(1)}%</div>
+                <div className="text-right font-semibold">{money(p.earnings)}</div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (<div className="p-6 text-center text-sm text-zinc-500">No products match your filters.</div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ icon: Icon, title, value }) {
+  return (
+    <div className={["rounded-2xl border p-4 shadow-sm", "bg-white dark:bg-zinc-900", "border-zinc-200 dark:border-zinc-800"].join(" ")}>
+      <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-violet-600 text-white shadow"><Icon className="h-5 w-5" /></div><div><p className="text-xs text-zinc-500">{title}</p><p className="text-lg font-semibold">{value}</p></div></div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const style = status === "active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : status === "paused" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  const label = status === "active" ? "Active" : status === "paused" ? "Paused" : "Out of stock";
+  return <span className={["inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium", style].join(" ")}>{label}</span>;
+}
+
+export function toCsv(products) {
+  const headers = ["id", "title", "sku", "price", "commissionRate", "status", "clicks", "conversions", "itemsSold", "earnings"];
+  const rows = products.map((p) => [p.id, p.title, p.sku, p.price, p.commissionRate, p.status, p.clicks, p.conversions, p.itemsSold, p.earnings]);
+  const escapeCell = (cell) => `"${String(cell).replace(/"/g, '""')}"`;
+  return [headers, ...rows].map((r) => r.map(escapeCell).join(",")).join("\n");
+}
+
+function ExportCsvButton({ products }) {
+  const onExport = React.useCallback(() => {
+    const csv = toCsv(products);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `affiliate_products_${Date.now()}.csv`; a.click(); URL.revokeObjectURL(url);
+  }, [products]);
+  return (<button onClick={onExport} className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm transition hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"><Download className="h-4 w-4" /> Export CSV</button>);
+}
+
+// Hero product picker button + modal
+function HeroProductPickerButton({ products, mode, selectedIds, value, onPick }) {
+  const [open, setOpen] = useState(false);
+  const available = mode === "all" ? products : products.filter(p => (selectedIds || []).includes(p.id));
+  const current = available.find(p => p.id === value) || null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-xl border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
+      >
+        {current ? `Change hero: ${current.title}` : "Pick hero product"}
+      </button>
+      {open && (
+        <HeroProductPicker
+          products={available}
+          value={value}
+          onClose={() => setOpen(false)}
+          onPick={(id) => { onPick(id); setOpen(false); }}
+        />
+      )}
+    </>
+  );
+}
+
+function HeroProductPicker({ products, value, onPick, onClose }) {
+  const [q, setQ] = useState("");
+  const list = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return products;
+    return products.filter(p =>
+      (p.title || "").toLowerCase().includes(t) ||
+      (p.sku || "").toLowerCase().includes(t)
+    );
+  }, [q, products]);
+
+  return (
+    <div className="fixed inset-0 z-[200] grid place-items-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex items-center justify-between border-b border-zinc-200 p-3 dark:border-zinc-800">
+          <div className="font-semibold">Pick hero product</div>
+          <button onClick={onClose} className="rounded p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800">✕</button>
+        </div>
+        <div className="p-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="mb-3 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900"
+            placeholder="Search by title or SKU…"
+          />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {list.map(p => {
+              const active = p.id === value;
+              const img = p.imageUrl || (Array.isArray(p.images) && p.images[0]?.url) || null;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onPick(p.id)}
+                  className={[
+                    "flex items-center gap-3 rounded-xl border p-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800",
+                    active ? "border-pink-400" : "border-zinc-200 dark:border-zinc-800",
+                  ].join(" ")}
+                >
+                  <div className="h-14 w-14 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800">
+                    {img ? (
+                      <img src={img} alt={p.title} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center text-xs text-zinc-400">No image</div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{p.title}</div>
+                    <div className="truncate text-xs text-zinc-500">{p.sku || "—"}</div>
+                  </div>
+                  <div className="ml-auto text-sm font-semibold">{typeof p.price === "number" ? `£${p.price.toFixed(2)}` : "—"}</div>
+                </button>
+              );
+            })}
+            {list.length === 0 && (
+              <div className="col-span-full rounded-xl border border-dashed p-6 text-center text-sm text-zinc-500 dark:border-zinc-800">
+                No matches.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
+          <button onClick={onClose} className="rounded-xl border px-3 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function runInlineTests() {
+  const sample = [
+    { id: "1", title: 'A "Quote", Comma, & More', sku: "SKU,1", price: 1, commissionRate: 0.1, status: "active", clicks: 10, conversions: 2, itemsSold: 2, earnings: 0.2 },
+    { id: "2", title: "Glow Serum", sku: "GLW-001", price: 19.99, commissionRate: 0.15, status: "active", clicks: 1200, conversions: 96, itemsSold: 110, earnings: 329.7 },
+  ];
+  const csv = toCsv(sample); const lines = csv.split("\n");
+  console.assert(lines.length === sample.length + 1, "CSV should have header + rows");
+  console.assert(lines[0].startsWith('"id","title","sku"'), "Header present");
+  console.assert(csv.includes('"A ""Quote"", Comma, & More"'), "Quotes should be doubled");
+  console.assert(lines[1].includes('"SKU,1"'), "Comma-containing SKU should be quoted");
+  const derived1 = computeDerived(sample, "glow", "all", "earnings_desc");
+  console.assert(derived1.length === 1 && derived1[0].id === "2", "Search should filter to matching title");
+  const derived2 = computeDerived(sample, "", "active", "sold_desc");
+  console.assert(derived2[0].itemsSold >= derived2[1].itemsSold, "Sort sold_desc should be descending");
+}
+try { if (typeof process !== "undefined" && process.env && process.env.NODE_ENV !== "production") { runInlineTests(); } } catch {}
+
+// ==============================
+// Affiliate Storefront — Editable Page for Affiliates
+// URL style toggle, curated vs all products, banner upload, theme editor
+// ==============================
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB9ehjykma-ZIrOavYvhYyZBIc98B73tac",
+  authDomain: "fotonix-97544.firebaseapp.com",
+  projectId: "fotonix-97544",
+  storageBucket: "fotonix-97544.firebasestorage.app",
+  databaseURL: "https://fotonix-97544-default-rtdb.europe-west1.firebasedatabase.app",
+  messagingSenderId: "1003654054250",
+  appId: "1:1003654054250:web:e5c905e6a194f1d4202513",
+  measurementId: "G-8B0PPFCRTD",
+};
+
+function ensureFirebase() {
+  if (!getApps().length) initializeApp(firebaseConfig);
+  return { auth: getAuth(), db: getDatabase(), storage: getStorage() };
+}
+
+export function sanitizeHandle(handle) {
+  const h = (handle || "").toLowerCase().trim();
+  const cleaned = h.replace(/[^a-z0-9-]/g, "").slice(0, 30);
+  return cleaned.length >= 3 ? cleaned : "";
+}
+export function sanitizeUrl(url) {
+  if (!url) return ""; try { const u = new URL(url.startsWith("http") ? url : `https://${url}`); if (u.protocol !== "http:" && u.protocol !== "https:") return ""; return u.toString(); } catch { return ""; }
+}
+function uidOrThrow(uid) { if (!uid) throw new Error("Must be signed in to edit storefront"); return uid; }
+async function claimHandle(db, handle, uid) {
+  const mappingRef = dbRef(db, `storefrontHandles/${handle}`);
+  const res = await runTransaction(mappingRef, (current) => { if (current === null || current === uid) { return uid; } return; });
+  return res.committed && res.snapshot.val() === uid;
+}
+
+export function buildPublicUrl(origin, handle, style) {
+  const h = sanitizeHandle(handle); if (!h) return "";
+  const base = origin.replace(/\/$/, "");
+  return style === "at" ? `${base}/@${h}` : `${base}/u/${h}`;
+}
+
+export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https://example.com" }) {
+  const { db, storage } = ensureFirebase();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [data, setData] = useState({
+    handle: "",
+    displayName: "",
+    bio: "",
+    bannerUrl: "",
+    theme: { bgType: "gradient", gradientFrom: "#ec4899", gradientTo: "#8b5cf6", textColor: "light" },
+    links: [],
+    linkAlignment: "center",
+    linkStyle: "bordered",
+    linksHeading: "Find me online",
+    linksDescription: "",
+    urlStyle: "at",
+    productDisplayMode: "all",
+    productIds: [],
+  featuredLayout: false,
+  featuredProductId: "",
+    productsHeading: "Products",
+    productsDescription: "",
+    published: false,
+    // new page sections and seo defaults
+    pageSections: [createSection("hero"), createSection("collection-grid"), createSection("rich-text")],
+    seo: { title: "", description: "", ogImage: "" },
+  });
+
+  // Small immutable move helper for reordering links
+  const move = (arr, from, to) => {
+    const a = (arr || []).slice();
+    const [it] = a.splice(from, 1);
+    a.splice(to, 0, it);
+    return a;
+  };
+
+  useEffect(() => { (async () => {
+    try {
+      setErr(null);
+      const uid = uidOrThrow(currentUserId);
+      const snap = await get(dbRef(db, `storefronts/${uid}`));
+      if (snap.exists()) {
+        const raw = snap.val();
+        setData((d) => ({
+          ...d,
+          ...raw,
+          pageSections: Array.isArray(raw.pageSections) ? raw.pageSections : d.pageSections,
+          seo: raw.seo || d.seo,
+        }));
+      }
+    } catch (e) { setErr(e.message || String(e)); }
+    finally { setLoading(false); }
+  })(); }, [currentUserId]);
+
+  // Load products for the current user (editor side)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setProductsLoading(true);
+      try {
+        const uid = uidOrThrow(currentUserId);
+        const snap = await get(dbRef(db, `products/${uid}`));
+        if (!mounted) return;
+        if (snap.exists()) {
+          const productsData = snap.val();
+          const productsArray = Object.entries(productsData).map(([id, product]) => ({ id, ...product }));
+          setProducts(productsArray);
+        } else {
+          setProducts([]);
+        }
+      } catch (e) {
+        setProducts([]);
+      } finally {
+        if (mounted) setProductsLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currentUserId, db]);
+
+    const onBannerSelected = async (file) => { if (!file) return; try { setSaving(true); const uid = uidOrThrow(currentUserId); const key = `storefronts/${uid}/banner_${Date.now()}.${file.name.split('.').pop()}`; const r = stRef(storage, key); await uploadBytes(r, file); const url = await getDownloadURL(r); setData((d) => ({ ...d, bannerUrl: url })); } catch (e) { setErr(e.message || String(e)); } finally { setSaving(false); } };
+
+  const onThemeImageSelected = async (file) => { if (!file) return; try { setSaving(true); const uid = uidOrThrow(currentUserId); const key = `storefronts/${uid}/theme_${Date.now()}.${file.name.split('.').pop()}`; const r = stRef(storage, key); await uploadBytes(r, file); const url = await getDownloadURL(r); setData((d) => ({ ...d, theme: { ...d.theme, imageUrl: url } })); } catch (e) { setErr(e.message || String(e)); } finally { setSaving(false); } };
+
+  // helper to upload an image for a section and set into the section data
+  const uploadSectionImage = async (sectionId, file) => {
+    if (!file) return;
+    try {
+      setSaving(true);
+      const uid = uidOrThrow(currentUserId);
+      const key = `storefronts/${uid}/section_${sectionId}_${Date.now()}.${file.name.split('.').pop()}`;
+      const r = stRef(storage, key);
+      await uploadBytes(r, file);
+      const url = await getDownloadURL(r);
+      setData((d) => ({ ...d, pageSections: (d.pageSections || []).map((s) => (s.id === sectionId ? { ...s, data: { ...s.data, bgImage: url } } : s)) }));
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const save = async () => {
+    try {
+      setSaving(true);
+      setErr(null);
+      const uid = uidOrThrow(currentUserId);
+      const handle = sanitizeHandle(data.handle);
+      if (!handle) throw new Error("Please choose a handle (3–30 letters/numbers/dashes)");
+      const ok = await claimHandle(getDatabase(), handle, uid);
+      if (!ok) throw new Error("That handle is already taken. Try another.");
+      const links = (data.links || [])
+        .map((l) => ({
+          ...l,
+          provider: (l.provider || 'custom').toLowerCase(),
+          label: (l.label || '').slice(0, 40),
+          url: sanitizeUrl(l.url),
+        }))
+        .filter((l) => l.label && l.url);
+      const payload = { ...data, handle, links, updatedAt: Date.now() };
+      await set(dbRef(db, `storefronts/${uid}`), payload);
+      setErr("Storefront saved successfully!");
+      setTimeout(() => {
+        window.location.hash = 'affiliates';
+      }, 1500);
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addLink = () => setData((d) => ({ ...d, links: [...(d.links || []), { id: `${Date.now()}`, provider: 'custom', label: "", url: "" }] }));
+  const removeLink = (id) => setData((d) => ({ ...d, links: (d.links || []).filter((x) => x.id !== id) }));
+  const addProductsByCsv = (csv) => { const ids = csv.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean); setData((d) => ({ ...d, productIds: Array.from(new Set([...(d.productIds || []), ...ids])) })); };
+  const publicUrl = buildPublicUrl(siteOrigin, data.handle, data.urlStyle);
+
+  if (loading) return <div className="p-4 text-sm text-zinc-500">Loading storefront…</div>;
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* Editor side */}
+      <div className="space-y-4">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold">Storefront Basics</h3>
+          <div className="mt-3 grid grid-cols-1 gap-3">
+            <label className="text-xs text-zinc-600">Public URL style</label>
+            <div className="inline-flex gap-2 text-sm">
+              <label className="inline-flex items-center gap-2"><input type="radio" checked={data.urlStyle === "at"} onChange={() => setData({ ...data, urlStyle: "at" })} /> /@handle</label>
+              <label className="inline-flex items-center gap-2"><input type="radio" checked={data.urlStyle === "slash"} onChange={() => setData({ ...data, urlStyle: "slash" })} /> /u/handle</label>
+            </div>
+            <label className="text-xs text-zinc-600">Handle (unique)</label>
+            <input value={data.handle} onChange={(e) => setData({ ...data, handle: e.target.value })} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900" placeholder="your-name" />
+            <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-300"><LinkIcon className="h-4 w-4" /> {publicUrl || "Choose a handle to see your URL"}</div>
+            <label className="text-xs text-zinc-600">Display Name</label>
+            <input value={data.displayName} onChange={(e) => setData({ ...data, displayName: e.target.value.slice(0, 60) })} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900" placeholder="Your Name" />
+            <label className="text-xs text-zinc-600">Bio</label>
+            <textarea value={data.bio || ""} onChange={(e) => setData({ ...data, bio: e.target.value.slice(0, 240) })} className="h-24 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900" placeholder="Short friendly bio (max 240 chars)" />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold">Banner</h3>
+          <div className="mt-3 flex items-center gap-3"><input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) onBannerSelected(f); }} />{saving && <span className="text-xs text-zinc-500">Uploading…</span>}</div>
+          {data.bannerUrl && (<img src={data.bannerUrl} alt="Banner preview" className="mt-3 h-32 w-full rounded-xl object-cover" />)}
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold">Theme</h3>
+          <div className="mt-3 space-y-3">
+            <div className="flex gap-3 text-sm">
+              <label className="inline-flex items-center gap-2"><input type="radio" checked={data.theme.bgType === "gradient"} onChange={() => setData({ ...data, theme: { ...data.theme, bgType: "gradient" } })} /> Gradient</label>
+              <label className="inline-flex items-center gap-2"><input type="radio" checked={data.theme.bgType === "color"} onChange={() => setData({ ...data, theme: { ...data.theme, bgType: "color" } })} /> Solid color</label>
+              <label className="inline-flex items-center gap-2"><input type="radio" checked={data.theme.bgType === "image"} onChange={() => setData({ ...data, theme: { ...data.theme, bgType: "image" } })} /> Background image</label>
+            </div>
+            {data.theme.bgType === "gradient" && (<div className="flex items-center gap-3"><div className="flex items-center gap-2 text-xs"><span>From</span><input type="color" value={data.theme.gradientFrom || "#ec4899"} onChange={(e) => setData({ ...data, theme: { ...data.theme, gradientFrom: e.target.value } })} /></div><div className="flex items-center gap-2 text-xs"><span>To</span><input type="color" value={data.theme.gradientTo || "#8b5cf6"} onChange={(e) => setData({ ...data, theme: { ...data.theme, gradientTo: e.target.value } })} /></div></div>)}
+            {data.theme.bgType === "color" && (<div className="flex items-center gap-2 text-xs"><span>Color</span><input type="color" value={data.theme.color || "#ffffff"} onChange={(e) => setData({ ...data, theme: { ...data.theme, color: e.target.value } })} /></div>)}
+            {data.theme.bgType === "image" && (<div className="space-y-2 text-xs"><span className="block">Background image</span><input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) onThemeImageSelected(f); }} />{saving && <span className="text-xs text-zinc-500">Uploading…</span>}<span className="block mt-2">Or enter image URL (must be https)</span><input value={data.theme.imageUrl || ""} onChange={(e) => setData({ ...data, theme: { ...data.theme, imageUrl: e.target.value } })} className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900" placeholder="https://…" /></div>)}
+            <div className="flex items-center gap-3 text-xs"><span>Text</span><select value={data.theme.textColor || "light"} onChange={(e) => setData({ ...data, theme: { ...data.theme, textColor: e.target.value } })} className="rounded-xl border border-zinc-200 bg-white px-2 py-1 text-xs outline-none dark:border-zinc-800 dark:bg-zinc-900"><option value="light">Light</option><option value="dark">Dark</option></select></div>
+          </div>
+        </section>
+
+        {/* SEO panel */}
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold">SEO</h3>
+          <div className="mt-3 space-y-2">
+            <input placeholder="Meta title" value={data.seo?.title || ""} onChange={(e) => setData({ ...data, seo: { ...(data.seo || {}), title: e.target.value } })} className="w-full rounded-xl border px-3 py-2 text-sm" />
+            <textarea placeholder="Meta description" value={data.seo?.description || ""} onChange={(e) => setData({ ...data, seo: { ...(data.seo || {}), description: e.target.value } })} className="h-20 w-full rounded-xl border px-3 py-2 text-sm" />
+            <input placeholder="OpenGraph image URL" value={data.seo?.ogImage || ""} onChange={(e) => setData({ ...data, seo: { ...(data.seo || {}), ogImage: e.target.value } })} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </div>
+        </section>
+
+        {/* Page sections builder */}
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold">Page sections</h3>
+          <div className="mt-3">
+            <StorePageBuilder
+              value={data.pageSections}
+              onChange={(next) => setData((d) => ({ ...d, pageSections: next }))}
+              onPickImage={(sectionId) => {
+                // trigger file input and then uploadSectionImage
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = "image/*";
+                input.onchange = (ev) => {
+                  const f = ev.target.files && ev.target.files[0];
+                  if (f) uploadSectionImage(sectionId, f);
+                };
+                input.click();
+              }}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Links</h3>
+            <div className="flex items-center gap-3 text-xs text-zinc-600">
+              <label className="flex items-center gap-1">
+                Align:
+                <select
+                  className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+                  value={data.linkAlignment}
+                  onChange={(e) => setData({ ...data, linkAlignment: e.target.value })}
+                >
+                  <option value="left">Left</option>
+                  <option value="center">Center</option>
+                  <option value="right">Right</option>
+                </select>
+              </label>
+
+              <label className="flex items-center gap-1">
+                Style:
+                <select
+                  className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+                  value={data.linkStyle}
+                  onChange={(e) => setData({ ...data, linkStyle: e.target.value })}
+                >
+                  <option value="bordered">Bordered</option>
+                  <option value="pill">Pill</option>
+                  <option value="minimal">Minimal</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {/* Text above the links */}
+          <div className="mt-3 grid grid-cols-1 gap-2">
+            <input
+              className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900"
+              placeholder="Links heading (optional)"
+              value={data.linksHeading || ""}
+              onChange={(e) => setData({ ...data, linksHeading: e.target.value })}
+            />
+            <textarea
+              className="h-20 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900"
+              placeholder="Short description above your links (optional)"
+              value={data.linksDescription || ""}
+              onChange={(e) => setData({ ...data, linksDescription: e.target.value })}
+            />
+          </div>
+          {/* Featured layout toggle + picker */}
+          <div className="mt-2 flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!data.featuredLayout}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setData(d => ({
+                    ...d,
+                    featuredLayout: on,
+                    featuredProductId: on ? (d.featuredProductId || (d.productIds?.[0] ?? "")) : ""
+                  }));
+                }}
+              />
+              Use a featured (hero) product
+            </label>
+
+            {data.featuredLayout && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-zinc-500">Featured:</span>
+                <select
+                  className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+                  value={data.featuredProductId || ""}
+                  onChange={(e) => setData(d => ({ ...d, featuredProductId: e.target.value }))}
+                >
+                  <option value="">(none)</option>
+                  {(data.productDisplayMode === "all"
+                     ? products
+                     : products.filter(p => (data.productIds || []).includes(p.id))
+                   ).map(p => (
+                     <option key={p.id} value={p.id}>{p.title}</option>
+                   ))}
+                </select>
+
+                <HeroProductPickerButton
+                  products={products}
+                  mode={data.productDisplayMode}
+                  selectedIds={data.productIds}
+                  value={data.featuredProductId}
+                  onPick={(id) => setData(d => ({ ...d, featuredProductId: id }))}
+                />
+              </div>
+            )}
+          </div>
+          {/* Add link menu */}
+          <div className="mt-3">
+            <AddLinkMenu
+              onAdd={(providerId) => {
+                const meta = SOCIAL_PROVIDERS.find(p => p.id === providerId) || SOCIAL_PROVIDERS[SOCIAL_PROVIDERS.length - 1];
+                setData(d => ({
+                  ...d,
+                  links: [
+                    ...(d.links || []),
+                    {
+                      id: `${Date.now()}`,
+                      provider: providerId,
+                      label: meta.id === 'custom' ? '' : meta.label,
+                      url: '',
+                    },
+                  ],
+                }));
+              }}
+            />
+          </div>
+
+          <div
+            className={[
+              "mt-3 space-y-3 md:space-y-2 flex flex-wrap gap-2",
+              data.linkAlignment === "center" ? "justify-center" : data.linkAlignment === "right" ? "justify-end" : "justify-start",
+            ].join(" ")}
+          >
+            {(data.links || []).map((l, idx) => {
+              const provider = (l.provider || 'custom').toLowerCase();
+              const meta = SOCIAL_PROVIDERS.find(p => p.id === provider) || SOCIAL_PROVIDERS[SOCIAL_PROVIDERS.length - 1];
+
+              return (
+                <div
+                  key={l.id}
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData('text/plain', String(idx)); e.dataTransfer.effectAllowed = 'move'; }}
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={(e) => { e.preventDefault(); const from = parseInt(e.dataTransfer.getData('text/plain'), 10); const to = idx; if (!Number.isNaN(from) && from !== to) { setData(d => ({ ...d, links: move(d.links || [], from, to) })); } }}
+                  className="grid grid-cols-1 gap-2 md:grid-cols-[auto_10rem_1fr_1fr_auto] items-center"
+                >
+                  <div className="flex items-center justify-center">
+                    <div className="h-8 w-8 flex items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
+                      {getSocialIcon(provider, 18)}
+                    </div>
+                  </div>
+
+                  {/* Provider select */}
+                  <select
+                    className="rounded-xl border border-zinc-200 bg-white px-2 py-2 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-900"
+                    value={provider}
+                    onChange={(e) => {
+                      const nextProvider = e.target.value;
+                      const nextMeta = SOCIAL_PROVIDERS.find(p => p.id === nextProvider) || { id:'custom', label:'', placeholder:'https://example.com' };
+                      setData(d => ({
+                        ...d,
+                        links: (d.links || []).map(x =>
+                          x.id === l.id
+                            ? {
+                                ...x,
+                                provider: nextProvider,
+                                // If label was auto or empty, update it to the provider label
+                                label: (!l.label || l.label === meta.label) ? (nextProvider === 'custom' ? '' : nextMeta.label) : l.label,
+                              }
+                            : x
+                        ),
+                      }));
+                    }}
+                  >
+                    {SOCIAL_PROVIDERS.map(p => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+
+                  {/* Label */}
+                  <input
+                    value={l.label || ''}
+                    placeholder={meta.id === 'custom' ? 'Label (e.g. Blog)' : meta.label}
+                    onChange={(e) =>
+                      setData(d => ({
+                        ...d,
+                        links: (d.links || []).map(x => (x.id === l.id ? { ...x, label: e.target.value } : x)),
+                      }))
+                    }
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900"
+                  />
+
+                  {/* URL */}
+                  <input
+                    value={l.url || ''}
+                    placeholder={meta.placeholder}
+                    onChange={(e) =>
+                      setData(d => ({
+                        ...d,
+                        links: (d.links || []).map(x => (x.id === l.id ? { ...x, url: e.target.value } : x)),
+                      }))
+                    }
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900"
+                  />
+
+                  <button
+                    onClick={() => setData(d => ({ ...d, links: (d.links || []).filter(x => x.id !== l.id) }))}
+                    className="rounded-xl border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
+                  >
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold">Products shown on your page</h3>
+          <div className="mt-3 grid grid-cols-1 gap-2">
+            <input
+              className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900"
+              placeholder="Products heading (optional)"
+              value={data.productsHeading || ""}
+              onChange={(e) => setData({ ...data, productsHeading: e.target.value })}
+            />
+            <textarea
+              className="h-20 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900"
+              placeholder="Short description above your products (optional)"
+              value={data.productsDescription || ""}
+              onChange={(e) => setData({ ...data, productsDescription: e.target.value })}
+            />
+          </div>
+          <div className="mt-3 space-y-3 text-sm">
+            <label className="inline-flex items-center gap-2"><input type="radio" checked={data.productDisplayMode === "all"} onChange={() => setData({ ...data, productDisplayMode: "all" })} /> Show all active products</label>
+            <label className="inline-flex items-center gap-2"><input type="radio" checked={data.productDisplayMode === "curated"} onChange={() => setData({ ...data, productDisplayMode: "curated" })} /> Only show my curated list</label>
+
+            {/* Manage products list for curated mode */}
+            <div className="mt-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // quick auto-sort by best-sellers
+                    const sorted = (products || []).slice().sort((a, b) => (b.itemsSold || 0) - (a.itemsSold || 0));
+                    setData(d => ({ ...d, productDisplayMode: 'curated', productIds: sorted.map(p => p.id) }));
+                  }}
+                  className="rounded-xl border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
+                >
+                  Move bestsellers to top
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setData(d => ({ ...d, productDisplayMode: 'curated', productIds: [] }))}
+                  className="rounded-xl border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
+                >
+                  Clear curated list
+                </button>
+              </div>
+
+              <div className="mt-3 max-h-48 overflow-y-auto border rounded-lg p-2">
+                {productsLoading ? (
+                  <div className="text-sm text-zinc-500">Loading products…</div>
+                ) : products.length === 0 ? (
+                  <div className="text-sm text-zinc-500">No products yet. Upload via the product panel.</div>
+                ) : (
+                  <div
+                    className="space-y-2"
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                  >
+                    {products.map((p) => {
+                      const included = (data.productIds || []).includes(p.id);
+                      const curIndex = (data.productIds || []).indexOf(p.id);
+                      return (
+                        <div
+                          key={p.id}
+                          className={[
+                            "flex items-center gap-2 rounded-lg border px-2 py-1",
+                            included ? "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900" : "border-transparent"
+                          ].join(" ")}
+                          draggable={included}
+                          onDragStart={(e) => {
+                            if (!included) return;
+                            e.dataTransfer.setData('text/plain', String(curIndex));
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDrop={(e) => {
+                            if (!included) return;
+                            e.preventDefault();
+                            const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                            const to = (data.productIds || []).indexOf(p.id);
+                            if (!Number.isNaN(from) && from !== to) {
+                              setData(d => ({ ...d, productIds: move(d.productIds || [], from, to) }));
+                            }
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={included}
+                            onChange={(e) => {
+                              setData(d => {
+                                const cur = d.productIds || [];
+                                if (e.target.checked) {
+                                  // add to end
+                                  return { ...d, productIds: Array.from(new Set([...cur, p.id])) };
+                                }
+                                // remove keeps the rest in place
+                                return { ...d, productIds: cur.filter(x => x !== p.id) };
+                              });
+                            }}
+                          />
+                            {data.featuredLayout && (
+                              <button
+                                type="button"
+                                onClick={() => setData(d => ({ ...d, featuredProductId: p.id }))}
+                                title="Set as hero"
+                                className={[
+                                  "rounded p-1",
+                                  data.featuredProductId === p.id ? "text-amber-500" : "text-zinc-400 hover:text-zinc-600"
+                                ].join(" ")}
+                                disabled={!included}
+                              >
+                                ★
+                              </button>
+                            )}
+                          <div className="cursor-grab select-none text-zinc-400">⋮⋮</div>
+                          <div className="flex-1 truncate text-sm">{p.title}</div>
+                          <div className="text-xs text-zinc-500">Sold: {p.itemsSold || 0}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="flex items-center gap-2"><button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">{saving ? "Saving…" : "Save Storefront"}</button>{err && <span className={`text-xs ${err.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>{err}</span>}</div>
+      </div>
+
+      {/* Live preview side */}
+      <div className="md:sticky md:top-4 md:self-start">
+        <div className="md:h-[calc(100vh-2rem)] overflow-y-auto">
+          <h2 className="mb-4 text-lg font-semibold">Live Preview</h2>
+          <StorefrontView data={data} products={products} compact />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// DUPLICATE FUNCTION - removed, using the correct one below
+// DUPLICATE FUNCTION COMPLETELY REMOVED - using the correct one below
+
+// Public view (wire into your router)
+export function StorefrontView({ data, products = [], compact = false }) {
+  function RenderSections({ sections, fullProducts }) {
+    if (!sections || !sections.length) return null;
+    const getProducts = (ids) => (fullProducts || []).filter((p) => ids.includes(p.id));
+    return (
+      <div className="space-y-8 mb-6">
+        {sections.map((s) => {
+          if (s.type === "hero") {
+            const { title, subtitle, align, bgImage, overlay = 0.35, cta } = s.data;
+            const justify = align === "left" ? "items-start" : align === "right" ? "items-end" : "items-center";
+            return (
+              <section key={s.id} className="relative overflow-hidden rounded-2xl">
+                {bgImage && <img src={bgImage} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
+                <div className="relative z-10 grid min-h-[220px] place-items-center p-8">
+                  <div className={`flex w-full max-w-3xl flex-col gap-2 ${justify} text-white`}>
+                    <h2 className="text-3xl font-bold drop-shadow">{title}</h2>
+                    {subtitle && <p className="max-w-prose drop-shadow">{subtitle}</p>}
+                    {cta?.label && <a href={cta.href || "#"} className="mt-2 w-max rounded-xl bg-white px-4 py-2 text-sm font-semibold text-zinc-900 shadow"> {cta.label} </a>}
+                  </div>
+                </div>
+                <div className="absolute inset-0" style={{ background: "#000", opacity: overlay }} />
+              </section>
+            );
+          }
+          if (s.type === "collection-grid") {
+            const { title, productIds, columns, showPrice, showCTA } = s.data;
+            const colCls = `grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4`;
+            // Only render if the section explicitly selected productIds.
+            const list = productIds && productIds.length ? getProducts(productIds) : [];
+            return (
+              <section key={s.id}>
+                {title && <h3 className="mb-2 text-lg font-semibold">{title}</h3>}
+                <div className={`gap-3 ${colCls}`}>
+                  {list.map((p) => (
+                    <a key={p.id} href={p.href || `#product/${p.id}`} className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md">
+                      {(() => {
+                        const idx = p.mainImageIndex ?? 0;
+                        const fallback = p.images && p.images[idx] ? p.images[idx].url : undefined;
+                        const src = p.imageUrl || fallback;
+                        return src ? (
+                          <img src={src} alt={p.title} className="h-48 w-full object-cover" loading="lazy" />
+                        ) : null;
+                      })()}
+                      <div className="p-4">
+                        <h4 className="line-clamp-2 text-sm font-semibold">{p.title}</h4>
+                        {showPrice && <div className="mt-1 text-pink-600">£{p.price?.toFixed?.(2) ?? "-"}</div>}
+                        {showCTA && <div className="mt-2 text-xs text-zinc-500">View details →</div>}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </section>
+            );
+          }
+          if (s.type === "rich-text") {
+            const { html, align, maxWidth = 720 } = s.data;
+            const cls = align === "center" ? "mx-auto text-center" : align === "right" ? "ml-auto text-right" : "mr-auto text-left";
+            return (
+              <section key={s.id} className={`prose max-w-none ${cls}`} style={{ maxWidth }}>
+                <div dangerouslySetInnerHTML={{ __html: html }} />
+              </section>
+            );
+          }
+          if (s.type === "faq") {
+            return (
+              <section key={s.id} className="rounded-2xl border p-4">
+                <h3 className="mb-2 text-lg font-semibold">FAQ</h3>
+                <div className="divide-y">
+                  {s.data.items.map((it, idx) => (
+                    <details key={idx} className="py-2">
+                      <summary className="cursor-pointer text-sm font-medium">{it.q}</summary>
+                      <p className="mt-1 text-sm text-zinc-600">{it.a}</p>
+                    </details>
+                  ))}
+                </div>
+              </section>
+            );
+          }
+          return null;
+        })}
+      </div>
+    );
+  }
+  const bg = (() => {
+    if (data.theme.bgType === "color") return { background: data.theme.color || "#ffffff" };
+    if (data.theme.bgType === "image") return { backgroundImage: `url(${data.theme.imageUrl || ""})`, backgroundSize: "cover", backgroundPosition: "center" };
+    const from = data.theme.gradientFrom || "#ec4899"; const to = data.theme.gradientTo || "#8b5cf6"; return { backgroundImage: `linear-gradient(90deg, ${from}, ${to})` };
+  })();
+  const light = (data.theme.textColor || "light") === "light";
+  const curatedOrdered = data.productDisplayMode === "all"
+    ? products
+    : (data.productIds || []).map(id => products.find(p => p?.id === id)).filter(Boolean);
+  const featured = data.featuredLayout
+    ? ((data.featuredProductId && curatedOrdered.find(p => p.id === data.featuredProductId)) || curatedOrdered[0])
+    : null;
+  const subProducts = data.featuredLayout && featured
+    ? curatedOrdered.filter(p => p.id !== featured.id)
+    : curatedOrdered;
+
+  return (
+    <div className={compact ? "" : "min-h-screen"}>
+      <div className="h-40 w-full" style={bg} />
+      {data.bannerUrl && (<img src={data.bannerUrl} alt="Banner" className="-mt-24 mx-auto h-40 w-40 rounded-2xl border-4 border-white object-cover shadow-md" />)}
+      <div className="mx-auto max-w-4xl p-4" style={{ color: light ? "#0a0a0a" : "#f5f5f5" }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">{data.displayName}</h1>
+            {data.bio && <p className="text-sm opacity-80">{data.bio}</p>}
+          </div>
+          <a href="#products" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm"><Eye className="h-4 w-4" /> View products</a>
+        </div>
+        {/* Links heading/description (optional) */}
+        {(data.linksHeading || data.linksDescription) && (
+          <div className={[
+            "mt-4",
+            data.linkAlignment === "center" ? "text-center" : data.linkAlignment === "right" ? "text-right" : "text-left",
+          ].join(" ")}>
+            {data.linksHeading && (
+              <h2 className="text-lg font-semibold">{data.linksHeading}</h2>
+            )}
+            {data.linksDescription && (
+              <p className="mt-1 text-sm opacity-80 whitespace-pre-wrap">{data.linksDescription}</p>
+            )}
+          </div>
+        )}
+
+        {data.links && data.links.length > 0 && (
+          <div
+            className={[
+              "mt-4 flex flex-wrap gap-2",
+              data.linkAlignment === "center" ? "justify-center" : data.linkAlignment === "right" ? "justify-end" : "justify-start",
+            ].join(" ")}
+          >
+            {data.links.map((l) => {
+              const provider = (l.provider || "custom").toLowerCase();
+
+              const base = "inline-flex items-center gap-2 text-sm transition-all";
+              const style =
+                data.linkStyle === "pill"
+                  ? "rounded-full bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 font-medium text-white shadow-sm hover:brightness-110"
+                  : data.linkStyle === "minimal"
+                  ? "text-pink-600 hover:underline dark:text-pink-400"
+                  : "rounded-xl border border-zinc-200 px-3 py-2 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800";
+
+              return (
+                <a
+                  key={l.id}
+                  href={sanitizeUrl(l.url) || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${base} ${style}`}
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center">
+                    {getSocialIcon(provider, 16)}
+                  </span>
+                  <span>{l.label || l.url}</span>
+                </a>
+              );
+            })}
+          </div>
+        )}
+  {/* sections driven by data.pageSections */}
+  <RenderSections sections={data.pageSections} fullProducts={products} />
+        <div className="mt-8" id="products">
+          <h2 className="text-lg font-semibold">
+            {data.featuredLayout ? "Featured Products" : (data.productsHeading || "Products")}
+          </h2>
+          {(!data.featuredLayout && data.productsDescription) && (
+            <p className="mt-1 text-sm opacity-80 whitespace-pre-wrap">{data.productsDescription}</p>
+          )}
+        </div>
+        {data.featuredLayout && featured && (
+          <section className="mt-4">
+            <a
+              href={featured.href || `#product/${featured.id}`}
+              className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              {(() => {
+                const idx = featured.mainImageIndex ?? 0;
+                const fallback = featured.images && featured.images[idx] ? featured.images[idx].url : undefined;
+                const src = featured.imageUrl || fallback;
+                return src ? <img src={src} alt={featured.title} className="h-72 w-full object-cover sm:h-96" loading="lazy" /> : null;
+              })()}
+              <div className="p-5">
+                <h3 className="text-xl font-semibold">{featured.title}</h3>
+                {typeof featured.price === "number" && (
+                  <p className="mt-1 text-2xl font-bold text-pink-600 dark:text-pink-400">£{featured.price.toFixed(2)}</p>
+                )}
+                {featured.description && (
+                  <p className="mt-2 line-clamp-3 text-sm text-zinc-600 dark:text-zinc-300">{featured.description}</p>
+                )}
+              </div>
+            </a>
+          </section>
+        )}
+
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+          {subProducts.map((p) => (
+            <a key={p.id} href={p.href} target="_blank" rel="noopener noreferrer" className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900">
+              {(() => {
+                const idx = p.mainImageIndex ?? 0;
+                const fallback = p.images && p.images[idx] ? p.images[idx].url : undefined;
+                const src = p.imageUrl || fallback;
+                return src ? <img src={src} alt={p.title} className="h-48 w-full object-cover" /> : null;
+              })()}
+              <div className="p-4">
+                <h3 className="font-semibold">{p.title}</h3>
+                <p className="text-lg font-bold text-pink-600 dark:text-pink-400">£{p.price.toFixed(2)}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AffiliateStorefrontViewer({ handle }) {
+  const { db } = ensureFirebase();
+  const [loading, setLoading] = useState(true);
+  const [storeData, setStoreData] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadStore = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // First, look up the user ID from the handle
+        const handleRef = dbRef(db, `storefrontHandles/${sanitizeHandle(handle)}`);
+        const handleSnap = await get(handleRef);
+
+        if (!handleSnap.exists()) {
+          setError("Store not found");
+          return;
+        }
+
+        const userId = handleSnap.val();
+
+        // Load the storefront data
+        const storeRef = dbRef(db, `storefronts/${userId}`);
+        const storeSnap = await get(storeRef);
+
+        if (!storeSnap.exists()) {
+          setError("Store not found");
+          return;
+        }
+
+        const data = storeSnap.val();
+        setStoreData(data);
+
+        // Load the affiliate's products
+        const productsRef = dbRef(db, `products/${userId}`);
+        const productsSnap = await get(productsRef);
+
+        if (productsSnap.exists()) {
+          const productsData = productsSnap.val();
+          const productsArray = Object.entries(productsData).map(([id, product]) => ({
+            id,
+            ...product
+          }));
+          setProducts(productsArray);
+        }
+
+      } catch (err) {
+        console.error("Error loading store:", err);
+        setError("Failed to load store");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (handle) {
+      loadStore();
+    }
+  }, [handle, db]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading store...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !storeData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Store Not Found</h1>
+          <p className="text-gray-600 mb-8">{error || "This affiliate store doesn't exist."}</p>
+          <a href="#home" className="inline-block bg-gradient-to-r from-pink-500 to-violet-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transition">
+            Back to Home
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const bg = (() => {
+    if (storeData.theme.bgType === "color") return { background: storeData.theme.color || "#ffffff" };
+    if (storeData.theme.bgType === "image") return { backgroundImage: `url(${storeData.theme.imageUrl || ""})`, backgroundSize: "cover", backgroundPosition: "center" };
+    const from = storeData.theme.gradientFrom || "#ec4899"; const to = storeData.theme.gradientTo || "#8b5cf6"; return { backgroundImage: `linear-gradient(90deg, ${from}, ${to})` };
+  })();
+
+  const light = (storeData.theme.textColor || "light") === "light";
+
+  return (
+    <div className="min-h-screen" style={bg}>
+      {/* Banner */}
+      {storeData.bannerUrl && (
+        <div className="relative h-64 overflow-hidden">
+          <img src={storeData.bannerUrl} alt="Store banner" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black bg-opacity-30"></div>
+        </div>
+      )}
+
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        {/* Store Header */}
+        <div className="text-center mb-12">
+          <h1 className={`text-4xl font-bold mb-4 ${light ? 'text-white' : 'text-gray-900'}`}>
+            {storeData.displayName || `@${handle}`}
+          </h1>
+          {storeData.bio && (
+            <p className={`text-xl ${light ? 'text-white text-opacity-90' : 'text-gray-700'}`}>
+              {storeData.bio}
+            </p>
+          )}
+        </div>
+
+        {/* Products Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {products.map((product) => {
+            const mainImageIndex = product.mainImageIndex || 0;
+            const mainImageUrl = product.images && product.images[mainImageIndex] ? product.images[mainImageIndex].url : null;
+
+            return (
+              <div key={product.id} className="flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="relative aspect-[4/3] w-full overflow-hidden">
+                  {mainImageUrl ? (
+                    <img
+                      src={mainImageUrl}
+                      alt={product.title}
+                      className="h-full w-full object-cover transition duration-300 hover:scale-[1.02]"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-zinc-100 dark:bg-zinc-800">
+                      <ImageIcon className="h-8 w-8 text-zinc-400" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-1 flex-col gap-2 p-4">
+                  <div className="min-h-[2.2rem]">
+                    <h3 className="line-clamp-2 text-sm font-semibold">{product.title}</h3>
+                  </div>
+                  {product.description && (
+                    <p className="line-clamp-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+                      {product.description}
+                    </p>
+                  )}
+                  <div className="mt-auto flex items-center justify-between pt-1">
+                    <div className="text-sm font-semibold">£{product.price?.toFixed?.(2) ?? "-"}</div>
+                    <button
+                      onClick={() => {
+                        try { console.log('[AffiliateShopBuilder] product click', { id: product.id, title: product.title, typeId: product.typeId }); } catch(e) {}
+                        // Route based on product type or explicit product title for affiliates
+                        // If this exact affiliate product title is clicked, route to the accryl affiliate page
+                        try {
+                          const title = (product.title || '').toLowerCase();
+                          // match common variants, be forgiving about whitespace/casing
+                          if (title.includes('fotonix') && title.includes('light up')) {
+                            try {
+                              const target = `${window.location.origin}${window.location.pathname}#affiliate-product-accryl`;
+                              console.log('[AffiliateShopBuilder] navigating to', target);
+                              window.location.href = target;
+                            } catch (e) {
+                              window.location.hash = 'affiliate-product-accryl';
+                              try { window.dispatchEvent(new Event('hashchange')); } catch(e) {}
+                            }
+                              return;
+                          }
+                        } catch (e) { /* ignore and fall back */ }
+
+                        // existing routing: special designer types go to the accryl affiliate product page
+                        if (product.typeId === 'lumina-cut-user' || product.typeId === 'light-up-user') {
+                          try {
+                            const target = `${window.location.origin}${window.location.pathname}#affiliate-product-accryl`;
+                            console.log('[AffiliateShopBuilder] navigating to', target);
+                            window.location.href = target;
+                          } catch (e) {
+                            window.location.hash = 'affiliate-product-accryl';
+                            try { window.dispatchEvent(new Event('hashchange')); } catch(e) {}
+                          }
+                        } else {
+                          window.location.hash = `product/${product.id}`;
+                          try { window.dispatchEvent(new Event('hashchange')); } catch(e) {}
+                        }
+                      }}
+                      className="rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:translate-y-[1px]"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {products.length === 0 && (
+          <div className="text-center py-12">
+            <p className={`text-xl ${light ? 'text-white text-opacity-75' : 'text-gray-600'}`}>
+              No products available yet.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}   

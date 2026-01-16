@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256" fill="none">
+  <!-- Simple monoline van icon in neon pink -->
+  <defs>
+    <style>.st{stroke:#FF2D95;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;fill:none}</style>
+  </defs>
+  <path class="st" d="M4 36h36v-8l6-6h8v20" />
+  <rect class="st" x="6" y="24" width="36" height="12" rx="2" />
+  <path class="st" d="M40 36v6" />
+  <circle class="st" cx="18" cy="46" r="4" />
+  <circle class="st" cx="42" cy="46" r="4" />
+</svg>

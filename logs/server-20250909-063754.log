@@ -1,0 +1,4 @@
+OPENAI_API_KEY present: true
+SKIP_OPENAI dev fallback enabled: false
+openaiImageProxy prototype listening (requested) on 0.0.0.0:5002
+Server error on listen: EADDRINUSE - listen EADDRINUSE: address already in use 0.0.0.0:5002
