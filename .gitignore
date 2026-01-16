@@ -2,8 +2,13 @@
 
 # dependencies
 /node_modules
+**/node_modules
 /.pnp
 .pnp.js
+
+# uploads (user files - too large for GitHub)
+/uploads
+uploads/
 
 # testing
 /coverage
