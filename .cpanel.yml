@@ -1,0 +1,6 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/fotonixc/public_html
+    - /bin/cp -R build/* $DEPLOYPATH/
+    - /bin/cp build/.htaccess $DEPLOYPATH/.htaccess 2>/dev/null || true
