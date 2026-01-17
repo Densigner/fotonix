@@ -1,0 +1,11 @@
+# Serve existing files directly
+RewriteEngine On
+RewriteBase /
+
+# If the request is a real file or directory, serve it
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Otherwise send everything to index.html (React SPA fallback)
+RewriteRule ^ index.html [L]

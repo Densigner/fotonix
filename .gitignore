@@ -13,8 +13,8 @@ uploads/
 # testing
 /coverage
 
-# production
-/build
+# production - REMOVED /build so cPanel Git deployment works
+# Build artifacts are now committed for deployment
 
 # misc
 .DS_Store

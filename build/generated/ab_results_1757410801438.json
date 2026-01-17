@@ -1,0 +1,98 @@
+[
+  {
+    "prompt": "Replace the monkeys in this image with snakes; keep all colors, lighting, and the background unchanged.",
+    "opts": {
+      "maskInvert": false,
+      "maskTighten": false
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Replace the monkeys in this image with snakes; keep all colors, lighting, and the background unchanged.",
+    "opts": {
+      "maskInvert": false,
+      "maskTighten": true
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Replace the monkeys in this image with snakes; keep all colors, lighting, and the background unchanged.",
+    "opts": {
+      "maskInvert": true,
+      "maskTighten": false
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Replace the monkeys in this image with snakes; keep all colors, lighting, and the background unchanged.",
+    "opts": {
+      "maskInvert": true,
+      "maskTighten": true
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Edit the uploaded image: only replace the monkeys with snakes. Do not alter the background, camera, lighting, or composition.",
+    "opts": {
+      "maskInvert": false,
+      "maskTighten": false
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Edit the uploaded image: only replace the monkeys with snakes. Do not alter the background, camera, lighting, or composition.",
+    "opts": {
+      "maskInvert": false,
+      "maskTighten": true
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Edit the uploaded image: only replace the monkeys with snakes. Do not alter the background, camera, lighting, or composition.",
+    "opts": {
+      "maskInvert": true,
+      "maskTighten": false
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Edit the uploaded image: only replace the monkeys with snakes. Do not alter the background, camera, lighting, or composition.",
+    "opts": {
+      "maskInvert": true,
+      "maskTighten": true
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Strict edit: replace only the animals with snakes and preserve every other pixel of the image exactly.",
+    "opts": {
+      "maskInvert": false,
+      "maskTighten": false
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Strict edit: replace only the animals with snakes and preserve every other pixel of the image exactly.",
+    "opts": {
+      "maskInvert": false,
+      "maskTighten": true
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Strict edit: replace only the animals with snakes and preserve every other pixel of the image exactly.",
+    "opts": {
+      "maskInvert": true,
+      "maskTighten": false
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  },
+  {
+    "prompt": "Strict edit: replace only the animals with snakes and preserve every other pixel of the image exactly.",
+    "opts": {
+      "maskInvert": true,
+      "maskTighten": true
+    },
+    "error": "FetchError: request to http://127.0.0.1:5002/api/edit-image-upload failed, reason: connect ECONNREFUSED 127.0.0.1:5002"
+  }
+]
