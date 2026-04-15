@@ -4686,65 +4686,7 @@ const MainScreenPBY = () => {
                         </span>
                       </div>
                     ) : (
-                      <>
-                        <div ref={paypalButtonsRef} className="min-h-[50px]" />
-                        {process.env.NODE_ENV === 'development' && (
-                          <button
-                            onClick={async () => {
-                              const addr = shippingAddressRef.current;
-                              if (!addr.name || !addr.addressLine1 || !addr.city || !addr.postcode || !addr.email) {
-                                alert('Please fill in all shipping + email fields before using Fake Pay.');
-                                return;
-                              }
-                              setPaymentProcessing(true);
-                              try {
-                                const uploadResult = await uploadPbnToFirebase();
-                                const orderId = `TEST-PBN-${Date.now()}`;
-                                const isUK = addr.country === 'GB';
-                                const delivery = isUK ? 0 : 4.95;
-                                const resp = await fetch(`${API_URL}/api/pbn/test-capture`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    orderId,
-                                    userId: user?.id || user?.uid || null,
-                                    email: addr.email,
-                                    shippingAddress: addr,
-                                    pbnData: {
-                                      productKey: selectedSize,
-                                      productLabel: currentSizeObj.label || selectedSize,
-                                      materialType,
-                                      selectedSize,
-                                      pricing: { subtotal: currentSizeObj.price.toFixed(2), deliveryFee: delivery.toFixed(2), total: (currentSizeObj.price + delivery).toFixed(2) },
-                                      storageUrls: uploadResult.storageUrls,
-                                      originalImageUrl: uploadResult.originalImageUrl,
-                                      paletteColours: palette.length,
-                                      paletteData: palette.map((col, idx) => {
-                                        const masterIdx = col.masterIndex != null ? col.masterIndex : idx;
-                                        return { number: masterIdx + 1, hex: col.hex, name: col.name || '' };
-                                      }),
-                                      numColors: palette.length,
-                                      detailLevel,
-                                      regionCount: regions.filter(r => r.area > 0).length,
-                                      analysisWidth,
-                                      analysisHeight,
-                                    }
-                                  })
-                                });
-                                const result = await resp.json();
-                                if (result.success) { setOrderComplete(result.orderId); }
-                                else throw new Error(result.error || 'Test capture failed');
-                              } catch (err) {
-                                console.error('Fake pay error:', err);
-                                alert('Fake pay failed: ' + err.message);
-                              } finally { setPaymentProcessing(false); }
-                            }}
-                            className="w-full mt-3 py-2.5 rounded-lg font-semibold text-white bg-purple-600 hover:bg-purple-700 transition-colors text-sm border-2 border-dashed border-purple-400"
-                          >
-                            🧪 Fake Pay (Test) — £{currentSizeObj.price.toFixed(2)}
-                          </button>
-                        )}
-                      </>
+                      <div ref={paypalButtonsRef} className="min-h-[50px]" />
                     )}
 
                     <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-2">Includes your custom design &amp; colour palette key</p>
