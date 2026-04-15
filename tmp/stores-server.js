@@ -12,7 +12,7 @@ const PORT = process.env.STORES_PORT || 3001;
 
 // PostgreSQL connection pool
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://fotonix:fotonixpass@localhost:5432/fotonix_dev'
+  connectionString: process.env.DATABASE_URL
 });
 
 // Test connection

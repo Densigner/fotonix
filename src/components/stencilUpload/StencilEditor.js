@@ -101,6 +101,8 @@ export default function StencilEditor({
   const [simplifyThreshold, setSimplifyThreshold] = useState(3);
   const [gradientMode, setGradientMode] = useState('none'); // 'none', 'dither', 'halftone'
   const [halftoneSize, setHalftoneSize] = useState(4);
+  // Stencil style selection (used when saving/exporting stencils)
+  const [stencilStyle, setStencilStyle] = useState('threshold'); // 'am-halftone', 'fm-halftone', 'threshold', 'dither', 'line'
   const [isProcessing, setIsProcessing] = useState(false);
   
   // Store base image for live adjustments
@@ -252,6 +254,133 @@ export default function StencilEditor({
     setHistoryIndex(prev => Math.min(prev + 1, MAX_HISTORY - 1));
   }, [historyIndex]);
 
+  // Helper function to apply stencil style conversion to image data
+  // Returns an array of booleans indicating if each pixel should be black (material)
+  const applyStencilStyle = useCallback((sourceData, width, height, style, threshold, inverted, dotSize) => {
+    const result = new Uint8Array(width * height);
+    
+    // Get luminance at pixel index
+    const getLum = (i) => sourceData[i] * 0.299 + sourceData[i + 1] * 0.587 + sourceData[i + 2] * 0.114;
+
+    switch (style) {
+      case 'threshold':
+      default: {
+        for (let i = 0; i < sourceData.length; i += 4) {
+          const lum = getLum(i);
+          let isBlack = lum < threshold;
+          if (inverted) isBlack = !isBlack;
+          result[i / 4] = isBlack ? 1 : 0;
+        }
+        break;
+      }
+
+      case 'dither': {
+        const lumArray = new Float32Array(width * height);
+        for (let i = 0; i < sourceData.length; i += 4) {
+          lumArray[i / 4] = getLum(i);
+        }
+
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = y * width + x;
+            const oldLum = lumArray[idx];
+            const newLum = oldLum < threshold ? 0 : 255;
+            const error = oldLum - newLum;
+
+            let isBlack = newLum === 0;
+            if (inverted) isBlack = !isBlack;
+            result[idx] = isBlack ? 1 : 0;
+
+            if (x + 1 < width) lumArray[idx + 1] += error * 7 / 16;
+            if (y + 1 < height) {
+              if (x > 0) lumArray[idx + width - 1] += error * 3 / 16;
+              lumArray[idx + width] += error * 5 / 16;
+              if (x + 1 < width) lumArray[idx + width + 1] += error * 1 / 16;
+            }
+          }
+        }
+        break;
+      }
+
+      case 'am-halftone': {
+        const dotSpacing = Math.max(4, Math.round(dotSize * 2));
+        
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = y * width + x;
+            const pixelIdx = idx * 4;
+            const lum = getLum(pixelIdx);
+            
+            const cellX = x % dotSpacing;
+            const cellY = y % dotSpacing;
+            const centerDist = Math.sqrt(
+              Math.pow(cellX - dotSpacing / 2, 2) + 
+              Math.pow(cellY - dotSpacing / 2, 2)
+            );
+            
+            const maxRadius = dotSpacing / 2;
+            const normalizedLum = lum / 255;
+            const dotRadius = maxRadius * (1 - normalizedLum) * (threshold / 128);
+            
+            let isBlack = centerDist < dotRadius;
+            if (inverted) isBlack = !isBlack;
+            result[idx] = isBlack ? 1 : 0;
+          }
+        }
+        break;
+      }
+
+      case 'fm-halftone': {
+        // Use seeded random for consistency
+        const seedRandom = (seed) => {
+          const x = Math.sin(seed) * 10000;
+          return x - Math.floor(x);
+        };
+        
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = y * width + x;
+            const pixelIdx = idx * 4;
+            const lum = getLum(pixelIdx);
+            
+            const noise = seedRandom(idx * 9999 + 12345) * 255;
+            const thresholdVal = (lum / 255) * 255;
+            let isBlack = noise > thresholdVal * (threshold / 128);
+            if (inverted) isBlack = !isBlack;
+            result[idx] = isBlack ? 1 : 0;
+          }
+        }
+        break;
+      }
+
+      case 'line': {
+        const lineSpacing = Math.max(3, Math.round(dotSize * 1.5));
+        
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = y * width + x;
+            const pixelIdx = idx * 4;
+            const lum = getLum(pixelIdx);
+            
+            const lineY = y % lineSpacing;
+            const lineCenterDist = Math.abs(lineY - lineSpacing / 2);
+            
+            const maxThickness = lineSpacing / 2;
+            const normalizedLum = lum / 255;
+            const lineThickness = maxThickness * (1 - normalizedLum) * (threshold / 128);
+            
+            let isBlack = lineCenterDist < lineThickness;
+            if (inverted) isBlack = !isBlack;
+            result[idx] = isBlack ? 1 : 0;
+          }
+        }
+        break;
+      }
+    }
+
+    return result;
+  }, []);
+
   // Update live stencil preview (converts working canvas to stencil)
   const updateStencilPreview = useCallback(() => {
     if (!workingCanvasRef.current || !stencilCanvasRef.current) return;
@@ -260,51 +389,50 @@ export default function StencilEditor({
     const stencilCanvas = stencilCanvasRef.current;
     const srcCtx = srcCanvas.getContext('2d');
     const stencilCtx = stencilCanvas.getContext('2d');
+    const width = srcCanvas.width;
+    const height = srcCanvas.height;
 
     // Get source image data
-    const imageData = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
+    const imageData = srcCtx.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // Create stencil output - start with transparent
-    const stencilData = stencilCtx.createImageData(stencilCanvas.width, stencilCanvas.height);
+    // Create stencil output
+    const stencilData = stencilCtx.createImageData(width, height);
     const sData = stencilData.data;
 
-    // Convert to black and white stencil based on threshold
-    for (let i = 0; i < data.length; i += 4) {
-      // Calculate luminance
-      const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      
-      // Apply threshold and inversion
-      let isBlack = lum < stencilThreshold;
-      if (stencilInverted) isBlack = !isBlack;
+    // Parse material color once
+    const hex = stencilMaterialColor.slice(1);
+    const matR = parseInt(hex.slice(0, 2), 16);
+    const matG = parseInt(hex.slice(2, 4), 16);
+    const matB = parseInt(hex.slice(4, 6), 16);
 
-      if (isBlack) {
-        // Dark areas = stencil material (what remains)
-        // Parse material color
-        const hex = stencilMaterialColor.slice(1);
-        const r = parseInt(hex.slice(0, 2), 16);
-        const g = parseInt(hex.slice(2, 4), 16);
-        const b = parseInt(hex.slice(4, 6), 16);
-        
-        sData[i] = r;
-        sData[i + 1] = g;
-        sData[i + 2] = b;
-        sData[i + 3] = 255;
+    // Apply stencil style conversion
+    const blackMask = applyStencilStyle(data, width, height, stencilStyle, stencilThreshold, stencilInverted, halftoneSize);
+
+    // Convert mask to pixels
+    for (let i = 0; i < blackMask.length; i++) {
+      const pixelIdx = i * 4;
+      if (blackMask[i]) {
+        // Material (black in export, colored in preview)
+        sData[pixelIdx] = matR;
+        sData[pixelIdx + 1] = matG;
+        sData[pixelIdx + 2] = matB;
+        sData[pixelIdx + 3] = 255;
       } else {
-        // Light areas = cut out (transparent/white to show what sprays through)
+        // Cutout (white/transparent)
         if (showStencilCutouts) {
-          sData[i] = 255;
-          sData[i + 1] = 255;
-          sData[i + 2] = 255;
-          sData[i + 3] = 200; // Semi-transparent to indicate "cut out"
+          sData[pixelIdx] = 255;
+          sData[pixelIdx + 1] = 255;
+          sData[pixelIdx + 2] = 255;
+          sData[pixelIdx + 3] = 200;
         } else {
-          sData[i + 3] = 0; // Fully transparent
+          sData[pixelIdx + 3] = 0;
         }
       }
     }
 
     stencilCtx.putImageData(stencilData, 0, 0);
-  }, [stencilThreshold, stencilInverted, stencilMaterialColor, showStencilCutouts]);
+  }, [stencilThreshold, stencilInverted, stencilMaterialColor, showStencilCutouts, stencilStyle, halftoneSize, applyStencilStyle]);
 
   // Debounced stencil update - call this after any edit
   const triggerStencilUpdate = useCallback(() => {
@@ -321,7 +449,7 @@ export default function StencilEditor({
     if (originalImage && stencilCanvasRef.current) {
       updateStencilPreview();
     }
-  }, [stencilThreshold, stencilInverted, stencilMaterialColor, showStencilCutouts, originalImage]);
+  }, [stencilThreshold, stencilInverted, stencilMaterialColor, showStencilCutouts, stencilStyle, halftoneSize, originalImage]);
 
   // Update stencil preview when history changes (means canvas was modified)
   useEffect(() => {
@@ -860,13 +988,29 @@ export default function StencilEditor({
 
     if (cropWidth <= 0 || cropHeight <= 0) return;
 
+    // Create cropped source data for style processing
+    const croppedData = new Uint8ClampedArray(cropWidth * cropHeight * 4);
+    for (let y = 0; y < cropHeight; y++) {
+      for (let x = 0; x < cropWidth; x++) {
+        const srcX = minX + x;
+        const srcY = minY + y;
+        const srcIdx = (srcY * width + srcX) * 4;
+        const destIdx = (y * cropWidth + x) * 4;
+        croppedData[destIdx] = data[srcIdx];
+        croppedData[destIdx + 1] = data[srcIdx + 1];
+        croppedData[destIdx + 2] = data[srcIdx + 2];
+        croppedData[destIdx + 3] = data[srcIdx + 3];
+      }
+    }
+
+    // Apply stencil style conversion using the same helper as preview
+    const blackMask = applyStencilStyle(croppedData, cropWidth, cropHeight, stencilStyle, stencilThreshold, stencilInverted, halftoneSize);
+
     // Create the stencil canvas (cropped to selection bounds)
     const stencilCanvas = document.createElement('canvas');
     stencilCanvas.width = cropWidth;
     stencilCanvas.height = cropHeight;
     const stencilCtx = stencilCanvas.getContext('2d');
-
-    // Create stencil data (black & white based on threshold)
     const stencilImageData = stencilCtx.createImageData(cropWidth, cropHeight);
     const sData = stencilImageData.data;
 
@@ -876,17 +1020,13 @@ export default function StencilEditor({
         const srcY = minY + y;
         const srcIdx = (srcY * width + srcX) * 4;
         const destIdx = (y * cropWidth + x) * 4;
+        const maskIdx = y * cropWidth + x;
 
         // Check if this pixel is in the selection
         const inSelection = maskData[srcIdx + 3] > 127;
 
         if (inSelection) {
-          // Convert to black/white based on luminance and threshold
-          const lum = data[srcIdx] * 0.299 + data[srcIdx + 1] * 0.587 + data[srcIdx + 2] * 0.114;
-          let isBlack = lum < stencilThreshold;
-          if (stencilInverted) isBlack = !isBlack;
-
-          if (isBlack) {
+          if (blackMask[maskIdx]) {
             // Black = stencil material
             sData[destIdx] = 0;
             sData[destIdx + 1] = 0;
@@ -925,7 +1065,8 @@ export default function StencilEditor({
       thumbnailUrl: thumbnailCanvas.toDataURL('image/png'),
       width: cropWidth,
       height: cropHeight,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      style: stencilStyle // Store the style used
     };
 
     // Add to extracted stencils
@@ -956,7 +1097,7 @@ export default function StencilEditor({
     
     saveToHistory();
     triggerStencilUpdate();
-  }, [selectionMask, stencilThreshold, stencilInverted, extractedStencils, saveToHistory, triggerStencilUpdate]);
+  }, [selectionMask, stencilThreshold, stencilInverted, stencilStyle, halftoneSize, extractedStencils, saveToHistory, triggerStencilUpdate, applyStencilStyle]);
 
   // Delete an extracted stencil
   const deleteExtractedStencil = useCallback((stencilId) => {
@@ -972,6 +1113,8 @@ export default function StencilEditor({
       s.id === stencilId ? { ...s, name: newName } : s
     ));
   }, []);
+
+
 
   // ============================================
   // IMAGE ENHANCEMENT FUNCTIONS
@@ -1226,7 +1369,7 @@ export default function StencilEditor({
       const binary = new Uint8Array(width * height);
       for (let i = 0; i < data.length; i += 4) {
         const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-        binary[i / 4] = lum < 128 ? 1 : 0;
+        binary[i / 4] = lum < 128 ? 1 : 0; // 1 = material (dark), 0 = cut out (light)
       }
 
       // Erosion
@@ -2083,7 +2226,10 @@ export default function StencilEditor({
     const width = canvas.width;
     const height = canvas.height;
 
-    // Create stencil canvas with black/white based on threshold
+    // Apply stencil style conversion using the same helper as preview
+    const blackMask = applyStencilStyle(data, width, height, stencilStyle, stencilThreshold, stencilInverted, halftoneSize);
+
+    // Create stencil canvas with black/white based on style
     const stencilCanvas = document.createElement('canvas');
     stencilCanvas.width = width;
     stencilCanvas.height = height;
@@ -2091,24 +2237,20 @@ export default function StencilEditor({
     const stencilImageData = stencilCtx.createImageData(width, height);
     const sData = stencilImageData.data;
 
-    for (let i = 0; i < data.length; i += 4) {
-      // Convert to luminance
-      const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      let isBlack = lum < stencilThreshold;
-      if (stencilInverted) isBlack = !isBlack;
-
-      if (isBlack) {
+    for (let i = 0; i < blackMask.length; i++) {
+      const pixelIdx = i * 4;
+      if (blackMask[i]) {
         // Black = stencil material
-        sData[i] = 0;
-        sData[i + 1] = 0;
-        sData[i + 2] = 0;
-        sData[i + 3] = 255;
+        sData[pixelIdx] = 0;
+        sData[pixelIdx + 1] = 0;
+        sData[pixelIdx + 2] = 0;
+        sData[pixelIdx + 3] = 255;
       } else {
         // White = cut out
-        sData[i] = 255;
-        sData[i + 1] = 255;
-        sData[i + 2] = 255;
-        sData[i + 3] = 255;
+        sData[pixelIdx] = 255;
+        sData[pixelIdx + 1] = 255;
+        sData[pixelIdx + 2] = 255;
+        sData[pixelIdx + 3] = 255;
       }
     }
 
@@ -2131,20 +2273,20 @@ export default function StencilEditor({
       thumbnailUrl: thumbnailCanvas.toDataURL('image/png'),
       width: width,
       height: height,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      style: stencilStyle // Store the style used
     };
 
     // Send to parent - this will replace any existing extracted stencils with just this one
     onApply([newStencil]);
     onClose();
-  }, [workingCanvasRef, stencilThreshold, stencilInverted, onApply, onClose]);
+  }, [workingCanvasRef, stencilThreshold, stencilInverted, stencilStyle, halftoneSize, onApply, onClose, applyStencilStyle]);
 
   // Apply changes - exports all extracted stencils
   const handleApply = useCallback(() => {
     if (extractedStencils.length === 0) return;
     
     // Send all extracted stencils to the parent component
-    // Each stencil has: id, name, dataUrl, thumbnailUrl, width, height, createdAt
     onApply(extractedStencils);
     onClose();
   }, [onApply, onClose, extractedStencils]);
@@ -2424,7 +2566,7 @@ export default function StencilEditor({
                     <div className="px-3 py-1.5 bg-gray-800/30 border-b border-gray-700/30 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-purple-400 uppercase tracking-wider">
-                          Editing
+                          Editing1111
                         </span>
                         {hasSelection && (
                           <span className="text-xs text-blue-400 flex items-center gap-1">
@@ -2620,7 +2762,7 @@ export default function StencilEditor({
                       </div>
                       
                       {/* Show Cutouts Toggle */}
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
                         <label className="text-xs text-gray-400">Show Cutout Areas</label>
                         <button
                           onClick={() => setShowStencilCutouts(!showStencilCutouts)}
@@ -3137,61 +3279,56 @@ export default function StencilEditor({
                   
                   <div className="border-t border-gray-700/50" />
                   
-                  {/* Gradient to Pattern */}
+                  {/* Stencil Style */}
                   <div>
                     <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
                       <Grid3X3 size={14} />
-                      Gradient to Pattern
+                      Stencil Style
                     </h3>
                     <div className="space-y-3">
-                      <p className="text-xs text-gray-500">Convert smooth gradients to stencil-friendly patterns</p>
+                      <p className="text-xs text-gray-500">Choose a stencil generation style - preview updates live.</p>
+                      <div className="flex items-center gap-3">
+                        <label className="text-xs text-gray-400">Style</label>
+                        <select
+                          id="stencil-style-select"
+                          value={stencilStyle}
+                          onChange={(e) => setStencilStyle(e.target.value)}
+                          className="flex-1 px-2 py-1 rounded bg-gray-700 text-white text-xs border border-gray-600"
+                        >
+                          <option value="threshold">Threshold</option>
+                          <option value="dither">Dither</option>
+                          <option value="am-halftone">AM Halftone</option>
+                          <option value="fm-halftone">FM Halftone</option>
+                          <option value="line">Line Pattern</option>
+                        </select>
+                      </div>
                       
-                      {/* Halftone size (only show when halftone selected) */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-xs text-gray-400">Pattern Size</label>
-                          <span className="text-xs text-gray-300">{halftoneSize}px</span>
+                      {/* Pattern Size - only show for halftone and line styles */}
+                      {['am-halftone', 'fm-halftone', 'line'].includes(stencilStyle) && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs text-gray-400">Pattern Size</label>
+                            <span className="text-xs text-gray-300">{halftoneSize}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="2"
+                            max="16"
+                            value={halftoneSize}
+                            onChange={(e) => setHalftoneSize(Number(e.target.value))}
+                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer
+                                     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 
+                                     [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full 
+                                     [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:cursor-pointer"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            {stencilStyle === 'line' ? 'Line spacing' : 'Dot spacing'}
+                          </p>
                         </div>
-                        <input
-                          type="range"
-                          min="2"
-                          max="12"
-                          value={halftoneSize}
-                          onChange={(e) => setHalftoneSize(Number(e.target.value))}
-                          className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer
-                                   [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 
-                                   [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full 
-                                   [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:cursor-pointer"
-                        />
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <button
-                          onClick={applyDithering}
-                          disabled={isProcessing}
-                          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs
-                            ${!isProcessing
-                              ? 'bg-gray-700 hover:bg-gray-600 text-white' 
-                              : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
-                          title="Floyd-Steinberg dithering"
-                        >
-                          <Sparkles size={12} /> Dither
-                        </button>
-                        <button
-                          onClick={applyHalftone}
-                          disabled={isProcessing}
-                          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs
-                            ${!isProcessing
-                              ? 'bg-gray-700 hover:bg-gray-600 text-white' 
-                              : 'bg-gray-800 text-gray-600 cursor-not-allowed'}`}
-                          title="Halftone dot pattern"
-                        >
-                          <Grid3X3 size={12} /> Halftone
-                        </button>
-                      </div>
+                      )}
                     </div>
                   </div>
-                  
+
                   <div className="border-t border-gray-700/50" />
                   
                   {/* Stencil Analysis */}

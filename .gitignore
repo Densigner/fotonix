@@ -24,6 +24,25 @@ uploads/
 .env.production.local
 .env
 
+# SSH keys
+ssh
+*.pem
+
+# Firebase service account key
+server/serviceAccountKey.json
+serviceAccountKey.json
+
+# Logs
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Sensitive docs and internal notes
+toFinishFotonix/
+SSH_CONNECTION_GUIDE.md
+EMAIL_PRODUCTION_SETUP.md
+EMAIL_VERIFICATION_SYSTEM.md
+
+# Temp / scratch
+tmp/

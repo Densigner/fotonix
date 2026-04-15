@@ -35,35 +35,50 @@ const MyOrders = () => {
       return;
     }
 
-    // Listen to user's stencilOrders node in Firebase
-    const ordersRef = dbRef(db, `users/${uid}/stencilOrders`);
-    // Note: Firebase query orderByChild needs a consistent field. Since older data uses 'timestamp'
-    // and newer test data uses 'createdAt', we query without ordering and sort in JS
-    const ordersQuery = query(ordersRef);
+    // Listen to user's stencilOrders AND pbnOrders nodes in Firebase
+    const stencilRef = dbRef(db, `users/${uid}/stencilOrders`);
+    const pbnRef = dbRef(db, `users/${uid}/pbnOrders`);
 
-    const unsubscribe = onValue(ordersQuery, (snapshot) => {
-      if (snapshot.exists()) {
-        const ordersData = [];
-        snapshot.forEach((childSnapshot) => {
-          ordersData.push({
-            id: childSnapshot.key,
-            ...childSnapshot.val()
-          });
-        });
-        // Sort by newest first - handle both 'timestamp' and 'createdAt' fields
-        ordersData.sort((a, b) => {
-          const timeA = a.timestamp || a.createdAt || 0;
-          const timeB = b.timestamp || b.createdAt || 0;
-          return timeB - timeA;
-        });
-        setOrders(ordersData);
-      } else {
-        setOrders([]);
-      }
+    let stencilOrders = [];
+    let pbnOrders = [];
+    let stencilLoaded = false;
+    let pbnLoaded = false;
+
+    const mergeAndSet = () => {
+      if (!stencilLoaded || !pbnLoaded) return;
+      const all = [...stencilOrders, ...pbnOrders];
+      all.sort((a, b) => {
+        const timeA = a.timestamp || a.createdAt || 0;
+        const timeB = b.timestamp || b.createdAt || 0;
+        return timeB - timeA;
+      });
+      setOrders(all);
       setLoading(false);
+    };
+
+    const unsubStencil = onValue(query(stencilRef), (snapshot) => {
+      stencilOrders = [];
+      if (snapshot.exists()) {
+        snapshot.forEach((child) => {
+          stencilOrders.push({ id: child.key, orderType: 'stencil', ...child.val() });
+        });
+      }
+      stencilLoaded = true;
+      mergeAndSet();
     });
 
-    return () => unsubscribe();
+    const unsubPbn = onValue(query(pbnRef), (snapshot) => {
+      pbnOrders = [];
+      if (snapshot.exists()) {
+        snapshot.forEach((child) => {
+          pbnOrders.push({ id: child.key, orderType: 'pbn', ...child.val() });
+        });
+      }
+      pbnLoaded = true;
+      mergeAndSet();
+    });
+
+    return () => { unsubStencil(); unsubPbn(); };
   }, [uid]);
 
   const formatDate = (timestamp) => {
@@ -103,6 +118,11 @@ const MyOrders = () => {
     return order.stencilData?.layerColors || order.paintingGuide?.layerColors || [];
   };
 
+  // Helper to check if order is a PBN product
+  const isPbnOrder = (order) => {
+    return order.orderType === 'pbn';
+  };
+
   // Helper to check if order is an acrylic/LED product
   const isAcrylicOrder = (order) => {
     return order.productType === 'acrylic' || order.id?.startsWith('ACRYLIC-');
@@ -113,6 +133,9 @@ const MyOrders = () => {
     if (isAcrylicOrder(order)) {
       return order.productName || 'Side-Lit Acrylic Lamp';
     }
+    if (isPbnOrder(order)) {
+      return order.productLabel || 'Paint-by-Numbers Kit';
+    }
     return 'Custom Stencil Set';
   };
 
@@ -120,6 +143,9 @@ const MyOrders = () => {
   const getOrderThumbnail = (order) => {
     if (isAcrylicOrder(order)) {
       return order.designImageUrl || null;
+    }
+    if (isPbnOrder(order)) {
+      return order.metadata?.originalImageUrl || null;
     }
     return order.stencilData?.originalImageUrl || null;
   };
@@ -210,7 +236,7 @@ const MyOrders = () => {
             My Orders
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            View your stencils and acrylic lamp orders
+            View your stencils, paint-by-numbers and acrylic lamp orders
           </p>
         </div>
 
@@ -295,6 +321,11 @@ const MyOrders = () => {
                           <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                             {getProductName(order)}
                           </h3>
+                          {isPbnOrder(order) && (
+                            <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium rounded-full">
+                              PBN
+                            </span>
+                          )}
                           {isAcrylicOrder(order) && (
                             <span className="px-2 py-0.5 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 text-xs font-medium rounded-full">
                               LED Lamp
@@ -307,10 +338,16 @@ const MyOrders = () => {
                             <Calendar className="h-4 w-4" />
                             {formatDate(getOrderDate(order))}
                           </span>
-                          {!isAcrylicOrder(order) && (
+                          {!isAcrylicOrder(order) && !isPbnOrder(order) && (
                             <span className="flex items-center gap-1">
                               <Layers className="h-4 w-4" />
                               {getLayerCount(order) || '?'} layers
+                            </span>
+                          )}
+                          {isPbnOrder(order) && (
+                            <span className="flex items-center gap-1">
+                              <ImageIcon className="h-4 w-4" />
+                              {order.metadata?.numColors || order.paletteColours || '?'} colours
                             </span>
                           )}
                           {isAcrylicOrder(order) && (
@@ -605,13 +642,21 @@ const MyOrders = () => {
           <div className="mt-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl p-6 text-white text-center">
             <h3 className="text-xl font-bold mb-2">Create More Stencils</h3>
             <p className="text-white/90 mb-4">Turn any image into professional multi-layer stencils</p>
-            <a 
-              href="/tools/stencil-generator" 
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-gray-100 transition-all font-semibold shadow-lg"
-            >
-              <Layers className="h-5 w-5" />
-              Go to Stencil Generator
-            </a>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a 
+                href="/tools/stencil-generator" 
+                className="inline-flex items-center gap-2 px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-gray-100 transition-all font-semibold shadow-lg"
+              >
+                <Layers className="h-5 w-5" />
+                Stencil Generator
+              </a>
+              <a 
+                href="/tools/paint-by-numbers" 
+                className="inline-flex items-center gap-2 px-6 py-3 bg-white text-amber-600 rounded-lg hover:bg-gray-100 transition-all font-semibold shadow-lg"
+              >
+                🖌️ PaintYourPhoto
+              </a>
+            </div>
           </div>
         )}
       </div>

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
 import { Search, ArrowRight, User } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import TrustBar from './TrustBar';
 import productsData from '../../data/productsData';
 
 const gradientBtn =
@@ -153,6 +152,7 @@ function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, o
           {/* Products, Community, Store Builder, Members, Support, Affiliates, Advanced Inbox hidden for launch */}
           <a href="/my-orders" className="text-sm text-neutral-200 hover:text-white">My Orders</a>
           <a href="/tools/stencil-generator" className="text-sm bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent font-semibold hover:from-purple-400 hover:to-pink-400">Stencil Generator</a>
+          <a href="/tools/paint-by-numbers" className="text-sm bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent font-semibold hover:from-amber-300 hover:to-orange-400">PaintYourPhoto</a>
         </nav>
 
   {/* Desktop Search */}
@@ -291,6 +291,7 @@ function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, o
             {/* Products, Community, Store Builder, Members, Support, Affiliates, Advanced Inbox hidden for launch */}
             <a href="/my-orders" className="block px-2 py-2 rounded-lg text-neutral-200 hover:bg-white/10">📦 My Orders</a>
             <a href="/tools/stencil-generator" className="block px-2 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold hover:from-purple-600 hover:to-pink-600">🎨 Stencil Generator</a>
+            <a href="/tools/paint-by-numbers" className="block px-2 py-2 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 text-white font-semibold hover:from-amber-500 hover:to-orange-600">🖌️ PaintYourPhoto</a>
           </nav>
 
           {/* Mobile actions */}
@@ -325,9 +326,6 @@ function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, o
         </div>
       )}
       </header>
-
-      {/* Trust / transparency bar - links to YouTube workshop videos */}
-      <TrustBar />
 
       {/* Search dropdown rendered via portal to escape sticky header clipping */}
       {(() => {

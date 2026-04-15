@@ -48,16 +48,16 @@ Write-Host "4. Creating environment configuration..." -ForegroundColor Yellow
 $envContent = @"
 NODE_ENV=production
 PORT=4000
-DATABASE_URL=postgresql://fotonix:fotonixpass@127.0.0.1:5432/fotonix_prod
+DATABASE_URL=postgresql://fotonix:your_password@127.0.0.1:5432/fotonix_prod
 
 # SMTP Configuration
-SMTP_HOST=localhost
+SMTP_HOST=mail.fotonix.co.uk
 SMTP_PORT=587
 SMTP_USER=noreply@fotonix.co.uk
-SMTP_PASS=your_smtp_password_here
+SMTP_PASS=your_smtp_password
 
 # Webhook security
-WEBHOOK_SECRET=fotonix-webhook-secret-2024
+WEBHOOK_SECRET=your_webhook_secret
 "@
 
 $envContent | ssh $VPS_HOST "cat > $VPS_DIR/.env"

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
-// PayPal configuration - prefer env variable, fallback to hardcoded sandbox ID
-const PAYPAL_CLIENT_ID = process.env.REACT_APP_PAYPAL_CLIENT_ID || 'Aab6IHfog5quDJp4kfy5sqiuo4YcTZaQ3SR8VpwUgDoDphLXmrKwqhog_u-cktkgIaSrsXwxH8HNE-Jf';
+// PayPal configuration
+const PAYPAL_CLIENT_ID = process.env.REACT_APP_PAYPAL_CLIENT_ID;
 const PAYPAL_CURRENCY = 'GBP';
 
 function PayPalSDKLoader({ onLoad }) {

@@ -5,7 +5,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: fotonix
-      POSTGRES_PASSWORD: fotonixpass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: fotonix_dev
     ports:
       - "5432:5432"

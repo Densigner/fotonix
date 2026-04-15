@@ -56,11 +56,11 @@ npm install
 # Create .env file with PayPal credentials:
 cat > .env << 'EOF'
 PAYPAL_ENV=sandbox
-PAYPAL_CLIENT_ID=AWe0IKuw_hwCKGDtSb3jYG734rQFLitGgcROWvGF1h5xf8IUEL-Yrq8Vk08vUKF044KSs6l2KPetIRY5
-PAYPAL_CLIENT_SECRET=EBkexPM5kxV7_OhyN4_YAvOHvzC8euiOdx4dZLeCwKcJQ1hjCZ6HSY1pTSJayNatFW_CkBVlzuKgTURk
-PAYPAL_WEBHOOK_ID=42925362X3827115B
-COOKIE_SECRET=288ef93df507dc649bfa77c5ee458a1e712fbdf7780b957d9a3382cbbdae7b
-DATABASE_URL=postgres://fotonix:fotonixpass@localhost:5432/fotonix_dev
+PAYPAL_CLIENT_ID=your_paypal_client_id
+PAYPAL_CLIENT_SECRET=your_paypal_client_secret
+PAYPAL_WEBHOOK_ID=your_webhook_id
+COOKIE_SECRET=your_cookie_secret
+DATABASE_URL=postgres://fotonix:your_password@localhost:5432/fotonix_dev
 OPENAI_API_KEY=your_openai_key
 PORT=4000
 EOF

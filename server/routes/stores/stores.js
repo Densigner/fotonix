@@ -8,7 +8,7 @@ const { Pool } = require('pg');
 
 // PostgreSQL connection pool
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://fotonix:fotonixpass@51.75.78.118:5432/fotonix_dev'
+  connectionString: process.env.DATABASE_URL
 });
 
 // Test pool on load

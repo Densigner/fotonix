@@ -1,143 +1,98 @@
 /**
- * AM (Amplitude-Modulated) Dot Halftone Generator
- * 
- * Classic AM halftone: fixed orthogonal grid of perfectly circular dots
- * where brightness is encoded exclusively by dot radius.
- * 
- * Features:
- * - Fixed spacing grid, varying dot sizes (NOT density)
- * - Crisp circular dots that NEVER merge
- * - Smooth tone transitions, no banding
- * - Minimum feature size enforcement for Mylar/laser cutting
- * - Strict gap enforcement between all dots
+ * Laser-Manufacturable Stencil Geometry Generator
+ *
+ * Converts images into vector geometry optimized for CO₂ laser cutting on Mylar.
+ * This is NOT a halftone algorithm — it is a manufacturing-aware stencil generator.
+ *
+ * Design Principles:
+ *   - Manufacturability over image accuracy
+ *   - 2-tier quantized dot system: SMALL + LARGE only (NO medium dots)
+ *   - Dark regions become solid closed vector shapes, not dense dots
+ *   - Enforced minimum bridge width between all cuts
+ *   - Single-layer, single-color (black) SVG output
+ *   - All geometry is closed filled paths suitable for laser cutting
+ *
+ * Tone Mapping (luminance 0=black, 1=white):
+ *   Very light  (lum >= lightCutoff)                    → empty (no cut)
+ *   Light       (largeDotCutoff <= lum < lightCutoff)   → SMALL dots
+ *   Mid         (solidCutoff <= lum < largeDotCutoff)   → LARGE dots
+ *   Dark        (lum < solidCutoff)                     → solid filled vector regions
  */
 
-/**
- * Default options for classic AM halftone
- */
+// ═══════════════════════════════════════════════════════════════
+// MANUFACTURING CONFIGURATION (edit these for your laser/material)
+// ═══════════════════════════════════════════════════════════════
+
+// Dot shape: "circle" | "square" | "diamond"
+const DOT_SHAPE = "circle";
+
+// Dot diameters — hard manufacturing limits, NOT suggestions
+const SMALL_DOT_DIAMETER_MM = 1.0;  // Minimum manufacturable dot
+const LARGE_DOT_DIAMETER_MM = 3.0;  // 3× small (valid range: 2.5×–4×)
+
+// Minimum bridge: material that MUST remain between any two laser cuts
+const MIN_BRIDGE_MM = 0.8;
+
+// Tone classification thresholds (luminance 0–1)
+const LIGHT_CUTOFF    = 0.78;  // >= this → no cut at all
+const LARGE_DOT_CUTOFF = 0.50; // >= this AND < LIGHT → small dot
+const SOLID_CUTOFF     = 0.25; // < this → solid filled vector region
+// (between SOLID_CUTOFF..LARGE_DOT_CUTOFF → large dot)
+
+// Solid region minimum area (px²) — prevents noise specks becoming cut-outs
+const MIN_SOLID_AREA_PX = 200;
+
+// Morphological closing radius for solid region cleanup (px)
+const SOLID_CLOSING_RADIUS = 5;
+
+// Douglas-Peucker simplification epsilon (higher = fewer path points)
+const PATH_SIMPLIFY_EPSILON = 1.5;
+
+// ═══════════════════════════════════════════════════════════════
+// EXPORTS (preserved API contract — callers must not break)
+// ═══════════════════════════════════════════════════════════════
+
 export const DEFAULT_HALFTONE_OPTIONS = {
   dpi: 300,
-  dotSpacingMm: 3.0,
-  gamma: 1.0,                    // 1.0 = linear, <1 = darker midtones, >1 = lighter midtones
-  contrast: 1.3,                 // Boost contrast for punchy halftone look
-  blurRadiusPx: 1.5,             // Light blur to prevent speckle
-  lightCutoff: 0.88,             // Above this brightness, no dot (clean highlights)
-  darkCutoff: 0.05,              // Below this brightness, use maximum dot size
-  solidCutoff: 0.60,             // Portrait mode: luminance below this becomes solid shadow
-  minDotSizeFraction: 0.15,      // Minimum dot as fraction of max (prevents too-small dots)
-  minCutDiameterMm: 0.8,         // FIXED at 0.8mm for laser safety - do not change
-  minWebMm: 1.0,                 // Minimum material between holes (dots NEVER touch)
-  // ISLAND BRIDGING: Automatic dot bridges for floating pieces
-  enableIslandBridging: false,   // Off by default — enable manually if needed
-  bridgeDotSpacing: 0.8,         // Spacing between bridge dots (mm)
-  minIslandSize: 100,            // Minimum island area to bridge (px²)
+  dotSpacingMm: 2.0,
+  gamma: 1.0,
+  contrast: 1.3,
+  blurRadiusPx: 1.5,
+  lightCutoff: LIGHT_CUTOFF,
+  darkCutoff: SOLID_CUTOFF,
+  solidCutoff: SOLID_CUTOFF,
+  minCutDiameterMm: SMALL_DOT_DIAMETER_MM,
+  minWebMm: MIN_BRIDGE_MM,
   invert: false,
-  rotationDeg: 0,                // 0 = orthogonal grid (classic look)
+  rotationDeg: 0,
   maxCircles: 250000,
-  // HYBRID MODE: Solid shapes + dots
-  useSolidRegions: false,        // Enable solid filled regions for dark areas
-  solidThreshold: 0.15,          // Luminance below this becomes solid shape (0-1)
-  solidBlurRadiusPx: 3.0,        // Blur for smooth solid boundaries
-  minSolidAreaPx: 100,           // Minimum area to qualify as solid region
+  useSolidRegions: true,
+  solidThreshold: SOLID_CUTOFF,
+  solidBlurRadiusPx: 3.0,
+  minSolidAreaPx: MIN_SOLID_AREA_PX,
 };
 
 
 
-// Fixed laser safety constant - do not allow user to change
-export const MIN_CUT_DIAMETER_MM = 0.8;
+export const MIN_CUT_DIAMETER_MM = SMALL_DOT_DIAMETER_MM;
 
-// Portrait halftone profile (reversible via enablePortraitMode)
-const halftoneProfile = {
-  enablePortraitMode: true,
-  enableBackgroundExclusion: true,
-  enableThreeToneSplit: true,
-  enableSolidFloodGuard: true,
-  enableDotLuminanceSource: true,
-  debugPortraitMode: false,
-};
+// ═══════════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
 
-// Portrait thresholds (only used when portrait mode is enabled)
-const portraitThresholds = {
-  backgroundThreshold: 0.9,
-  backgroundVarianceThreshold: 0.01,
-  solidCutoff: 0.32,
-  dotCutoff: 0.65,
-  floodFillRatio: 0.85,
-};
-
-// High-level portrait halftone mode (reversible)
-const halftoneMode = {
-  enableSubjectIsolation: true,
-  enableThreeToneModel: true,
-  enablePortraitDotFalloff: true,
-  enableSolidShadowOnly: true,
-};
-
-// Reversible portrait shadow flags (new, safe)
-const ENABLE_SOLID_SHADOWS = true;
-const DISABLE_MARCHING = true;
-const DEBUG_PORTRAIT_OVERLAY = false; // Disabled for production
-
-// 🔧 SOLID DOMINANCE: Luminance-only detection + edge dilation (reversible)
-const ENABLE_SOLID_DOMINANCE = true;
-
-// 🔧 DOT ELIGIBILITY: Gate dot placement instead of overriding (reversible)
-const ENABLE_DOT_ELIGIBILITY_MASK = true;
-
-// 🔒 RUIDA TWO-LAYER BINARY DOT SYSTEM (non-negotiable)
-const ENABLE_BINARY_DOT_SIZING = true;
-const TINY_DOT_DIAMETER_MM = 0.8;   // Layer 1: small dots (was 0.25)
-const LARGE_DOT_DIAMETER_MM = 2.5;  // Layer 2: large dots (was 0.8)
-const DOT_SIZE_THRESHOLD = 0.5;     // luminance threshold: <0.5 = LARGE, ≥0.5 = TINY
-const MIN_BRIDGE_MM = 1.5;          // Minimum Mylar bridge between any two cuts
-
-// Portrait 3-band tonal model (thresholds from config)
-const DOT_CUTOFF = 0.65;
-const BG_LUM_THRESHOLD = 0.9;
-const BG_VAR_THRESHOLD = 0.01;
-
-/**
- * Utility: clamp value between min and max
- */
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-/**
- * Apply default values to options
- */
-function applyDefaults(opts) {
-  return {
-    outputWidthMm: opts.outputWidthMm,
-    outputHeightMm: opts.outputHeightMm,
-    dpi: opts.dpi ?? 300,
-    dotSpacingMm: opts.dotSpacingMm ?? 1.2,
-    rotationDeg: opts.rotationDeg ?? 0,
-    gamma: opts.gamma ?? 1.0,
-    contrast: opts.contrast ?? 1.3,
-    blurRadiusPx: opts.blurRadiusPx ?? 1.5,
-    lightCutoff: opts.lightCutoff ?? 0.88,
-    darkCutoff: opts.darkCutoff ?? 0.05,
-    solidCutoff: opts.solidCutoff ?? 0.60,
-    minDotSizeFraction: opts.minDotSizeFraction ?? 0.15,
-    minCutDiameterMm: opts.minCutDiameterMm ?? 0.5,
-    minWebMm: opts.minWebMm ?? 0.4,
-    enableIslandBridging: opts.enableIslandBridging ?? false,
-    bridgeDotSpacing: opts.bridgeDotSpacing ?? 0.8,
-    minIslandSize: opts.minIslandSize ?? 100,
-    invert: opts.invert ?? false,
-    maxCircles: opts.maxCircles ?? 250000,
-    useSolidRegions: opts.useSolidRegions ?? false,
-    solidThreshold: opts.solidThreshold ?? 0.15,
-    solidBlurRadiusPx: opts.solidBlurRadiusPx ?? 3.0,
-    minSolidAreaPx: opts.minSolidAreaPx ?? 100,
-  };
+/** ITU-R BT.601 luminance from RGB (0–255 input → 0–1 output) */
+function getLuminance(r, g, b) {
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
-/**
- * Apply contrast adjustment to image data
- * Uses sigmoid-like curve for natural contrast boost
- */
+// ═══════════════════════════════════════════════════════════════
+// IMAGE PREPROCESSING
+// ═══════════════════════════════════════════════════════════════
+
 function applyContrast(imageData, contrast) {
   const data = imageData.data;
   // Standard contrast formula
@@ -1526,47 +1481,6 @@ function maskToRects(mask, width, height) {
 }
 
 /**
- * Merge 1px-tall scanline rects into larger merged rectangles.
- * Adjacent rects on consecutive rows with the same x and width are merged
- * vertically, preserving exact shape while dramatically reducing rect count.
- */
-function mergeRects(rects) {
-  if (rects.length === 0) return [];
-
-  // Sort by x, then y for consistent merging
-  const sorted = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.width - b.width);
-
-  // Group by (x, width) — these are potential vertical merge candidates
-  const groups = new Map();
-  for (const r of sorted) {
-    const key = `${r.x}_${r.width}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
-  }
-
-  const merged = [];
-  for (const [, group] of groups) {
-    // Sort by y within group
-    group.sort((a, b) => a.y - b.y);
-
-    let current = { ...group[0] };
-    for (let i = 1; i < group.length; i++) {
-      const next = group[i];
-      // If this rect is immediately below (adjacent row), extend height
-      if (next.y === current.y + current.height) {
-        current.height += next.height;
-      } else {
-        merged.push(current);
-        current = { ...next };
-      }
-    }
-    merged.push(current);
-  }
-
-  return merged;
-}
-
-/**
  * Compute local variance map on luminance image (0-1)
  * Uses 3x3 neighborhood for efficiency.
  */
@@ -2169,17 +2083,8 @@ function generateGrid(
 }
 
 /**
- * Build the final SVG string as a SINGLE compound path.
- *
- * Stencil construction: BASE_PLATE minus DOT_HOLES minus DARK_REGIONS
- *
- * Uses SVG even-odd fill rule with subpaths:
- *   - Outer rectangle (clockwise) = stencil sheet
- *   - Every dot hole (counter-clockwise) = cut-out
- *   - Every dark region (counter-clockwise) = cut-out
- *
- * Result: exactly ONE <path> element, ONE fill, NO strokes.
- * Laser controllers see continuous geometry for optimal motion planning.
+ * Build the final SVG string
+ * Clean vector output with circles
  */
 function buildSVG(
   dotsOrLayers,
@@ -2194,112 +2099,176 @@ function buildSVG(
   bridgeDots = []
 ) {
   const precision = 3;
+  const lines = [];
 
-  // Collect ALL dots from binary or legacy mode into one flat array
+  // Handle binary layer system vs legacy single array
   const isBinaryMode = ENABLE_BINARY_DOT_SIZING && dotsOrLayers.tinyDots && dotsOrLayers.largeDots;
-  const allDots = [];
+  const tinyDots = isBinaryMode ? dotsOrLayers.tinyDots : [];
+  const largeDots = isBinaryMode ? dotsOrLayers.largeDots : [];
+  const legacyDots = isBinaryMode ? [] : dotsOrLayers;
+
+  // SVG header with mm dimensions and px viewBox
+  lines.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${widthPx} ${heightPx}">`
+  );
 
   if (isBinaryMode) {
-    for (const d of dotsOrLayers.tinyDots) allDots.push(d);
-    for (const d of dotsOrLayers.largeDots) allDots.push(d);
-  } else if (Array.isArray(dotsOrLayers)) {
-    for (const d of dotsOrLayers) allDots.push(d);
-  }
-
-  // Bridge dots (use .x/.y/.r instead of .cx/.cy/.radius)
-  const bridgeDotsNormalized = bridgeDots.map(d => ({ cx: d.x, cy: d.y, radius: d.r }));
-  for (const d of bridgeDotsNormalized) allDots.push(d);
-
-  // ═══════════════════════════════════════════════════════════
-  // Build single compound path: outer boundary + all holes
-  // ═══════════════════════════════════════════════════════════
-
-  // Number of arc segments for circle approximation
-  // 16 segments gives smooth circles while keeping path data reasonable
-  const circleSegments = 16;
-
-  const pathParts = [];
-
-  // DOT HOLES: each dot becomes a counter-clockwise circular subpath
-  for (const dot of allDots) {
-    const cx = dot.cx;
-    const cy = dot.cy;
-    const r = dot.radius;
-    if (r <= 0) continue;
-
-    // Build circle hole as polygon segments (counter-clockwise for even-odd hole)
-    let holePath = '';
-    for (let i = 0; i <= circleSegments; i++) {
-      // Counter-clockwise: negative angle direction
-      const angle = -((2 * Math.PI * i) / circleSegments);
-      const px = cx + r * Math.cos(angle);
-      const py = cy + r * Math.sin(angle);
-      if (i === 0) {
-        holePath += `M ${px.toFixed(precision)} ${py.toFixed(precision)}`;
-      } else {
-        holePath += ` L ${px.toFixed(precision)} ${py.toFixed(precision)}`;
+    // 🔒 RUIDA THREE-LAYER STENCIL OUTPUT
+    const solidCount = solidPixelMask ? solidPixelMask.reduce((s, v) => s + v, 0) : 0;
+    lines.push(`  <!-- 🔒 RUIDA THREE-LAYER STENCIL OUTPUT -->`);
+    lines.push(`  <!-- Layer 1 (SOLIDS): ${solidCount} solid pixels -->`);
+    lines.push(`  <!-- Layer 2 (SMALL_DOTS): ${tinyDots.length} TINY dots (${TINY_DOT_DIAMETER_MM}mm) -->`);
+    lines.push(`  <!-- Layer 3 (LARGE_DOTS): ${largeDots.length} LARGE dots (${LARGE_DOT_DIAMETER_MM}mm) -->`);
+    lines.push(``);
+    
+    // LAYER 1: SOLIDS ONLY (vector cut outlines)
+    lines.push(`  <g id="LAYER1_SOLIDS" fill="red">`);
+    
+    if (solidPixelMask) {
+      console.log(`🔧 [buildSVG] Converting solidPixelMask to rectangles...`);
+      const solidCount = solidPixelMask.reduce((sum, v) => sum + v, 0);
+      console.log(`  Mask has ${solidCount}px of solid data`);
+      const rects = maskToRects(solidPixelMask, widthPx, heightPx);
+      console.log(`  maskToRects() produced ${rects.length} rectangles`);
+      if (rects.length === 0) {
+        console.error(`❌ CRITICAL: maskToRects returned 0 rects despite ${solidCount}px in mask!`);
+      }
+      lines.push(`    <!-- Solid stencil shapes (${rects.length} rects) -->`);
+      for (const r of rects) {
+        lines.push(`    <rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/>`);
+      }
+      console.log(`  Added ${rects.length} <rect> elements to SVG`);
+    } else if (solidPaths.length > 0) {
+      lines.push(`    <!-- Solid stencil shapes (${solidPaths.length} paths) -->`);
+      for (const path of solidPaths) {
+        if (path.length < 3) continue;
+        let pathData = `M ${path[0].x.toFixed(precision)} ${path[0].y.toFixed(precision)}`;
+        for (let i = 1; i < path.length; i++) {
+          pathData += ` L ${path[i].x.toFixed(precision)} ${path[i].y.toFixed(precision)}`;
+        }
+        pathData += ' Z';
+        lines.push(`    <path d="${pathData}"/>`);
       }
     }
-    holePath += ' Z';
-    pathParts.push(holePath);
-  }
-
-  // SOLID REGION HOLES: dark merged regions as counter-clockwise subpaths.
-  // When a pixel mask exists, convert scanlines → merged rects (same exact shape,
-  // far fewer laser moves). When vector contour paths exist, use those directly.
-  let solidHoleCount = 0;
-
-  if (solidPixelMask) {
-    // Convert pixel mask to scanline rects, then merge vertically-adjacent
-    // rects with same x+width into larger blocks. Preserves exact shape.
-    const rawRects = maskToRects(solidPixelMask, widthPx, heightPx);
-    const merged = mergeRects(rawRects);
-    console.log(`[buildSVG] Solid mask: ${rawRects.length} scanlines → ${merged.length} merged rects`);
-
-    for (const rect of merged) {
-      const x1 = rect.x, y1 = rect.y;
-      const x2 = rect.x + rect.width, y2 = rect.y + rect.height;
-      // Counter-clockwise rectangle hole
-      pathParts.push(`M ${x1} ${y1} L ${x1} ${y2} L ${x2} ${y2} L ${x2} ${y1} Z`);
+    
+    // Bridge dots for island connections (keep with solids layer)
+    if (bridgeDots.length > 0) {
+      lines.push(`    <!-- Island bridge dots: ${bridgeDots.length} × ${LARGE_DOT_DIAMETER_MM}mm -->`);
+      for (const dot of bridgeDots) {
+        lines.push(
+          `    <circle cx="${dot.x.toFixed(precision)}" cy="${dot.y.toFixed(precision)}" r="${dot.r.toFixed(precision)}"/>` 
+        );
+      }
     }
-    solidHoleCount = merged.length;
+    
+    lines.push(`  </g>`);
+    lines.push(``);
+    
+    // LAYER 2: SMALL/TINY DOTS (vector perforations)
+    lines.push(`  <g id="LAYER2_SMALL_DOTS" fill="blue">`);
+    
+    if (tinyDots.length > 0) {
+      lines.push(`    <!-- TINY perforation dots: ${tinyDots.length} × ${TINY_DOT_DIAMETER_MM}mm -->`);
+      for (const dot of tinyDots) {
+        lines.push(
+          `    <circle cx="${dot.cx.toFixed(precision)}" cy="${dot.cy.toFixed(precision)}" r="${dot.radius.toFixed(precision)}"/>` 
+        );
+      }
+    }
+    
+    lines.push(`  </g>`);
+    lines.push(``);
+    
+    // LAYER 3: LARGE DOTS (dither/image fill)
+    lines.push(`  <g id="LAYER3_LARGE_DOTS" fill="black">`);
+    
+    if (largeDots.length > 0) {
+      lines.push(`    <!-- LARGE halftone dots: ${largeDots.length} × ${LARGE_DOT_DIAMETER_MM}mm -->`);
+      for (const dot of largeDots) {
+        lines.push(
+          `    <circle cx="${dot.cx.toFixed(precision)}" cy="${dot.cy.toFixed(precision)}" r="${dot.radius.toFixed(precision)}"/>`
+        );
+      }
+    }
+    
+    lines.push(`  </g>`);
+    
+  } else {
+    // Legacy single-layer mode
+    if (invert) {
+      lines.push(`  <rect x="0" y="0" width="${widthPx}" height="${heightPx}" fill="black"/>`);
+      lines.push(`  <g fill="white">`);
+    } else {
+      lines.push(`  <g fill="black">`);
+    }
+
+  // Output solid region paths or mask-based solids FIRST
+  if (solidPixelMask) {
+    console.log(`🔧 [buildSVG] Converting solidPixelMask to rectangles...`);
+    const solidCount = solidPixelMask.reduce((sum, v) => sum + v, 0);
+    console.log(`  Mask has ${solidCount}px of solid data`);
+    const rects = maskToRects(solidPixelMask, widthPx, heightPx);
+    console.log(`  maskToRects() produced ${rects.length} rectangles`);
+    if (rects.length === 0) {
+      console.error(`❌ CRITICAL: maskToRects returned 0 rects despite ${solidCount}px in mask!`);
+    }
+    lines.push(`    <!-- Solid cut-out regions (mask-based: ${rects.length} rects) -->`);
+    for (const r of rects) {
+      lines.push(`    <rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/>`);
+    }
+    console.log(`  Added ${rects.length} <rect> elements to SVG`);
   } else if (solidPaths.length > 0) {
-    // Vector contour paths — reverse winding to counter-clockwise
+    lines.push(`    <!-- Solid cut-out regions (${solidPaths.length} paths) -->`);
     for (const path of solidPaths) {
       if (path.length < 3) continue;
-      const reversed = [...path].reverse();
-      let holePath = `M ${reversed[0].x.toFixed(precision)} ${reversed[0].y.toFixed(precision)}`;
-      for (let i = 1; i < reversed.length; i++) {
-        holePath += ` L ${reversed[i].x.toFixed(precision)} ${reversed[i].y.toFixed(precision)}`;
+      
+      let pathData = `M ${path[0].x.toFixed(precision)} ${path[0].y.toFixed(precision)}`;
+      for (let i = 1; i < path.length; i++) {
+        pathData += ` L ${path[i].x.toFixed(precision)} ${path[i].y.toFixed(precision)}`;
       }
-      holePath += ' Z';
-      pathParts.push(holePath);
+      pathData += ' Z'; // Close path
+      
+      lines.push(`    <path d="${pathData}"/>`);
     }
-    solidHoleCount = solidPaths.length;
   }
 
-  // Combine into single compound path string
-  const compoundPath = pathParts.join(' ');
-
-  const tinyCount = isBinaryMode ? dotsOrLayers.tinyDots.length : 0;
-  const largeCount = isBinaryMode ? dotsOrLayers.largeDots.length : 0;
-  const totalDots = allDots.length;
-  const solidHoles = solidHoleCount;
-
-  console.log(`[buildSVG] Single compound path: ${totalDots} dot holes + ${solidHoles} solid holes`);
-  if (isBinaryMode) {
-    console.log(`  Small dots: ${tinyCount} (${TINY_DOT_DIAMETER_MM}mm) | Large dots: ${largeCount} (${LARGE_DOT_DIAMETER_MM}mm)`);
+  // Output dot circles SECOND
+  if (legacyDots.length > 0) {
+    lines.push(`    <!-- Halftone dots (${legacyDots.length} circles) -->`);
+    for (const dot of legacyDots) {
+      lines.push(
+        `    <circle cx="${dot.cx.toFixed(precision)}" cy="${dot.cy.toFixed(precision)}" r="${dot.radius.toFixed(precision)}"/>`
+      );
+    }
   }
 
-  // Build SVG with exactly ONE path element
-  const svg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${widthPx} ${heightPx}">`,
-    `  <!-- Laser stencil: 1 compound path, ${totalDots} dot holes, ${solidHoles} solid region holes -->`,
-    `  <path fill="black" d="${compoundPath}"/>`,
-    `</svg>`
-  ].join('\n');
+  lines.push(`  </g>`);
+  }
 
-  return svg;
+  // Optional debug overlay
+  if (debugOverlay) {
+    lines.push(`  <g opacity="0.45">`);
+    if (debugOverlay.solidMask) {
+      const rects = maskToRects(debugOverlay.solidMask, widthPx, heightPx);
+      lines.push(`    <g fill="red">`);
+      for (const r of rects) {
+        lines.push(`      <rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/>`);
+      }
+      lines.push(`    </g>`);
+    }
+    if (debugOverlay.dotMask) {
+      const rects = maskToRects(debugOverlay.dotMask, widthPx, heightPx);
+      lines.push(`    <g fill="blue">`);
+      for (const r of rects) {
+        lines.push(`      <rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}"/>`);
+      }
+      lines.push(`    </g>`);
+    }
+    lines.push(`  </g>`);
+  }
+  lines.push(`</svg>`);
+
+  return lines.join('\n');
 }
 
 /**
@@ -2321,12 +2290,7 @@ export function generateDotHalftoneSVG(imageData, opts) {
   const outputHeightPx = Math.round((config.outputHeightMm / 25.4) * config.dpi);
 
   // Convert mm to px for spacing and constraints
-  // ENFORCE: grid step must be at least (largest dot diameter + bridge) so dots never touch
-  const minStepMm = ENABLE_BINARY_DOT_SIZING
-    ? LARGE_DOT_DIAMETER_MM + MIN_BRIDGE_MM
-    : config.dotSpacingMm;
-  const actualSpacingMm = Math.max(config.dotSpacingMm, minStepMm);
-  const stepPx = (actualSpacingMm / 25.4) * config.dpi;
+  const stepPx = (config.dotSpacingMm / 25.4) * config.dpi;
   const minWebPx = (config.minWebMm / 25.4) * config.dpi;
   const minCutDiameterPx = (config.minCutDiameterMm / 25.4) * config.dpi;
 
@@ -2334,7 +2298,6 @@ export function generateDotHalftoneSVG(imageData, opts) {
   // maxDiameter = stepPx - minWebPx (leaves gap between adjacent dots)
   const maxDiameterPx = stepPx - minWebPx;
   const maxRadiusPx = maxDiameterPx / 2;
-  console.log(`[dotHalftone] Grid step enforced: ${actualSpacingMm.toFixed(1)}mm (large dot ${LARGE_DOT_DIAMETER_MM}mm + bridge ${MIN_BRIDGE_MM}mm)`);
 
   // Minimum radius for laser cutting
   const minRadiusPx = minCutDiameterPx / 2;

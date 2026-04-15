@@ -154,14 +154,15 @@ const MadeOrders = () => {
         notes: tracking.notes || ''
       };
 
-      // Update Firebase - both madeOrders and user's stencilOrders
+      // Update Firebase - both madeOrders and user's orders (stencil or pbn)
       const updates = {};
       updates[`madeOrders/${order.id}/shipping`] = shippingData;
       updates[`madeOrders/${order.id}/status`] = 'shipped';
       
       if (order.userId) {
-        updates[`users/${order.userId}/stencilOrders/${order.id}/shipping`] = shippingData;
-        updates[`users/${order.userId}/stencilOrders/${order.id}/status`] = 'shipped';
+        const orderPath = order.orderType === 'pbn' ? 'pbnOrders' : 'stencilOrders';
+        updates[`users/${order.userId}/${orderPath}/${order.id}/shipping`] = shippingData;
+        updates[`users/${order.userId}/${orderPath}/${order.id}/status`] = 'shipped';
       }
 
       await update(dbRef(db), updates);
@@ -175,7 +176,9 @@ const MadeOrders = () => {
         trackingNumber: tracking.trackingNumber || 'Not provided',
         trackingUrl: trackingUrl || '',
         shippingAddress: order.shippingAddress,
-        numLayers: order.stencilData?.numStencils || order.stencilData?.storageUrls?.length || 0,
+        numLayers: order.orderType === 'pbn'
+          ? (order.pbnData?.numColors || 0)
+          : (order.stencilData?.numStencils || order.stencilData?.storageUrls?.length || 0),
         notes: tracking.notes || ''
       };
 
@@ -217,10 +220,10 @@ const MadeOrders = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
             <Package className="h-8 w-8 text-purple-600" />
-            Stencil Orders
+            Orders
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Manage and fulfill customer stencil orders
+            Manage and fulfill customer orders
           </p>
         </div>
 
@@ -275,8 +278,11 @@ const MadeOrders = () => {
                     <div className="text-right">
                       <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total</div>
                       <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                        £{order.stencilData?.pricing?.total || '?.??'}
+                        £{(order.orderType === 'pbn' ? order.pbnData?.pricing?.total : order.stencilData?.pricing?.total) || '?.??'}
                       </div>
+                      {order.orderType === 'pbn' && (
+                        <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full font-medium">PBN</span>
+                      )}
                     </div>
                   </div>
 
@@ -293,10 +299,10 @@ const MadeOrders = () => {
                           <User className="h-4 w-4 text-gray-500 mt-0.5" />
                           <div>
                             <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              {order.shippingAddress.name}
+                              {order.shippingAddress?.name || 'N/A'}
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-400">
-                              User ID: {order.userId.substring(0, 12)}...
+                              User ID: {order.userId ? order.userId.substring(0, 12) + '...' : 'N/A'}
                             </div>
                           </div>
                         </div>
@@ -304,19 +310,19 @@ const MadeOrders = () => {
                         <div className="flex items-start gap-2">
                           <MapPin className="h-4 w-4 text-gray-500 mt-0.5" />
                           <div className="text-sm text-gray-700 dark:text-gray-300">
-                            <div>{order.shippingAddress.addressLine1}</div>
-                            {order.shippingAddress.addressLine2 && (
+                            <div>{order.shippingAddress?.addressLine1 || ''}</div>
+                            {order.shippingAddress?.addressLine2 && (
                               <div>{order.shippingAddress.addressLine2}</div>
                             )}
-                            <div>{order.shippingAddress.city}</div>
-                            <div className="font-medium">{order.shippingAddress.postcode}</div>
+                            <div>{order.shippingAddress?.city || ''}</div>
+                            <div className="font-medium">{order.shippingAddress?.postcode || ''}</div>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <Phone className="h-4 w-4 text-gray-500" />
                           <div className="text-sm text-gray-700 dark:text-gray-300">
-                            {order.shippingAddress.phone}
+                            {order.shippingAddress?.phone || '—'}
                           </div>
                         </div>
                       </div>
@@ -329,7 +335,54 @@ const MadeOrders = () => {
                         Order Details
                       </h4>
                       
-                      <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 space-y-3">
+                      {order.orderType === 'pbn' ? (
+                        /* ── PBN Order Details ────────────────────── */
+                        <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 space-y-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Product</span>
+                            <span className="font-semibold text-gray-900 dark:text-white">
+                              {order.pbnData?.productLabel || order.pbnData?.selectedSize || 'PBN Kit'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Material</span>
+                            <span className="font-medium text-gray-900 dark:text-white capitalize">
+                              {order.pbnData?.materialType || 'canvas'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Size</span>
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {order.pbnData?.selectedSize || '—'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Colours</span>
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {order.pbnData?.numColors || '—'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Detail Level</span>
+                            <span className="font-medium text-gray-900 dark:text-white capitalize">
+                              {order.pbnData?.detailLevel || '—'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-sm pt-3 border-t border-gray-200 dark:border-slate-600">
+                            <span className="text-gray-600 dark:text-gray-400">PayPal Status</span>
+                            <span className="font-mono text-xs text-gray-900 dark:text-white">
+                              {order.paypalStatus || '—'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        /* ── Stencil Order Details ────────────────── */
+                        <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 space-y-3">
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-gray-600 dark:text-gray-400">Stencil Layers</span>
                           <span className="font-semibold text-gray-900 dark:text-white">
@@ -361,31 +414,82 @@ const MadeOrders = () => {
                         <div className="flex items-center justify-between text-sm pt-3 border-t border-gray-200 dark:border-slate-600">
                           <span className="text-gray-600 dark:text-gray-400">PayPal Order ID</span>
                           <span className="font-mono text-xs text-gray-900 dark:text-white">
-                            {order.paypalOrderId.substring(0, 16)}...
+                            {order.paypalOrderId ? order.paypalOrderId.substring(0, 16) + '...' : '—'}
                           </span>
                         </div>
                       </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Download Section */}
-                  <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  {order.orderType === 'pbn' ? (
+                    /* ── PBN Files ──────────────────────────── */
+                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
+                      <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
                         <Download className="h-5 w-5 text-purple-600" />
-                        LightBurn Files (SVG)
+                        Paint-by-Numbers Files
                       </h4>
-                      <button
-                        onClick={() => downloadAllSVGs(order)}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download All SVGs
-                      </button>
-                    </div>
+                      {order.pbnData?.storageUrls?.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {order.pbnData.storageUrls.map((url, index) => (
+                            <a
+                              key={index}
+                              href={typeof url === 'string' ? url : url.svgUrl || url.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group relative bg-gray-50 dark:bg-slate-700/50 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg p-3 border border-gray-200 dark:border-slate-600 transition-all hover:shadow-md flex flex-col items-center gap-2"
+                            >
+                              <ImageIcon className="h-8 w-8 text-blue-600" />
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">File {index + 1}</div>
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">No files uploaded for this order.</p>
+                      )}
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                      {order.stencilData.storageUrls.map((layer, index) => (
+                      {/* PBN Colour Palette */}
+                      {order.pbnData?.paletteData?.length > 0 && (
+                        <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                          <h5 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-3 flex items-center gap-2">
+                            <ImageIcon className="h-4 w-4" />
+                            Colour Palette ({order.pbnData.paletteData.length} colours)
+                          </h5>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                            {order.pbnData.paletteData.map((col) => (
+                              <div key={col.number} className="flex items-center gap-2 text-xs">
+                                <div
+                                  className="w-6 h-6 rounded border border-gray-300 dark:border-slate-600 flex-shrink-0"
+                                  style={{ backgroundColor: col.hex }}
+                                />
+                                <span className="text-gray-700 dark:text-gray-300 font-medium">
+                                  #{col.number}: {col.name || col.hex}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : order.stencilData?.storageUrls ? (
+                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                          <Download className="h-5 w-5 text-purple-600" />
+                          LightBurn Files (SVG)
+                        </h4>
+                        <button
+                          onClick={() => downloadAllSVGs(order)}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download All SVGs
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {order.stencilData.storageUrls.map((layer, index) => (
                         <button
                           key={index}
                           onClick={() => downloadSVG(layer.svgUrl, layer.svgFileName)}
@@ -403,7 +507,7 @@ const MadeOrders = () => {
                           <div className="absolute inset-0 bg-purple-600/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg" />
                         </button>
                       ))}
-                    </div>
+                      </div>
 
                     {/* Color Guide */}
                     {order.stencilData.layerColors && order.stencilData.layerColors.length > 0 && (
@@ -427,7 +531,8 @@ const MadeOrders = () => {
                         </div>
                       </div>
                     )}
-                  </div>
+                    </div>
+                  ) : null}
 
                   {/* Shipping & Tracking Section */}
                   <div className="mt-6 pt-6 border-t border-gray-200 dark:border-slate-700">

@@ -1,4 +1,5 @@
-require('dotenv').config({ path: '../.env' });
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -9,6 +10,7 @@ const createOrder = require('./routes/payments/create-order');
 const captureOrder = require('./routes/payments/capture-order');
 const subscriptions = require('./routes/payments/subscriptions');
 const stencilOrder = require('./routes/payments/stencil-order');
+const pbnOrder = require('./routes/payments/pbn-order');
 
 // Affiliate routes
 const affiliates = require('./routes/affiliate/affiliates');
@@ -75,6 +77,8 @@ app.use(createOrder);
 app.use(captureOrder);
 // mount stencil order routes
 app.use(stencilOrder);
+// mount PBN order routes
+app.use(pbnOrder);
 // mount clicks route (file-backed dev helper)
 app.use(clicks);
 // mount affiliates API

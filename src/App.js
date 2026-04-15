@@ -44,6 +44,7 @@ import InboxScreen from './components/email/InboxScreen';
 import AdvancedInboxScreen from './components/email/AdvancedInboxScreen';
 import EmailAutomationDashboard from './components/email-automation/EmailAutomationDashboard';
 import StencilGenerator from './components/stencilUpload/StencilGenerator';
+import MainScreenPBY from './components/PaintByNumbers/MainScreenPBY';
 import MadeOrders from './components/madeOrders/MadeOrders';
 import MyOrders from './components/customerStuff/MyOrders';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
@@ -777,6 +778,7 @@ function AppContent() {
       <Routes>
         <Route path="/tools/short-review" element={<ShortReviewPage />} />
         <Route path="/tools/stencil-generator" element={<StencilGenerator />} />
+        <Route path="/tools/paint-by-numbers" element={<MainScreenPBY />} />
         <Route path="/admin/made-orders" element={<MadeOrders />} />
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/onboarding" element={<MailOnboardFull />} />

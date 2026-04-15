@@ -5,10 +5,11 @@ const admin = require('../../firebase-admin');
 const nodemailer = require('nodemailer');
 const fetch = require('node-fetch');
 const { Pool } = require('pg');
+const { addCustomerToContacts } = require('../../utils/addCustomerContact');
 
 // PostgreSQL connection for unified user/order storage
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://fotonix:fotonixpass@51.75.78.118:5432/fotonix_dev'
+  connectionString: process.env.DATABASE_URL
 });
 
 // Test connection on load
@@ -403,6 +404,18 @@ router.post('/api/stencil/capture-order', async (req, res) => {
       paypalStatus: captureResponse.result.status
     });
 
+    // Add customer to "customers" contact group (fire-and-forget)
+    const stencilEmail = shippingAddress?.email || null;
+    if (stencilEmail) {
+      addCustomerToContacts({
+        email: stencilEmail,
+        firstName: shippingAddress?.name?.split(' ')[0] || '',
+        lastName: shippingAddress?.name?.split(' ').slice(1).join(' ') || '',
+        source: 'stencil_order',
+        orderId
+      }).catch(() => {});
+    }
+
     res.json({ 
       success: true, 
       orderId,
@@ -539,6 +552,18 @@ router.post('/api/stencil/test-capture', async (req, res) => {
       stencilData,
       paypalStatus: 'TEST'
     });
+
+    // Add customer to "customers" contact group (fire-and-forget)
+    const testEmail = shippingAddress?.email || null;
+    if (testEmail) {
+      addCustomerToContacts({
+        email: testEmail,
+        firstName: shippingAddress?.name?.split(' ')[0] || '',
+        lastName: shippingAddress?.name?.split(' ').slice(1).join(' ') || '',
+        source: 'stencil_order_test',
+        orderId
+      }).catch(() => {});
+    }
 
     res.json({ success: true, orderId });
   } catch (error) {

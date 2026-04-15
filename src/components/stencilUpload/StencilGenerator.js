@@ -39,8 +39,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { storage, db } from '../../firebase';
 import { API_URL } from '../../config/environment';
 import Header from '../shared/Header';
-import { generateDotHalftoneSVG, loadImageAsImageData, DEFAULT_HALFTONE_OPTIONS, HALFTONE_PRESETS } from '../../halftone/dotHalftone';
+import { generateDotHalftoneSVG, loadImageAsImageData, DEFAULT_HALFTONE_OPTIONS } from '../../halftone/dotHalftone';
 import StencilEditor from './StencilEditor';
+import ActualStencilEditor from './ActualStencilEditor';
 import endorsedReviewLogo from './er.svg';
 
 const StencilGenerator = () => {
@@ -54,6 +55,8 @@ const StencilGenerator = () => {
   const [selectedLayer, setSelectedLayer] = useState(0);
   const [showOriginal, setShowOriginal] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [maxWidth, setMaxWidth] = useState(1024);
   const [thresholdMethod, setThresholdMethod] = useState('uniform'); // 'uniform' or 'histogram'
@@ -100,7 +103,17 @@ const StencilGenerator = () => {
     minWebMm: 0.4,              // Minimum material between holes (0.2-1.0)
     rotationDeg: 0,             // Grid rotation angle (0, 15, 30, 45)
     invert: false,              // Invert output
-    preset: 'standard'          // Preset name: 'fine', 'standard', 'coarse', 'bold'
+    solidCutoff: 0.60,          // Portrait mode: solid shadow threshold (0.3-0.7)
+    enableIslandBridging: true, // Auto-connect floating solid islands
+    bridgeDotSpacing: 0.8,      // Spacing between bridge dots (mm)
+    minIslandSize: 100,         // Minimum island area to bridge (px²)
+    // 🔧 REV12: SOLID REGION OVERRIDE - TUNED FOR DEEP SHADOWS
+    // Parameters adjusted based on actual image analysis
+    useSolidRegions: true,      // 🔧 REV9: FORCED ON - solid regions for ALL flat areas
+    solidThreshold: 0.45,       // 🔧 REV12: Lowered from 0.85 to target deep shadows only (not 80%+ of image)
+    solidBlurRadiusPx: 5.0,     // 🔧 REV9: Increased blur for macro-level smoothness
+    minSolidAreaPx: 50,         // 🔧 REV9: Lowered - even smaller flat areas become solid
+    solidVarianceThreshold: 0.10, // 🔧 REV12: Loosened from 0.015 to accept real-world variance (was rejecting everything)
   });
   const [amHalftoneSVG, setAmHalftoneSVG] = useState(null); // Generated AM halftone SVG string
   const [isPaid, setIsPaid] = useState(false); // Track if payment has been completed
@@ -136,6 +149,9 @@ const StencilGenerator = () => {
   // Reviews modal state
   const [showReviewsModal, setShowReviewsModal] = useState(false);
   const [selectedReviewMode, setSelectedReviewMode] = useState(null);
+  
+  // Actual Stencil Editor state (post-generation refinement)
+  const [showActualStencilEditor, setShowActualStencilEditor] = useState(false);
   
   // Extracted stencils from editor (multi-stencil extraction workflow)
   const [extractedStencils, setExtractedStencils] = useState([]);
@@ -236,90 +252,119 @@ const StencilGenerator = () => {
     "Making art happen, one layer at a time…",
   ];
   
-  // Stencil mode reviews data - realistic customer feedback
-  const STENCIL_REVIEWS = {
-    'standard': {
-      rating: 4.8,
-      totalReviews: 247,
-      reviews: [
-        { id: 1, author: 'Sarah M.', rating: 5, date: '2024-12-15', verified: true, comment: 'Perfect for my pet portrait project! The layers separated beautifully and the bridges held everything together. Sprayed 4 colors and it came out amazing.' },
-        { id: 2, author: 'Dave T.', rating: 5, date: '2024-12-08', verified: true, comment: 'Been doing stencil art for years and this is the cleanest multi-layer output I\'ve seen. The detail retention is incredible.' },
-        { id: 3, author: 'Emma R.', rating: 4, date: '2024-11-28', verified: true, comment: 'Great results on my first try. Only 4 stars because I wish there was a 5-layer option, but the 3-layer worked perfectly for my landscape.' },
-        { id: 4, author: 'Marcus J.', rating: 5, date: '2024-11-20', verified: true, comment: 'Used this for a garage wall mural. The registration marks made lining up the panels dead simple. Highly recommend!' },
-        { id: 5, author: 'Lisa K.', rating: 5, date: '2024-11-12', verified: true, comment: 'My daughter\'s room looks amazing now! The fairy design came out so detailed. Worth every penny.' }
-      ]
-    },
-    'am-halftone': {
-      rating: 4.6,
-      totalReviews: 89,
-      reviews: [
-        { id: 1, author: 'Tom H.', rating: 5, date: '2024-12-10', verified: true, comment: 'The newspaper print effect is spot on! Used it for a Andy Warhol-style portrait and people think it\'s a professional print.' },
-        { id: 2, author: 'Rachel P.', rating: 4, date: '2024-12-01', verified: true, comment: 'Really cool retro vibe. Takes a bit more paint control but the result is worth the extra effort.' },
-        { id: 3, author: 'Chris B.', rating: 5, date: '2024-11-15', verified: true, comment: 'Perfect for my comic book wall art. The dot pattern creates amazing depth from a distance.' },
-        { id: 4, author: 'Nina S.', rating: 4, date: '2024-10-28', verified: true, comment: 'Love the vintage feel! Just be careful with spray distance - too close and you lose the effect.' }
-      ]
-    },
-    'dot-halftone': {
-      rating: 4.7,
-      totalReviews: 156,
-      reviews: [
-        { id: 1, author: 'James W.', rating: 5, date: '2024-12-12', verified: true, comment: 'Pop art perfection! Made a Lichtenstein-style piece and it looks museum quality. The dots are so clean.' },
-        { id: 2, author: 'Sophie L.', rating: 5, date: '2024-12-03', verified: true, comment: 'This is my go-to for portraits now. The gradient effect you get from the dots is beautiful.' },
-        { id: 3, author: 'Mike D.', rating: 4, date: '2024-11-22', verified: true, comment: 'Great effect but you need steady hands. Practice on cardboard first - worth it when you nail it.' },
-        { id: 4, author: 'Amy C.', rating: 5, date: '2024-11-08', verified: true, comment: 'Did a large format piece (4 panels) and the dot alignment was perfect across all sections. Impressive!' }
-      ]
-    },
-    'line-halftone': {
-      rating: 4.5,
-      totalReviews: 72,
-      reviews: [
-        { id: 1, author: 'Oliver N.', rating: 5, date: '2024-12-08', verified: true, comment: 'The engraving look is incredible! Used it for a currency-style portrait and it looks so professional.' },
-        { id: 2, author: 'Jade F.', rating: 4, date: '2024-11-30', verified: true, comment: 'Very unique effect. Takes some practice to get clean lines but the vintage banknote aesthetic is worth it.' },
-        { id: 3, author: 'Peter R.', rating: 5, date: '2024-11-18', verified: true, comment: 'Did a portrait of my grandad in this style - he thought I\'d commissioned a proper engraving artist!' },
-        { id: 4, author: 'Hannah G.', rating: 4, date: '2024-10-25', verified: true, comment: 'Beautiful results. Just be patient with the thin lines - light coats are key.' }
-      ]
-    },
-    'jarvis-dither': {
-      rating: 4.4,
-      totalReviews: 45,
-      reviews: [
-        { id: 1, author: 'Dan M.', rating: 5, date: '2024-12-05', verified: true, comment: 'Perfect retro gaming aesthetic! Made some pixel art style pieces for my gaming room. Love it.' },
-        { id: 2, author: 'Tina B.', rating: 4, date: '2024-11-28', verified: true, comment: 'Really cool 8-bit vibe. Works best with simpler images - complex photos can get muddy.' },
-        { id: 3, author: 'Kyle S.', rating: 5, date: '2024-11-10', verified: true, comment: 'The dithering creates amazing texture. Used it for an abstract piece and it\'s now the focal point of my living room.' },
-        { id: 4, author: 'Zoe A.', rating: 4, date: '2024-10-15', verified: true, comment: 'Nostalgic computer graphics feel. Great for anyone who grew up with early Macintosh!' }
-      ]
-    },
-    'spray-paint': {
-      rating: 4.9,
-      totalReviews: 312,
-      reviews: [
-        { id: 1, author: 'Alex G.', rating: 5, date: '2024-12-14', verified: true, comment: 'This is THE mode for street art style. The gradient transitions are silky smooth. My best work yet!' },
-        { id: 2, author: 'Jordan K.', rating: 5, date: '2024-12-09', verified: true, comment: 'Finally a stencil that actually looks like proper graffiti art! The fade effects are perfect.' },
-        { id: 3, author: 'Casey M.', rating: 5, date: '2024-11-25', verified: true, comment: 'Used for a Banksy-inspired piece. The smooth gradients make it look hand-sprayed, not stenciled.' },
-        { id: 4, author: 'Morgan T.', rating: 4, date: '2024-11-14', verified: true, comment: 'Absolutely love the results. Takes a bit more paint but the photorealistic quality is unmatched.' },
-        { id: 5, author: 'Sam R.', rating: 5, date: '2024-11-02', verified: true, comment: 'Did a portrait of my dog and even captured the fur texture! Friends can\'t believe it\'s a stencil.' }
-      ]
-    },
-    'island-bridge': {
-      rating: 4.3,
-      totalReviews: 38,
-      reviews: [
-        { id: 1, author: 'Rob E.', rating: 5, date: '2024-12-01', verified: true, comment: 'Perfect for bold graphic designs. The automatic bridge placement saved me hours of manual work.' },
-        { id: 2, author: 'Kelly H.', rating: 4, date: '2024-11-20', verified: true, comment: 'Great for logos and text. The islands stay perfectly connected. Just what I needed for my business signs.' },
-        { id: 3, author: 'Steve P.', rating: 4, date: '2024-11-05', verified: true, comment: 'Really clever algorithm. A few bridges felt unnecessary but overall it does the job brilliantly.' },
-        { id: 4, author: 'Laura D.', rating: 5, date: '2024-10-18', verified: true, comment: 'Made a complex geometric pattern and every piece stayed in place. Engineering marvel!' }
-      ]
-    },
-    'inverted': {
-      rating: 4.6,
-      totalReviews: 67,
-      reviews: [
-        { id: 1, author: 'Ben W.', rating: 5, date: '2024-12-07', verified: true, comment: 'The negative space effect is stunning. Used on a black wall with white spray - absolutely dramatic!' },
-        { id: 2, author: 'Grace Y.', rating: 5, date: '2024-11-29', verified: true, comment: 'Perfect for creating contrast. My inverted portrait looks like a professional art piece now.' },
-        { id: 3, author: 'Ian C.', rating: 4, date: '2024-11-15', verified: true, comment: 'Great for moody, atmospheric pieces. Works especially well with silhouettes and landscapes.' },
-        { id: 4, author: 'Mia L.', rating: 4, date: '2024-10-30', verified: true, comment: 'Love the reversed look. Tips: works best on dark surfaces with light paint for maximum impact.' }
-      ]
+  // Live reviews from endorsed.review will populate this state.
+  const [stencilReviewsRaw, setStencilReviewsRaw] = useState(null);
+  const [stencilReviewsByMode, setStencilReviewsByMode] = useState({});
+  const [endorsedWidgetLoaded, setEndorsedWidgetLoaded] = useState(false);
+  const [endorsedWidgetInserted, setEndorsedWidgetInserted] = useState(false);
+
+  const normalizeReview = (review) => {
+    if (!review) return null;
+    const rating = parseFloat(review.rating ?? review.score ?? 0) || 0;
+    const author = review.author || review.name || review.customerName || review.reviewerName || 'Anonymous';
+    const comment = review.comment || review.review || review.message || review.body || review.text || '';
+    const date = review.date || review.createdAt || review.created_at || review.reviewedAt || '';
+    const verified = Boolean(review.verified || review.isVerified || review.verifiedPurchase);
+    return {
+      ...review,
+      rating,
+      author,
+      comment,
+      date,
+      verified
+    };
+  };
+
+  // Helper: map API reviews into per-mode buckets and compute averages
+  useEffect(() => {
+    let cancelled = false;
+    const fetchReviews = async () => {
+      try {
+        const resp = await fetch('https://api.endorsed.review/api/widget-embed/fotonix_768286');
+        const data = await resp.json();
+        if (cancelled) return;
+        setStencilReviewsRaw(data);
+
+        const modes = ['standard','am-halftone','dot-halftone','line-halftone','jarvis-dither','spray-paint','island-bridge','inverted'];
+        const byMode = {};
+        modes.forEach(m => { byMode[m] = { rating: 0, totalReviews: 0, reviews: [] }; });
+
+        if (Array.isArray(data.reviews)) {
+          data.reviews.forEach(r => {
+            const oid = (r.orderId || '').toString().toLowerCase();
+            let found = null;
+            for (const m of modes) {
+              if (oid === m || oid.includes(m)) { found = m; break; }
+            }
+            if (found) {
+              const normalized = normalizeReview(r);
+              if (normalized) byMode[found].reviews.push(normalized);
+            }
+          });
+
+          modes.forEach(m => {
+            const arr = byMode[m].reviews;
+            if (arr.length > 0) {
+              const avg = arr.reduce((s, x) => s + (parseFloat(x.rating) || 0), 0) / arr.length;
+              byMode[m].rating = Math.round(avg * 10) / 10;
+              byMode[m].totalReviews = arr.length;
+            }
+          });
+        }
+
+        setStencilReviewsByMode(byMode);
+      } catch (err) {
+        console.warn('Failed to load endorsed.review widget-embed:', err);
+        // Fallback: insert the official endorsed.review widget script + div
+        try {
+          // Avoid inserting multiple times
+          if (!endorsedWidgetInserted) {
+            const container = checkoutSectionRef && checkoutSectionRef.current ? checkoutSectionRef.current : document.body;
+            // Create widget div
+            const div = document.createElement('div');
+            div.id = 'endorsed-widget-fallback';
+            div.setAttribute('data-type', 'basic-stars');
+            div.setAttribute('data-user', 'fotonix_768286');
+            div.setAttribute('data-theme', 'light');
+            div.setAttribute('data-color', '#6D28D9');
+            div.setAttribute('data-branding', 'true');
+            // Try to append near checkout UI so it's visible to users
+            if (container) container.appendChild(div);
+            setEndorsedWidgetInserted(true);
+
+            // Load the widget script (only once)
+            if (!endorsedWidgetLoaded && !document.querySelector('script[src="https://endorsed.review/widget.js"]')) {
+              const script = document.createElement('script');
+              script.src = 'https://endorsed.review/widget.js';
+              script.async = true;
+              script.onload = () => setEndorsedWidgetLoaded(true);
+              document.body.appendChild(script);
+            } else {
+              setEndorsedWidgetLoaded(true);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to insert endorsed.review fallback widget:', e);
+        }
+      }
+    };
+    fetchReviews();
+    return () => { cancelled = true; };
+  }, []);
+
+  const getModeStats = (mode) => {
+    const modeStats = stencilReviewsByMode[mode];
+    if (modeStats && modeStats.totalReviews > 0) return modeStats;
+    if (stencilReviewsRaw && (stencilReviewsRaw.totalReviews || stencilReviewsRaw.averageRating)) {
+      return {
+        rating: stencilReviewsRaw.averageRating || 0,
+        totalReviews: stencilReviewsRaw.totalReviews || 0,
+        reviews: Array.isArray(stencilReviewsRaw.reviews)
+          ? stencilReviewsRaw.reviews.map(normalizeReview).filter(Boolean)
+          : []
+      };
     }
+    return { rating: 0, totalReviews: 0, reviews: [] };
   };
   
   // Country list with shipping zones
@@ -354,6 +399,8 @@ const StencilGenerator = () => {
   const paypalButtonsRef = useRef(null);
   const checkoutSectionRef = useRef(null);
   const extractedStencilsRef = useRef(null);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const panOriginRef = useRef({ x: 0, y: 0 });
 
   // Reset stencil size when switching to single-layer mode (no murals for single layer)
   useEffect(() => {
@@ -362,6 +409,13 @@ const StencilGenerator = () => {
       setStencilSize('12x12');
     }
   }, [stencilMode]);
+
+  useEffect(() => {
+    if (zoom <= 1) {
+      setPanOffset({ x: 0, y: 0 });
+      setIsPanning(false);
+    }
+  }, [zoom]);
 
   // Rotate through fun messages while payment is processing
   useEffect(() => {
@@ -543,17 +597,19 @@ const StencilGenerator = () => {
       const isSingleLayer = singleLayerModes.includes(mode);
       
       if (isSingleLayer) {
-        // Fixed pricing for single-layer modes: £8.99 + £3.99 UK postage
+        // Single-layer fixed pricing. For AM halftone we use A4 as the base price
+        // and charge +£4 for 12x12 and 12x18. For other single-layer modes keep legacy base.
         const sizeOption = STENCIL_SIZES.find(s => s.id === size) || STENCIL_SIZES[0];
-        const basePrice = 8.99;
+        const legacyBasePrice = 8.99; // legacy base (used for non-AM single-layer modes)
+        const a4BasePrice = 8.99; // price that represents A4 for AM halftone
         const ukPostage = 3.99;
-        
+
         // Determine shipping based on country
         const country = COUNTRIES.find(c => c.code === countryCode);
         const zone = country?.zone || 'world';
         let deliveryFee = ukPostage;
         let shippingZoneName = 'UK';
-        
+
         if (zone === 'eu') {
           deliveryFee = 12.95;
           shippingZoneName = 'Europe';
@@ -561,15 +617,32 @@ const StencilGenerator = () => {
           deliveryFee = 18.95;
           shippingZoneName = 'Rest of World';
         }
-        
+
+        // Determine per-size base price. For AM halftone, treat A4 as the base
+        // and add £4 for each 12x12 and 12x18 option. For other single-layer modes
+        // we keep the legacy base price.
+        let pricePerStencil = legacyBasePrice;
+        if (mode === 'am-halftone') {
+          if (sizeOption.id === 'a4') {
+            pricePerStencil = a4BasePrice;
+          } else if (sizeOption.id === '12x12' || sizeOption.id === '12x18') {
+            pricePerStencil = parseFloat((a4BasePrice + 4.00).toFixed(2));
+          } else if (sizeOption.panels) {
+            // For mural panels, price equals panel-count × A4 base
+            pricePerStencil = a4BasePrice;
+          } else {
+            pricePerStencil = a4BasePrice;
+          }
+        }
+
         // For mural mode with single layer, multiply by panels
         const multiplier = sizeOption.panels ? sizeOption.panels : 1;
-        const subtotal = (basePrice * multiplier).toFixed(2);
+        const subtotal = (pricePerStencil * multiplier).toFixed(2);
         const total = (parseFloat(subtotal) + deliveryFee).toFixed(2);
-        
+
         setPricing({
           isSingleLayerMode: true,
-          pricePerStencil: basePrice,
+          pricePerStencil: pricePerStencil,
           subtotal: subtotal,
           deliveryFee: deliveryFee.toFixed(2),
           total: total,
@@ -751,7 +824,7 @@ const StencilGenerator = () => {
   useEffect(() => {
     if (layers.length > 0 && !orderComplete) {
       const script = document.createElement('script');
-      script.src = `https://www.paypal.com/sdk/js?client-id=${process.env.REACT_APP_PAYPAL_CLIENT_ID || 'AWe0IKuw_hwCKGDtSb3jYG734rQFLitGgcROWvGF1h5xf8IUEL-Yrq8Vk08vUKF044KSs6l2KPetIRY5'}&currency=GBP`;
+      script.src = `https://www.paypal.com/sdk/js?client-id=${process.env.REACT_APP_PAYPAL_CLIENT_ID}&currency=GBP`;
       script.async = true;
       script.onload = () => renderPayPalButtons();
       document.body.appendChild(script);
@@ -1272,6 +1345,11 @@ const StencilGenerator = () => {
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
+        
+        // 🔧 Fill with white first to handle any transparency
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
         ctx.drawImage(img, 0, 0);
         
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -4078,6 +4156,13 @@ ${outlinePaths}
 
       canvas.width = width;
       canvas.height = height;
+      
+      // 🔧 CRITICAL FIX: Fill canvas with WHITE before drawing image
+      // Without this, transparent areas become black (RGB 0,0,0)
+      // which causes massive false solid regions in AM Halftone mode
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+      
       ctx.drawImage(sourceImage, 0, 0, width, height);
 
       // Get image data
@@ -4100,6 +4185,20 @@ ${outlinePaths}
         const sizeOption = STENCIL_SIZES.find(s => s.id === stencilSize) || STENCIL_SIZES[1];
         const physicalSize = sizeOption.physical || PHYSICAL_SIZES['12x12'];
         
+        // 🔧 REV9: Debug logging for solid region override
+        console.log('═══════════════════════════════════════════════════════════');
+        console.log('🔧 [StencilGenerator] AM HALFTONE - SOLID REGION OVERRIDE');
+        console.log('═══════════════════════════════════════════════════════════');
+        console.log(`  useSolidRegions: ${amHalftoneSettings.useSolidRegions} (MUST be true)`);
+        console.log(`  solidThreshold: ${amHalftoneSettings.solidThreshold} (luminance cutoff)`);
+        console.log(`  solidVarianceThreshold: ${amHalftoneSettings.solidVarianceThreshold} (flat = solid)`);
+        console.log(`  minSolidAreaPx: ${amHalftoneSettings.minSolidAreaPx}`);
+        console.log(`  solidBlurRadiusPx: ${amHalftoneSettings.solidBlurRadiusPx}`);
+        if (!amHalftoneSettings.useSolidRegions) {
+          console.error('🚨 BUG: useSolidRegions is FALSE - flat areas will be dots!');
+        }
+        console.log('═══════════════════════════════════════════════════════════');
+        
         // Generate AM halftone SVG with classic settings
         // NOTE: minCutDiameterMm is FIXED at 0.8mm for laser safety
         const svgString = generateDotHalftoneSVG(imageData, {
@@ -4112,10 +4211,20 @@ ${outlinePaths}
           blurRadiusPx: amHalftoneSettings.blurRadiusPx,
           lightCutoff: amHalftoneSettings.lightCutoff,
           darkCutoff: amHalftoneSettings.darkCutoff || 0.05,
+          solidCutoff: amHalftoneSettings.solidCutoff,
+          enableIslandBridging: amHalftoneSettings.enableIslandBridging,
+          bridgeDotSpacing: amHalftoneSettings.bridgeDotSpacing,
+          minIslandSize: amHalftoneSettings.minIslandSize,
           minCutDiameterMm: 0.8,  // FIXED - do not allow user to change
           minWebMm: amHalftoneSettings.minWebMm,
           rotationDeg: amHalftoneSettings.rotationDeg,
-          invert: amHalftoneSettings.invert
+          invert: amHalftoneSettings.invert,
+          // 🔧 REV9: SOLID REGION OVERRIDE - ALWAYS ON
+          useSolidRegions: amHalftoneSettings.useSolidRegions,
+          solidThreshold: amHalftoneSettings.solidThreshold,
+          solidBlurRadiusPx: amHalftoneSettings.solidBlurRadiusPx,
+          minSolidAreaPx: amHalftoneSettings.minSolidAreaPx,
+          solidVarianceThreshold: amHalftoneSettings.solidVarianceThreshold,
         });
         
         // Store the SVG for download
@@ -4773,6 +4882,28 @@ ${outlinePaths}
     return (currentUser && currentUser.uid) || (user && user.uid) || (typeof window !== 'undefined' && sessionStorage.getItem('fotonix_uid')) || null;
   };
 
+  const startPan = (clientX, clientY, target) => {
+    if (zoom <= 1) return;
+    if (target && target.closest && target.closest('button')) return;
+    setIsPanning(true);
+    panStartRef.current = { x: clientX, y: clientY };
+    panOriginRef.current = { ...panOffset };
+  };
+
+  const updatePan = (clientX, clientY) => {
+    if (!isPanning) return;
+    const deltaX = clientX - panStartRef.current.x;
+    const deltaY = clientY - panStartRef.current.y;
+    setPanOffset({
+      x: panOriginRef.current.x + deltaX,
+      y: panOriginRef.current.y + deltaY
+    });
+  };
+
+  const endPan = () => {
+    setIsPanning(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
       {/* Site Header */}
@@ -5156,18 +5287,18 @@ ${outlinePaths}
                     onChange={(e) => setStencilMode(e.target.value)}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded-lg"
                   >
-                    <option value="standard">Standard (Multi-layer) {'★'.repeat(Math.floor(STENCIL_REVIEWS['standard'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['standard'].rating))} {STENCIL_REVIEWS['standard'].rating} ({STENCIL_REVIEWS['standard'].totalReviews})</option>
-                    <option value="am-halftone">AM Halftone {'★'.repeat(Math.floor(STENCIL_REVIEWS['am-halftone'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['am-halftone'].rating))} {STENCIL_REVIEWS['am-halftone'].rating} ({STENCIL_REVIEWS['am-halftone'].totalReviews})</option>
-                    <option value="dot-halftone">Dot Halftone +£3 {'★'.repeat(Math.floor(STENCIL_REVIEWS['dot-halftone'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['dot-halftone'].rating))} {STENCIL_REVIEWS['dot-halftone'].rating} ({STENCIL_REVIEWS['dot-halftone'].totalReviews})</option>
-                    <option value="line-halftone">Line Halftone +£3 {'★'.repeat(Math.floor(STENCIL_REVIEWS['line-halftone'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['line-halftone'].rating))} {STENCIL_REVIEWS['line-halftone'].rating} ({STENCIL_REVIEWS['line-halftone'].totalReviews})</option>
-                    <option value="jarvis-dither">Jarvis Dither {'★'.repeat(Math.floor(STENCIL_REVIEWS['jarvis-dither'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['jarvis-dither'].rating))} {STENCIL_REVIEWS['jarvis-dither'].rating} ({STENCIL_REVIEWS['jarvis-dither'].totalReviews})</option>
-                    <option value="spray-paint"> Spray-Paint (Street Art) {'★'.repeat(Math.floor(STENCIL_REVIEWS['spray-paint'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['spray-paint'].rating))} {STENCIL_REVIEWS['spray-paint'].rating} ({STENCIL_REVIEWS['spray-paint'].totalReviews})</option>
-                    <option value="island-bridge">Island/Bridge {'★'.repeat(Math.floor(STENCIL_REVIEWS['island-bridge'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['island-bridge'].rating))} {STENCIL_REVIEWS['island-bridge'].rating} ({STENCIL_REVIEWS['island-bridge'].totalReviews})</option>
-                    <option value="inverted">Inverted (Negative) {'★'.repeat(Math.floor(STENCIL_REVIEWS['inverted'].rating))}{'☆'.repeat(5 - Math.floor(STENCIL_REVIEWS['inverted'].rating))} {STENCIL_REVIEWS['inverted'].rating} ({STENCIL_REVIEWS['inverted'].totalReviews})</option>
+                    <option value="standard">Standard (Multi-layer) {'★'.repeat(Math.floor(getModeStats('standard').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('standard').rating))} {getModeStats('standard').rating} ({getModeStats('standard').totalReviews})</option>
+                    <option value="am-halftone">AM Halftone {'★'.repeat(Math.floor(getModeStats('am-halftone').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('am-halftone').rating))} {getModeStats('am-halftone').rating} ({getModeStats('am-halftone').totalReviews})</option>
+                    <option value="dot-halftone">Dot Halftone +£3 {'★'.repeat(Math.floor(getModeStats('dot-halftone').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('dot-halftone').rating))} {getModeStats('dot-halftone').rating} ({getModeStats('dot-halftone').totalReviews})</option>
+                    <option value="line-halftone">Line Halftone +£3 {'★'.repeat(Math.floor(getModeStats('line-halftone').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('line-halftone').rating))} {getModeStats('line-halftone').rating} ({getModeStats('line-halftone').totalReviews})</option>
+                    <option value="jarvis-dither">Jarvis Dither {'★'.repeat(Math.floor(getModeStats('jarvis-dither').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('jarvis-dither').rating))} {getModeStats('jarvis-dither').rating} ({getModeStats('jarvis-dither').totalReviews})</option>
+                    <option value="spray-paint"> Spray-Paint (Street Art) {'★'.repeat(Math.floor(getModeStats('spray-paint').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('spray-paint').rating))} {getModeStats('spray-paint').rating} ({getModeStats('spray-paint').totalReviews})</option>
+                    <option value="island-bridge">Island/Bridge {'★'.repeat(Math.floor(getModeStats('island-bridge').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('island-bridge').rating))} {getModeStats('island-bridge').rating} ({getModeStats('island-bridge').totalReviews})</option>
+                    <option value="inverted">Inverted (Negative) {'★'.repeat(Math.floor(getModeStats('inverted').rating))}{'☆'.repeat(5 - Math.floor(getModeStats('inverted').rating))} {getModeStats('inverted').rating} ({getModeStats('inverted').totalReviews})</option>
                   </select>
                   
                   {/* Reviews Summary for Selected Mode */}
-                  {STENCIL_REVIEWS[stencilMode] && (
+                  {getModeStats(stencilMode).totalReviews > 0 && (
                     <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
                       {/* Header row with logo and See all reviews */}
                       <div className="flex items-center justify-between mb-2">
@@ -5190,26 +5321,30 @@ ${outlinePaths}
                       <div className="flex items-center gap-2 mb-3">
                         <div className="flex">
                           {[1, 2, 3, 4, 5].map((star) => (
-                            <span key={star} className={`text-xl ${star <= Math.round(STENCIL_REVIEWS[stencilMode].rating) ? 'text-amber-400' : 'text-gray-300'}`}>★</span>
+                            <span key={star} className={`text-xl ${star <= Math.round(getModeStats(stencilMode).rating) ? 'text-amber-400' : 'text-gray-300'}`}>★</span>
                           ))}
                         </div>
-                        <span className="font-bold text-lg text-amber-800 dark:text-amber-300">{STENCIL_REVIEWS[stencilMode].rating}</span>
-                        <span className="text-sm text-gray-600 dark:text-gray-400">({STENCIL_REVIEWS[stencilMode].totalReviews} reviews)</span>
+                        <span className="font-bold text-lg text-amber-800 dark:text-amber-300">{getModeStats(stencilMode).rating}</span>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">({getModeStats(stencilMode).totalReviews} reviews)</span>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-amber-100 dark:border-amber-800">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-sm text-gray-800 dark:text-gray-200">{STENCIL_REVIEWS[stencilMode].reviews[0].author}</span>
-                          {STENCIL_REVIEWS[stencilMode].reviews[0].verified && (
+                          <span className="font-medium text-sm text-gray-800 dark:text-gray-200">{getModeStats(stencilMode).reviews[0]?.author || ''}</span>
+                          {getModeStats(stencilMode).reviews[0]?.verified && (
                             <span className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">✓ Verified</span>
                           )}
-                          <span className="text-xs text-gray-500">{STENCIL_REVIEWS[stencilMode].reviews[0].date}</span>
+                          <span className="text-xs text-gray-500">{getModeStats(stencilMode).reviews[0]?.date || ''}</span>
                         </div>
                         <div className="flex mb-1">
                           {[1, 2, 3, 4, 5].map((star) => (
-                            <span key={star} className={`text-sm ${star <= STENCIL_REVIEWS[stencilMode].reviews[0].rating ? 'text-amber-400' : 'text-gray-300'}`}>★</span>
+                            <span key={star} className={`text-sm ${star <= (getModeStats(stencilMode).reviews[0]?.rating || 0) ? 'text-amber-400' : 'text-gray-300'}`}>★</span>
                           ))}
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 italic">"{STENCIL_REVIEWS[stencilMode].reviews[0].comment}"</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 italic">
+                          {getModeStats(stencilMode).reviews[0]?.comment
+                            ? `"${getModeStats(stencilMode).reviews[0]?.comment}"`
+                            : 'No written comment provided.'}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -5233,29 +5368,23 @@ ${outlinePaths}
                       ⚫ AM Halftone Settings (Classic)
                     </h4>
                     
-                    {/* Preset Selection */}
+                    {/* Solid Cutoff */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Preset
+                        Solid Cutoff: {(amHalftoneSettings.solidCutoff * 100).toFixed(0)}%
                       </label>
-                      <select
-                        value={amHalftoneSettings.preset}
-                        onChange={(e) => {
-                          const presetName = e.target.value;
-                          const preset = HALFTONE_PRESETS[presetName] || {};
-                          setAmHalftoneSettings(prev => ({
-                            ...prev,
-                            ...preset,
-                            preset: presetName
-                          }));
-                        }}
-                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded-lg text-sm"
-                      >
-                        <option value="fine">Fine (0.8mm, detailed)</option>
-                        <option value="standard">Standard (1.2mm)</option>
-                        <option value="coarse">Coarse (2.0mm, bold)</option>
-                        <option value="bold">Bold (high contrast)</option>
-                      </select>
+                      <input
+                        type="range"
+                        min="0.3"
+                        max="0.7"
+                        step="0.01"
+                        value={amHalftoneSettings.solidCutoff}
+                        onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, solidCutoff: parseFloat(e.target.value) }))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Luminance below this becomes solid shadow - adjust for beautiful art
+                      </p>
                     </div>
 
                     {/* Dot Spacing */}
@@ -5274,63 +5403,6 @@ ${outlinePaths}
                       />
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                         Grid spacing (min 1.0mm for 0.8mm holes + gap)
-                      </p>
-                    </div>
-
-                    {/* Contrast */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Contrast: {amHalftoneSettings.contrast.toFixed(1)}
-                      </label>
-                      <input
-                        type="range"
-                        min="0.8"
-                        max="2.0"
-                        step="0.1"
-                        value={amHalftoneSettings.contrast}
-                        onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, contrast: parseFloat(e.target.value) }))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                      />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Image contrast boost - higher = punchier halftone
-                      </p>
-                    </div>
-
-                    {/* Gamma */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Gamma: {amHalftoneSettings.gamma.toFixed(1)}
-                      </label>
-                      <input
-                        type="range"
-                        min="0.6"
-                        max="1.6"
-                        step="0.05"
-                        value={amHalftoneSettings.gamma}
-                        onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, gamma: parseFloat(e.target.value) }))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                      />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Tone curve - lower = darker midtones, higher = lighter midtones
-                      </p>
-                    </div>
-
-                    {/* Light Cutoff */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Light Cutoff: {(amHalftoneSettings.lightCutoff * 100).toFixed(0)}%
-                      </label>
-                      <input
-                        type="range"
-                        min="0.7"
-                        max="0.98"
-                        step="0.01"
-                        value={amHalftoneSettings.lightCutoff}
-                        onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, lightCutoff: parseFloat(e.target.value) }))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                      />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Brightness above this = no dot (clean highlights)
                       </p>
                     </div>
 
@@ -5402,11 +5474,109 @@ ${outlinePaths}
                       </label>
                     </div>
 
+                    {/* Island Bridging toggle */}
+                    <div className="flex items-center gap-2 pt-2 border-t border-indigo-200 dark:border-indigo-700">
+                      <input
+                        type="checkbox"
+                        id="enableIslandBridging"
+                        checked={amHalftoneSettings.enableIslandBridging}
+                        onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, enableIslandBridging: e.target.checked }))}
+                        className="rounded border-gray-300"
+                      />
+                      <label htmlFor="enableIslandBridging" className="text-xs text-gray-600 dark:text-gray-400">
+                        🌉 Auto-Bridge Floating Islands (prevents pieces from falling out)
+                      </label>
+                    </div>
+
+                    {/* HYBRID MODE: Solid Regions + Dots */}
+                    <div className="pt-3 border-t border-indigo-200 dark:border-indigo-700">
+                      <div className="flex items-center gap-2 mb-3">
+                        <input
+                          type="checkbox"
+                          id="useSolidRegions"
+                          checked={amHalftoneSettings.useSolidRegions}
+                          onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, useSolidRegions: e.target.checked }))}
+                          className="rounded border-gray-300"
+                        />
+                        <label htmlFor="useSolidRegions" className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                          ⚡ Hybrid Mode: Solid Shapes + Dots
+                        </label>
+                      </div>
+
+                      {amHalftoneSettings.useSolidRegions && (
+                        <div className="ml-6 space-y-3 pl-3 border-l-2 border-indigo-300 dark:border-indigo-600">
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            Large dark areas become solid filled shapes. Lighter areas use dots.
+                          </p>
+
+                          {/* Solid Threshold */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Solid Threshold: {amHalftoneSettings.solidThreshold.toFixed(2)}
+                            </label>
+                            <input
+                              type="range"
+                              min="0.05"
+                              max="0.3"
+                              step="0.01"
+                              value={amHalftoneSettings.solidThreshold}
+                              onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, solidThreshold: parseFloat(e.target.value) }))}
+                              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Lower = more solid regions (darker areas become filled shapes)
+                            </p>
+                          </div>
+
+                          {/* Solid Blur */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Solid Blur: {amHalftoneSettings.solidBlurRadiusPx.toFixed(1)}px
+                            </label>
+                            <input
+                              type="range"
+                              min="1"
+                              max="10"
+                              step="0.5"
+                              value={amHalftoneSettings.solidBlurRadiusPx}
+                              onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, solidBlurRadiusPx: parseFloat(e.target.value) }))}
+                              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Higher = smoother boundaries (easier to laser cut)
+                            </p>
+                          </div>
+
+                          {/* Min Solid Area */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Min Area: {amHalftoneSettings.minSolidAreaPx}px²
+                            </label>
+                            <input
+                              type="range"
+                              min="50"
+                              max="500"
+                              step="10"
+                              value={amHalftoneSettings.minSolidAreaPx}
+                              onChange={(e) => setAmHalftoneSettings(prev => ({ ...prev, minSolidAreaPx: parseInt(e.target.value) }))}
+                              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Minimum area to qualify as solid region (filters noise)
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="text-xs text-indigo-700 dark:text-indigo-400 space-y-1 pt-2 border-t border-indigo-200 dark:border-indigo-700">
                       <p>✓ <strong>Classic AM halftone</strong> - dot SIZE varies, not density</p>
                       <p>✓ <strong>Dots never merge</strong> - strict gap enforcement</p>
                       <p>✓ <strong>Smooth gradients</strong> - no banding or dithering</p>
                       <p>✓ <strong>SVG output</strong> - clean circles for laser cutting</p>
+                      {amHalftoneSettings.useSolidRegions && (
+                        <p>⚡ <strong>Hybrid mode active</strong> - solid paths + dots combined</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -5732,11 +5902,15 @@ ${outlinePaths}
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Stencil Size
                   </label>
-                  <div className="space-y-2">
+                    <div className="space-y-2">
                     {STENCIL_SIZES
                       .filter(size => {
-                        // For single-layer modes, only show 12x12 and 12x18
+                        // For single-layer modes, usually only show 12x12 and 12x18
+                        // but for AM halftone allow A4 as well
                         if (isSingleLayerMode) {
+                          if (isAmHalftoneMode) {
+                            return size.id === 'a4' || size.id === '12x12' || size.id === '12x18';
+                          }
                           return size.id === '12x12' || size.id === '12x18';
                         }
                         return true;
@@ -6362,21 +6536,49 @@ ${outlinePaths}
                 </div>
 
                 <div className="p-6">
-                  <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-900 dark:to-slate-800 rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
+                  <div
+                    className={`relative bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-900 dark:to-slate-800 rounded-lg overflow-hidden ${zoom > 1 ? 'cursor-grab' : ''} ${isPanning ? 'cursor-grabbing' : ''}`}
+                    style={{ minHeight: '400px', touchAction: zoom > 1 ? 'none' : 'auto' }}
+                    onMouseDown={(e) => startPan(e.clientX, e.clientY, e.target)}
+                    onMouseMove={(e) => updatePan(e.clientX, e.clientY)}
+                    onMouseUp={endPan}
+                    onMouseLeave={endPan}
+                    onTouchStart={(e) => {
+                      if (e.touches.length !== 1) return;
+                      startPan(e.touches[0].clientX, e.touches[0].clientY, e.target);
+                    }}
+                    onTouchMove={(e) => {
+                      if (!isPanning) return;
+                      e.preventDefault();
+                      const touch = e.touches[0];
+                      updatePan(touch.clientX, touch.clientY);
+                    }}
+                    onTouchEnd={endPan}
+                  >
                     <div className="absolute inset-0 flex items-center justify-center">
                       {layers.length > 0 ? (
                         <img
                           src={showOriginal ? imageUrl : layers[selectedLayer]?.dataUrl}
                           alt={showOriginal ? 'Original' : `Layer ${selectedLayer + 1}`}
-                          className="max-w-full max-h-full object-contain transition-transform duration-200"
-                          style={{ transform: `scale(${zoom})` }}
+                          className="max-w-full max-h-full object-contain"
+                          style={{
+                            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+                            transformOrigin: 'center center',
+                            transition: isPanning ? 'none' : 'transform 200ms ease'
+                          }}
+                          draggable={false}
                         />
                       ) : imageUrl ? (
                         <img
                           src={imageUrl}
                           alt="Source"
-                          className="max-w-full max-h-full object-contain transition-transform duration-200"
-                          style={{ transform: `scale(${zoom})` }}
+                          className="max-w-full max-h-full object-contain"
+                          style={{
+                            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+                            transformOrigin: 'center center',
+                            transition: isPanning ? 'none' : 'transform 200ms ease'
+                          }}
+                          draggable={false}
                         />
                       ) : null}
                     </div>
@@ -6425,10 +6627,22 @@ ${outlinePaths}
             {layers.length > 0 && (
               <div data-download-section className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
                 <div className="p-6 bg-gradient-to-r from-purple-500 to-indigo-500 text-white">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <Grid className="h-5 w-5" />
-                    All Layers ({layers.length})
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                      <Grid className="h-5 w-5" />
+                      All Layers ({layers.length})
+                    </h2>
+                    <button
+                      onClick={() => setShowActualStencilEditor(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg font-medium transition-all shadow-lg text-sm"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                      Refine Stencil (Optional)
+                    </button>
+                  </div>
+                  <p className="text-sm text-white/80 mt-2">
+                    Optional: Use the stencil editor to detect islands, add bridges, and validate cutting safety
+                  </p>
                 </div>
 
                 <div className="p-6">
@@ -7231,7 +7445,7 @@ ${outlinePaths}
       )}
       
       {/* Reviews Modal */}
-      {showReviewsModal && selectedReviewMode && STENCIL_REVIEWS[selectedReviewMode] && (
+      {showReviewsModal && selectedReviewMode && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
             {/* Modal Header */}
@@ -7258,15 +7472,15 @@ ${outlinePaths}
               </div>
               
               {/* Rating Summary */}
-              <div className="mt-3 flex items-center gap-4">
-                <div className="text-4xl font-bold">{STENCIL_REVIEWS[selectedReviewMode].rating}</div>
+                <div className="mt-3 flex items-center gap-4">
+                <div className="text-4xl font-bold">{getModeStats(selectedReviewMode).rating}</div>
                 <div>
                   <div className="flex">
                     {[1, 2, 3, 4, 5].map((star) => (
-                      <span key={star} className={`text-2xl ${star <= Math.round(STENCIL_REVIEWS[selectedReviewMode].rating) ? 'text-white' : 'text-amber-300/50'}`}>★</span>
+                      <span key={star} className={`text-2xl ${star <= Math.round(getModeStats(selectedReviewMode).rating) ? 'text-white' : 'text-amber-300/50'}`}>★</span>
                     ))}
                   </div>
-                  <p className="text-sm text-amber-100">{STENCIL_REVIEWS[selectedReviewMode].totalReviews} verified reviews</p>
+                  <p className="text-sm text-amber-100">{getModeStats(selectedReviewMode).totalReviews} verified reviews</p>
                 </div>
               </div>
             </div>
@@ -7274,8 +7488,8 @@ ${outlinePaths}
             {/* Reviews List */}
             <div className="p-4 overflow-y-auto max-h-[50vh]">
               <div className="space-y-4">
-                {STENCIL_REVIEWS[selectedReviewMode].reviews.map((review) => (
-                  <div key={review.id} className="bg-gray-50 dark:bg-slate-700/50 rounded-xl p-4 border border-gray-100 dark:border-slate-600">
+                {getModeStats(selectedReviewMode).reviews.map((review, idx) => (
+                  <div key={review.id || review.date || idx} className="bg-gray-50 dark:bg-slate-700/50 rounded-xl p-4 border border-gray-100 dark:border-slate-600">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold">
@@ -7299,7 +7513,9 @@ ${outlinePaths}
                         ))}
                       </div>
                     </div>
-                    <p className="text-gray-700 dark:text-gray-300">{review.comment}</p>
+                    <p className="text-gray-700 dark:text-gray-300">
+                      {review.comment ? review.comment : 'No written comment provided.'}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -7307,7 +7523,7 @@ ${outlinePaths}
               {/* Load More Placeholder */}
               <div className="mt-4 text-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Showing {STENCIL_REVIEWS[selectedReviewMode].reviews.length} of {STENCIL_REVIEWS[selectedReviewMode].totalReviews} reviews
+                  Showing {getModeStats(selectedReviewMode).reviews.length} of {getModeStats(selectedReviewMode).totalReviews} reviews
                 </p>
                 <button className="mt-2 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 text-sm font-medium">
                   Load more reviews →
@@ -7346,6 +7562,21 @@ ${outlinePaths}
         onApply={handleEditorApply}
         isDarkMode={true}
       />
+      
+      {/* Actual Stencil Editor (Post-Generation Refinement) */}
+      {showActualStencilEditor && (
+        <ActualStencilEditor
+          layers={layers}
+          sourceImageUrl={imageUrl}
+          stencilMode={stencilMode}
+          onSave={(editedLayers) => {
+            // Update layers with edited versions
+            setLayers(editedLayers);
+            setShowActualStencilEditor(false);
+          }}
+          onClose={() => setShowActualStencilEditor(false)}
+        />
+      )}
     </div>
   );
 };
