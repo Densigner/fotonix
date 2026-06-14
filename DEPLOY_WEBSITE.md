@@ -13,7 +13,7 @@
 | Server | IP | Purpose |
 |--------|-----|---------|
 | **Website Host** | 91.238.164.175 | Frontend (www.fotonix.co.uk) |
-| **API VPS** | 51.75.78.118 | Backend API server |
+| **API VPS** | 178.104.153.63 | Backend API server |
 
 ## How to Deploy Changes to www.fotonix.co.uk
 
@@ -56,7 +56,7 @@ echo "✅ Deployed!"
 - **SSH key generated:** ~/.ssh/id_rsa (SHA256:jVt7VVxghgq60yrJn9jJfuSJbLjQd0dbNzGemSkniJY)
 
 ### API VPS (for backend)
-- **SSH:** `ssh root@51.75.78.118`
+- **SSH:** `ssh root@178.104.153.63`
 - **Deploy script:** `.\deploy-to-vps.ps1` (on local PC)
 
 ## File Structure on Website Server

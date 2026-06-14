@@ -224,7 +224,7 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
 
   return (
     <div 
-      className={`relative border-2 rounded p-3 mb-3 cursor-pointer transition-colors ${
+      className={`group relative border-2 rounded p-3 mb-3 cursor-pointer transition-colors ${
         isSelected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'
       }`}
       onClick={onClick}
@@ -236,23 +236,23 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
       }}
     >
       {/* Block Controls */}
-      <div className="absolute top-2 right-2 flex gap-1 opacity-0 hover:opacity-100 transition-opacity">
+      <div className={`absolute top-2 right-2 flex gap-1 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
         {onMoveUp && (
-          <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} className="p-1 bg-white border rounded text-xs hover:bg-slate-50">
+          <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} className="p-1 bg-white border border-slate-200 rounded text-xs hover:bg-slate-50 shadow-sm" title="Move up">
             ↑
           </button>
         )}
         {onMoveDown && (
-          <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} className="p-1 bg-white border rounded text-xs hover:bg-slate-50">
+          <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} className="p-1 bg-white border border-slate-200 rounded text-xs hover:bg-slate-50 shadow-sm" title="Move down">
             ↓
           </button>
         )}
-        <button 
-          onClick={(e) => { e.stopPropagation(); onDelete(); }} 
-          className="p-1 bg-white border rounded text-xs hover:bg-red-50 text-red-600 transition-colors"
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="p-1 bg-white border border-red-200 rounded text-xs hover:bg-red-50 text-red-500 shadow-sm"
           title="Delete block"
         >
-          🗑️
+          ✕
         </button>
       </div>
 
@@ -683,6 +683,8 @@ export default function EmailBuilderPage(props = {}) {
             intent={props.intent}
             currentTenant={getTenant(currentTenantId)}
             currentUser={currentUser}
+            onSend={props.onSend}
+            sendCampaignRef={props.sendCampaignRef}
             onNext={(state) => {
               // capture composer snapshot and navigate to Design step
               try { setComposerState(state || {}); } catch (e) { console.debug('Failed to set composerState', e); }
@@ -1043,7 +1045,7 @@ function DropZone({ index, onDropType, onMoveBlock }) {
   );
 }
 
-function ComposerPage({ onBack, onNext, templates = [], setTemplates = null, selectedTemplateId = null, initialTemplate = null, intent = null, currentTenant, currentUser }) {
+function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [], setTemplates = null, selectedTemplateId = null, initialTemplate = null, intent = null, currentTenant, currentUser }) {
   // Start with an empty canvas — user will add blocks explicitly
   const [blocks, setBlocks] = useState(() => {
     // For automation templates, use initialTemplate blocks directly
@@ -1505,6 +1507,81 @@ function ComposerPage({ onBack, onNext, templates = [], setTemplates = null, sel
     }
   }
 
+  React.useEffect(() => {
+    if (sendCampaignRef) sendCampaignRef.current = sendCampaign;
+  });
+
+  async function sendCampaign() {
+    if (!subject.trim()) {
+      alert('Please add an email subject before sending');
+      return;
+    }
+    if (blocks.length === 0) {
+      alert('Please add at least one block before sending');
+      return;
+    }
+    const user = auth.currentUser;
+    if (!user) {
+      alert('You must be logged in to send a campaign');
+      return;
+    }
+
+    try {
+      const brandColor = currentTenant?.defaults?.brandColor || '#000';
+      const font = currentTenant?.defaults?.font || "'Helvetica Neue', Arial, sans-serif";
+      const contentWidth = currentTenant?.defaults?.contentWidth || 600;
+      const companyName = currentTenant?.defaults?.companyName || currentTenant?.name || 'Our Company';
+      const companyAddress = currentTenant?.defaults?.companyAddress || '123 Business St, City, Country';
+
+      const bodyHtml = blocks.map(b => {
+        switch (b.type) {
+          case 'text': return `<div style="text-align:${b.meta.align};font-size:${b.meta.fontSize}px;color:#000;white-space:pre-wrap">${b.meta.content || ''}</div>`;
+          case 'image': return `<div style="text-align:${b.meta.align||'center'}"><img src="${b.meta.src}" alt="${b.meta.alt||''}" style="max-width:100%;height:auto"/></div>`;
+          case 'button': return `<div style="text-align:center"><a href="${b.meta.url}" style="display:inline-block;padding:8px 16px;background:${brandColor};color:#fff;border-radius:6px;text-decoration:none;font-weight:600">${b.meta.label}</a></div>`;
+          case 'divider': return `<div style="height:${b.meta.height}px;background:${b.meta.color};width:100%"></div>`;
+          case 'spacer': return `<div style="height:${b.meta.height}px"></div>`;
+          default: return '';
+        }
+      }).join('');
+
+      const legalFooter = `<div style="margin-top:40px;padding-top:20px;border-top:1px solid #e6e6e6;text-align:center;font-size:12px;color:#666"><p>You can <a href="{{UnsubscribeURL}}">unsubscribe</a> at any time.</p><p style="font-size:11px;color:#999">${companyName}<br>${companyAddress}</p></div>`;
+      const html = `<!doctype html><html><head><meta charset="utf-8"/></head><body style="font-family:${font};background:#f5f5f5;margin:0;padding:0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center"><table width="${contentWidth}" cellpadding="0" cellspacing="0" style="background:#fff"><tr><td style="padding:20px">${bodyHtml}${legalFooter}</td></tr></table></td></tr></table></body></html>`;
+
+      const templateId = `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const templateData = {
+        id: templateId,
+        title: subject.slice(0, 100),
+        html,
+        blocks,
+        subject,
+        campaign: {
+          subject,
+          preheader: previewText,
+          selectedAudience: selectedSendTarget,
+          audienceInfo: sendTargetInfo,
+        },
+        metadata: { subject, preheader: previewText },
+        tenantId: currentTenant?.id || 'default',
+        owner: user.uid,
+        ownerEmail: user.email,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        type: 'campaign-email',
+      };
+
+      const { getDatabase, ref: dbRef, set } = await import('firebase/database');
+      const database = getDatabase();
+      await set(dbRef(database, `templates/${user.uid}/${templateId}`), templateData);
+
+      if (typeof onSend === 'function') {
+        onSend(templateId);
+      }
+    } catch (err) {
+      console.error('sendCampaign error:', err);
+      alert(`Failed to prepare campaign: ${err.message}`);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white text-black p-6">
       <div className="max-w-6xl mx-auto">
@@ -1643,12 +1720,20 @@ function ComposerPage({ onBack, onNext, templates = [], setTemplates = null, sel
                   <button onClick={onBack} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
                     Back
                   </button>
-                  <button 
+                  <button
                     onClick={saveTemplate}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md font-semibold transition-colors"
                   >
                     Save Template
                   </button>
+                  {typeof onSend === 'function' && (
+                    <button
+                      onClick={sendCampaign}
+                      className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 hover:brightness-110 text-white px-6 py-2 rounded-md font-semibold transition-all shadow-md shadow-pink-500/25"
+                    >
+                      Send Campaign →
+                    </button>
+                  )}
                 </div>
               </div>
               
@@ -1657,9 +1742,18 @@ function ComposerPage({ onBack, onNext, templates = [], setTemplates = null, sel
                 <div className="max-w-2xl mx-auto bg-white border border-slate-200 rounded-lg overflow-hidden">
                   {/* Email Header */}
                   <div className="bg-slate-100 px-4 py-2 text-sm text-slate-600 border-b">
-                    <div className="flex justify-between">
-                      <span>Subject: {subject || 'Email Subject'}</span>
-                      <span>✏️ Click blocks to edit</span>
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="shrink-0 text-slate-500">Subject:</span>
+                        <input
+                          type="text"
+                          value={subject}
+                          onChange={e => setSubject(e.target.value)}
+                          placeholder="Enter email subject..."
+                          className="flex-1 min-w-0 bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-800 text-sm focus:outline-none focus:border-indigo-400"
+                        />
+                      </div>
+                      <span className="shrink-0 text-slate-400 text-xs">✏️ Click blocks to edit</span>
                     </div>
                   </div>
                   
@@ -1853,6 +1947,91 @@ function findBlockById(blocks, id) {
   return found;
 }
 
+function ImageBlockInspector({ block, onUpdate }) {
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState('');
+  const fileInputRef = React.useRef(null);
+
+  async function handleFileChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError('');
+    try {
+      const uid = (auth && auth.currentUser && auth.currentUser.uid) || 'anon';
+      const ext = file.name.split('.').pop();
+      const path = `emailImages/${uid}/${Date.now()}.${ext}`;
+      const { getStorage, ref: stRef, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const storage = getStorage();
+      const storageRef = stRef(storage, path);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      onUpdate({ src: url });
+    } catch (err) {
+      setUploadError(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs block mb-1 text-slate-600">Upload Image</label>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          disabled={uploading}
+          className="w-full border border-dashed border-indigo-400 rounded p-2 text-sm text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50"
+        >
+          {uploading ? 'Uploading…' : '⬆ Upload from device'}
+        </button>
+        {uploadError && <p className="text-xs text-red-500 mt-1">{uploadError}</p>}
+      </div>
+      <div>
+        <label className="text-xs block mb-1 text-slate-600">Or paste URL</label>
+        <input
+          value={block.meta.src}
+          onChange={(e) => onUpdate({ src: e.target.value })}
+          className="w-full border border-slate-200 rounded p-2 bg-white text-black text-sm"
+          placeholder="https://..."
+        />
+      </div>
+      {block.meta.src && (
+        <img src={block.meta.src} alt="preview" className="w-full rounded border border-slate-200 object-contain max-h-32" />
+      )}
+      <div>
+        <label className="text-xs block mb-1 text-slate-600">Alt text</label>
+        <input
+          value={block.meta.alt}
+          onChange={(e) => onUpdate({ alt: e.target.value })}
+          className="w-full border border-slate-200 rounded p-2 bg-white text-black text-sm"
+          placeholder="Describe the image"
+        />
+      </div>
+      <div>
+        <label className="text-xs block mb-1 text-slate-600">Align</label>
+        <select
+          value={block.meta.align || 'center'}
+          onChange={(e) => onUpdate({ align: e.target.value })}
+          className="w-full border border-slate-200 rounded p-2 bg-white text-black text-sm"
+        >
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function InspectorEmail({ block, onUpdate, realProducts = [], loadingProducts = false }) {
   if (!block) return null;
 
@@ -1986,34 +2165,7 @@ function InspectorEmail({ block, onUpdate, realProducts = [], loadingProducts = 
       break;
     case 'image':
       inspectorContent = (
-        <div className="space-y-2">
-          <label className="text-xs block mb-1">Src</label>
-          <input 
-            value={block.meta.src} 
-            onChange={(e) => onUpdate({ src: e.target.value })} 
-            className="w-full max-w-full min-w-0 border border-slate-200 rounded p-2 bg-white text-black text-sm" 
-            placeholder="Image URL"
-            style={{ maxWidth: '100%' }}
-          />
-          <label className="text-xs block mb-1">Alt</label>
-          <input 
-            value={block.meta.alt} 
-            onChange={(e) => onUpdate({ alt: e.target.value })} 
-            className="w-full max-w-full min-w-0 border border-slate-200 rounded p-2 bg-white text-black text-sm" 
-            placeholder="Alt text"
-            style={{ maxWidth: '100%' }}
-          />
-          <label className="text-xs block mb-1">Align</label>
-          <select 
-            value={block.meta.align || 'center'} 
-            onChange={(e) => onUpdate({ align: e.target.value })} 
-            className="w-full max-w-full border border-slate-200 rounded p-2 bg-white text-black text-sm"
-          >
-            <option value="left">left</option>
-            <option value="center">center</option>
-            <option value="right">right</option>
-          </select>
-        </div>
+        <ImageBlockInspector block={block} onUpdate={onUpdate} />
       );
       break;
     case 'button':

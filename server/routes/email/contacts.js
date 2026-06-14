@@ -23,15 +23,48 @@ const upload = multer({
   }
 });
 
-// Helper function to get tenant ID from member UID
-async function getTenantId(memberUid) {
-  // For now, create a default tenant for each member
-  // In production, you might have a members_tenants table
-  const result = await query(
-    'INSERT INTO tenants (name, slug) VALUES ($1, $2) ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-    [`${memberUid} Organization`, `tenant-${memberUid}`]
-  );
-  return result.rows[0].id;
+// Single-tenant platform — always use the Fotonix store tenant
+async function getTenantId(_memberUid) {
+  return 1;
+}
+
+// Sync PBN signups and funnel events into contacts table
+async function syncPBNCustomers(tenantId) {
+  const result = await query(`
+    INSERT INTO contacts (tenant_id, email, first_name, engagement_score, custom_fields, source, created_at, updated_at)
+    SELECT
+      $1,
+      uev.email,
+      COALESCE(
+        (SELECT po.shipping_address->>'name'
+         FROM pbn_orders po
+         WHERE po.shipping_address->>'email' = uev.email
+         ORDER BY po.created_at DESC LIMIT 1),
+        ''
+      ) AS first_name,
+      CASE
+        WHEN EXISTS(SELECT 1 FROM contact_events WHERE email = uev.email AND event_type = 'pbn_order_completed') THEN 0.90
+        WHEN EXISTS(SELECT 1 FROM contact_events WHERE email = uev.email AND event_type = 'pbn_checkout_started') THEN 0.70
+        WHEN EXISTS(SELECT 1 FROM contact_events WHERE email = uev.email AND event_type = 'pbn_generated')       THEN 0.50
+        ELSE 0.30
+      END AS engagement_score,
+      jsonb_build_object(
+        'source',      'pbn_signup',
+        'user_type',   uev.user_type,
+        'is_verified', uev.is_verified,
+        'signed_up',   uev.created_at
+      ) AS custom_fields,
+      'pbn_signup',
+      uev.created_at,
+      NOW()
+    FROM user_email_verification uev
+    ON CONFLICT (tenant_id, email) DO UPDATE SET
+      engagement_score = EXCLUDED.engagement_score,
+      first_name       = CASE WHEN contacts.first_name = '' THEN EXCLUDED.first_name ELSE contacts.first_name END,
+      custom_fields    = contacts.custom_fields || EXCLUDED.custom_fields,
+      updated_at       = NOW()
+  `, [tenantId]);
+  return result.rowCount;
 }
 
 // Sync conversion leads to contacts table
@@ -116,55 +149,73 @@ router.get('/', async (req, res) => {
     }
 
     const tenantId = await getTenantId(memberUid);
-    
-    // Sync all sources to contacts
+
+    // Sync all sources into contacts
+    await syncPBNCustomers(tenantId);
     const syncedLeads = await syncConversionLeads(tenantId);
-    const syncedUsers = await syncStencilUsers(tenantId);
-    const totalSynced = syncedLeads + syncedUsers;
-    
-    // Get all contacts with pagination
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = (page - 1) * limit;
-    const search = req.query.search || '';
+    await syncStencilUsers(tenantId).catch(() => {});
+
+    // Pagination + filters
+    const page    = parseInt(req.query.page)  || 1;
+    const limit   = parseInt(req.query.limit) || 50;
+    const offset  = (page - 1) * limit;
+    const search  = req.query.search  || '';
     const segment = req.query.segment || '';
 
     let contactsQuery = `
-      SELECT 
-        id, email, first_name, last_name, display_name,
-        is_vip, is_blocked, engagement_score,
-        contact_frequency, custom_fields,
-        created_at, updated_at
-      FROM contacts 
-      WHERE tenant_id = $1
+      SELECT
+        c.id, c.email, c.first_name, c.last_name, c.display_name,
+        c.is_vip,
+        false AS is_blocked,
+        c.engagement_score,
+        'monthly' AS contact_frequency,
+        c.custom_fields, c.source,
+        c.created_at, c.updated_at,
+        COALESCE(
+          (SELECT json_agg(s.name)
+           FROM audience_segment_members m
+           JOIN audience_segments s ON s.id = m.segment_id
+           WHERE m.contact_id = c.id),
+          '[]'::json
+        ) AS segments
+      FROM contacts c
+      WHERE c.tenant_id = $1
     `;
-    
+
     const queryParams = [tenantId];
     let paramIndex = 2;
 
     if (search) {
-      contactsQuery += ` AND (email ILIKE $${paramIndex} OR first_name ILIKE $${paramIndex} OR last_name ILIKE $${paramIndex})`;
+      contactsQuery += ` AND (c.email ILIKE $${paramIndex} OR c.first_name ILIKE $${paramIndex} OR c.last_name ILIKE $${paramIndex})`;
       queryParams.push(`%${search}%`);
       paramIndex++;
     }
 
     if (segment === 'vip') {
-      contactsQuery += ` AND is_vip = true`;
+      contactsQuery += ` AND c.is_vip = true`;
     } else if (segment === 'high_engagement') {
-      contactsQuery += ` AND engagement_score >= 0.7`;
+      contactsQuery += ` AND c.engagement_score >= 0.7`;
     } else if (segment === 'low_engagement') {
-      contactsQuery += ` AND engagement_score < 0.4`;
+      contactsQuery += ` AND c.engagement_score < 0.4`;
+    } else if (segment && segment !== 'all') {
+      // PBN named segment — join via audience_segment_members
+      contactsQuery += `
+        AND c.id IN (
+          SELECT m.contact_id FROM audience_segment_members m
+          JOIN audience_segments s ON s.id = m.segment_id
+          WHERE s.name = $${paramIndex} AND s.tenant_id = $1
+        )`;
+      queryParams.push(segment);
+      paramIndex++;
     }
 
-    contactsQuery += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    contactsQuery += ` ORDER BY c.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     queryParams.push(limit, offset);
 
     const contacts = await query(contactsQuery, queryParams);
-    
-    // Get total count
-    const countQuery = `SELECT COUNT(*) FROM contacts WHERE tenant_id = $1`;
-    const countResult = await query(countQuery, [tenantId]);
-    const totalCount = parseInt(countResult.rows[0].count);
+
+    const countResult = await query(`SELECT COUNT(*) FROM contacts WHERE tenant_id = $1`, [tenantId]);
+    const totalCount  = parseInt(countResult.rows[0].count);
 
     res.json({
       contacts: contacts.rows,
@@ -174,7 +225,7 @@ router.get('/', async (req, res) => {
         total: totalCount,
         pages: Math.ceil(totalCount / limit)
       },
-      syncedLeads: totalSynced
+      syncedLeads
     });
 
   } catch (error) {
@@ -504,10 +555,15 @@ router.get('/segments', async (req, res) => {
     const tenantId = await getTenantId(memberUid);
 
     const segmentsQuery = `
-      SELECT id, name, description, contact_count, is_dynamic, created_at
-      FROM audience_segments 
-      WHERE tenant_id = $1 
-      ORDER BY created_at DESC
+      SELECT
+        s.id, s.name, s.description,
+        COUNT(m.contact_id) AS contact_count,
+        s.created_at
+      FROM audience_segments s
+      LEFT JOIN audience_segment_members m ON m.segment_id = s.id
+      WHERE s.tenant_id = $1
+      GROUP BY s.id, s.name, s.description, s.created_at
+      ORDER BY s.name
     `;
 
     const result = await query(segmentsQuery, [tenantId]);

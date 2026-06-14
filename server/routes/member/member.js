@@ -1107,11 +1107,17 @@ router.delete('/affiliates/:id', (req, res) => {
 });
 
 // Get business emails for a member (UPDATED for normalized schema)
+const FOTONIX_DEFAULT_EMAILS = [
+  { id: 'default-noreply', email: 'noreply@fotonix.co.uk', type: 'noreply', displayName: 'Fotonix', description: 'No-reply sender', businessName: 'Fotonix', isVerified: true, dailyLimit: 500, dailyRemaining: 500 },
+  { id: 'default-orders',  email: 'orders@fotonix.co.uk',  type: 'orders',  displayName: 'Fotonix Orders', description: 'Order confirmations', businessName: 'Fotonix', isVerified: true, dailyLimit: 500, dailyRemaining: 500 },
+  { id: 'default-support', email: 'support@fotonix.co.uk', type: 'support', displayName: 'Fotonix Support', description: 'Customer support', businessName: 'Fotonix', isVerified: true, dailyLimit: 500, dailyRemaining: 500 },
+];
+
 router.get('/business-emails/:memberUid', async (req, res) => {
   try {
     const { memberUid } = req.params;
     console.log('DEBUG: Fetching business emails for UID:', memberUid);
-    
+
     // Query the normalized business_emails table directly
     const result = await query(`
       SELECT 
@@ -1144,10 +1150,14 @@ router.get('/business-emails/:memberUid', async (req, res) => {
     `, [memberUid]);
     
     if (result.rows.length === 0) {
-      console.log('DEBUG: No business emails found for UID:', memberUid);
-      return res.json([]);
+      console.log('DEBUG: No business emails found for UID:', memberUid, '- returning fotonix defaults');
+      return res.json([
+        { id: 'default-noreply', email: 'noreply@fotonix.co.uk', type: 'noreply', displayName: 'Fotonix', description: 'No-reply sender', businessName: 'Fotonix', isVerified: true, dailyLimit: 500, dailyRemaining: 500 },
+        { id: 'default-orders',  email: 'orders@fotonix.co.uk',  type: 'orders',  displayName: 'Fotonix Orders', description: 'Order confirmations', businessName: 'Fotonix', isVerified: true, dailyLimit: 500, dailyRemaining: 500 },
+        { id: 'default-support', email: 'support@fotonix.co.uk', type: 'support', displayName: 'Fotonix Support', description: 'Customer support', businessName: 'Fotonix', isVerified: true, dailyLimit: 500, dailyRemaining: 500 }
+      ]);
     }
-    
+
     // Transform to flat array with proper IDs (no grouping needed - normalized!)
     const businessEmails = result.rows.map(row => ({
       id: row.id,  // ✅ REAL DATABASE PRIMARY KEY
@@ -1168,11 +1178,8 @@ router.get('/business-emails/:memberUid', async (req, res) => {
     res.json(businessEmails);
     
   } catch (error) {
-    console.error('Get business emails error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch business emails',
-      detail: error.message 
-    });
+    console.error('Get business emails error (returning defaults):', error.message);
+    res.json(FOTONIX_DEFAULT_EMAILS);
   }
 });
 

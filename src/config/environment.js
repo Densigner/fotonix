@@ -11,7 +11,7 @@ const config = {
     environment: 'staging'
   },
   production: {
-    apiUrl: 'https://mail.fotonix.co.uk',
+    apiUrl: 'https://api.fotonix.co.uk',
     clientUrl: 'https://fotonix.co.uk',
     environment: 'production'
   }

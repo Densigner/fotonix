@@ -31,16 +31,9 @@ export default function CampaignSendPage() {
   const [businessEmails, setBusinessEmails] = useState([]);
   const [loadingEmails, setLoadingEmails] = useState(true);
 
-  // Recipient audience selection (matching ActualEditor pattern)
-  const [selectedAudience, setSelectedAudience] = useState('all'); // all | segment | tag
-  const [audienceInfo, setAudienceInfo] = useState('All subscribers');
+  // Audience segments from the contacts API
   const [segments, setSegments] = useState([]);
-  const [tags, setTags] = useState([]);
-  const [selectedSegmentId, setSelectedSegmentId] = useState(null);
-  const [selectedTagId, setSelectedTagId] = useState(null);
-  
-  // Stored recipients from database
-  const [storedRecipients, setStoredRecipients] = useState([]);
+  const [selectedSegment, setSelectedSegment] = useState('all'); // 'all' | segment name
   const [loadingRecipients, setLoadingRecipients] = useState(true);
 
   // Campaign configuration
@@ -108,91 +101,40 @@ export default function CampaignSendPage() {
     }
   }, []);
 
-  // Load segments and tags from localStorage (matching ActualEditor)
+  // Load segments and contacts from API
   useEffect(() => {
     if (!user) return;
-    const segmentsKey = `mailbuilder.segments:${user.uid}`;
-    const tagsKey = `mailbuilder.tags:${user.uid}`;
-    
-    try {
-      const segmentsRaw = localStorage.getItem(segmentsKey);
-      if (segmentsRaw) setSegments(JSON.parse(segmentsRaw) || []);
-      
-      const tagsRaw = localStorage.getItem(tagsKey);
-      if (tagsRaw) setTags(JSON.parse(tagsRaw) || []);
-    } catch (e) {
-      console.error('Failed to load segments/tags:', e);
-    }
-  }, [user]);
 
-  // Load stored recipients from database
-  useEffect(() => {
-    if (!user) return;
-    
-    const loadRecipients = async () => {
+    const headers = { 'x-member-uid': user.uid };
+
+    // Load segment counts
+    fetch(`${API_URL}/api/contacts/segments`, { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setSegments(Array.isArray(data) ? data : []))
+      .catch(() => {});
+
+    // Load contacts for the selected segment
+    const loadContacts = async () => {
+      setLoadingRecipients(true);
       try {
-        // Try to fetch from contacts/subscribers endpoint
-        const response = await fetch(`${API_URL}/api/contacts`, {
-          headers: {
-            'x-member-uid': user.uid
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          const emails = data.contacts || data.subscribers || [];
-          setStoredRecipients(emails);
-          
-          // Update audience info with actual count
-          if (selectedAudience === 'all') {
-            setAudienceInfo(`${emails.length} subscribers`);
-          }
-        } else {
-          // If contacts endpoint fails, provide demo contacts data
-          console.log('Contacts endpoint failed, using demo contacts');
-          const demoContacts = [
-            { email: 'demo@fotonix.co.uk' },
-            { email: 'subscriber@example.com' },
-            { email: 'customer@company.com' },
-            { email: 'user@test.org' }
-          ];
-          setStoredRecipients(demoContacts);
-          if (selectedAudience === 'all') {
-            setAudienceInfo(`${demoContacts.length} subscribers`);
-          }
-        }
-        setLoadingRecipients(false);
+        const url = selectedSegment === 'all'
+          ? `${API_URL}/api/contacts?limit=500`
+          : `${API_URL}/api/contacts?limit=500&segment=${encodeURIComponent(selectedSegment)}`;
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error('contacts fetch failed');
+        const data = await res.json();
+        const emails = (data.contacts || []).map(c => c.email).filter(Boolean).join('\n');
+        setConfig(prev => ({ ...prev, recipientList: emails }));
       } catch (err) {
-        console.error('Failed to load recipients:', err);
-        // Fallback to demo data
-        const demoContacts = [
-          { email: 'demo@fotonix.co.uk' },
-          { email: 'subscriber@example.com' },
-          { email: 'customer@company.com' },
-          { email: 'user@test.org' }
-        ];
-        setStoredRecipients(demoContacts);
-        if (selectedAudience === 'all') {
-          setAudienceInfo(`${demoContacts.length} subscribers`);
-        }
+        console.error('Failed to load contacts:', err);
+        setConfig(prev => ({ ...prev, recipientList: '' }));
+      } finally {
         setLoadingRecipients(false);
       }
     };
-    
-    loadRecipients();
-  }, [user, selectedAudience]);
-  
-  // Auto-populate recipients when stored recipients are loaded
-  useEffect(() => {
-    if (storedRecipients.length > 0 && !config.recipientList?.trim()) {
-      const emailList = storedRecipients.map(r => r.email).join('\n');
-      setConfig(prev => ({
-        ...prev,
-        recipientList: emailList
-      }));
-      console.log('Auto-populated recipients from stored contacts:', emailList);
-    }
-  }, [storedRecipients, config.recipientList]);
+
+    loadContacts();
+  }, [user, selectedSegment]);
   
   // Debug send button state
   useEffect(() => {
@@ -264,18 +206,7 @@ export default function CampaignSendPage() {
             preheader: finalPreheader
           }));
           
-          // Set audience info from campaign data
-          if (data.campaign.selectedAudience) {
-            setSelectedAudience(data.campaign.selectedAudience);
-            setAudienceInfo(data.campaign.audienceInfo || 'All subscribers');
-          }
-          
-          console.log('Updated config with campaign data:', {
-            subject: finalSubject,
-            preheader: finalPreheader,
-            audience: data.campaign.selectedAudience,
-            audienceInfo: data.campaign.audienceInfo
-          });
+          console.log('Updated config with campaign data:', { subject: finalSubject, preheader: finalPreheader });
         } else {
           console.log('=== NO CAMPAIGN DATA FOUND - TRYING LOCALSTORAGE ===');
           console.log('Template data keys:', Object.keys(data));
@@ -295,16 +226,6 @@ export default function CampaignSendPage() {
           } catch (e) {
             console.warn('Failed to parse localStorage composer data:', e);
           }
-        }
-        
-        // Auto-populate recipients from stored contacts if available
-        if (storedRecipients.length > 0) {
-          const emailList = storedRecipients.map(r => r.email).join('\n');
-          setConfig(prev => ({
-            ...prev,
-            recipientList: emailList
-          }));
-          console.log('Auto-populated recipients from template load:', emailList);
         }
         
         // Use business emails from template if not already loaded
@@ -805,45 +726,75 @@ export default function CampaignSendPage() {
 
             {/* Recipients */}
             <div className="bg-white rounded-lg border border-slate-200 p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4">Recipients</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Email Addresses <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
-                    rows={8}
-                    value={config.recipientList}
-                    onChange={(e) => setConfig(prev => ({ ...prev, recipientList: e.target.value }))}
-                    placeholder="Enter email addresses (one per line or comma-separated)&#10;example@email.com&#10;another@email.com"
-                  />
-                  <p className="text-sm text-slate-600 mt-2">
-                    <span className="font-semibold">
-                      {parseRecipients(config.recipientList).length}
-                    </span> valid recipient(s)
-                  </p>
-                </div>
+              <h2 className="text-lg font-semibold text-slate-900 mb-1">Recipients</h2>
+              <p className="text-sm text-slate-500 mb-4">Choose a segment or send to your full list</p>
 
-                {parseRecipients(config.recipientList).length > 0 && (
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-600 mb-2">Preview:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {parseRecipients(config.recipientList).slice(0, 10).map((email, i) => (
-                        <span key={i} className="inline-block bg-white border border-slate-200 rounded px-2 py-1 text-xs">
-                          {email}
-                        </span>
-                      ))}
-                      {parseRecipients(config.recipientList).length > 10 && (
-                        <span className="inline-block bg-slate-200 rounded px-2 py-1 text-xs">
-                          +{parseRecipients(config.recipientList).length - 10} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
+              {/* Segment selector */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  onClick={() => setSelectedSegment('all')}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                    selectedSegment === 'all'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-400'
+                  }`}
+                >
+                  All contacts
+                </button>
+                {segments.map(seg => (
+                  <button
+                    key={seg.name}
+                    onClick={() => setSelectedSegment(seg.name)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                      selectedSegment === seg.name
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-400'
+                    }`}
+                  >
+                    {seg.name.replace(/_/g, ' ')}
+                    <span className="ml-1.5 opacity-70">({seg.contact_count || 0})</span>
+                  </button>
+                ))}
               </div>
+
+              {/* Recipient list */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Email Addresses <span className="text-red-500">*</span>
+                  {loadingRecipients && <span className="ml-2 text-slate-400 font-normal">Loading…</span>}
+                </label>
+                <textarea
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
+                  rows={6}
+                  value={config.recipientList}
+                  onChange={(e) => setConfig(prev => ({ ...prev, recipientList: e.target.value }))}
+                  placeholder="Contacts will load here automatically..."
+                />
+                <p className="text-sm text-slate-600 mt-2">
+                  <span className="font-semibold">{parseRecipients(config.recipientList).length}</span> valid recipient(s)
+                  {parseRecipients(config.recipientList).length === 0 && !loadingRecipients && (
+                    <span className="ml-2 text-amber-600">— no contacts in this segment yet</span>
+                  )}
+                </p>
+              </div>
+
+              {parseRecipients(config.recipientList).length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3 mt-3">
+                  <p className="text-xs text-slate-500 mb-2">Sending to:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parseRecipients(config.recipientList).slice(0, 12).map((email, i) => (
+                      <span key={i} className="inline-block bg-white border border-slate-200 rounded px-2 py-1 text-xs">
+                        {email}
+                      </span>
+                    ))}
+                    {parseRecipients(config.recipientList).length > 12 && (
+                      <span className="inline-block bg-slate-200 rounded px-2 py-1 text-xs">
+                        +{parseRecipients(config.recipientList).length - 12} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Tracking Options */}
@@ -970,15 +921,12 @@ export default function CampaignSendPage() {
                 <div className="flex justify-between">
                   <span className="text-slate-600">Recipients:</span>
                   <span className="font-semibold">
-                    {loadingRecipients ? '...' :
-                     selectedAudience === 'all' ? storedRecipients.length :
-                     selectedAudience === 'segment' && selectedSegmentId ? 
-                       segments.find(s => s.id === selectedSegmentId)?.count || 0 :
-                     selectedAudience === 'tag' && selectedTagId ?
-                       tags.find(t => t.id === selectedTagId)?.count || 0 :
-                     selectedAudience === 'custom' ?
-                       parseRecipients(config.recipientList).length : 0}
+                    {loadingRecipients ? '…' : parseRecipients(config.recipientList).length}
                   </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Segment:</span>
+                  <span className="font-semibold text-xs">{selectedSegment === 'all' ? 'All contacts' : selectedSegment.replace(/_/g, ' ')}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">From:</span>

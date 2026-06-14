@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ArrowLeft, Home, Palette, Save, Settings, Eye, Code, Smartphone, Monitor, Tablet, Mail } from 'lucide-react';
 import Header from '../shared/Header';
@@ -52,6 +52,8 @@ export default function AutomationsComposerPage() {
   const handleLogoClick = () => {
     navigate('/');
   };
+
+  const sendCampaignRef = useRef(null);
 
   // Provide a simple onClose that navigates back to dashboard
   const handleClose = () => {
@@ -169,10 +171,11 @@ export default function AutomationsComposerPage() {
               </button>
               
               <button
+                onClick={() => sendCampaignRef.current && sendCampaignRef.current()}
                 className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 text-white rounded-lg text-sm font-semibold hover:brightness-110 active:brightness-95 transition-all shadow-lg shadow-pink-500/25"
               >
                 <Save className="w-4 h-4" />
-                Save {intent === 'new-template' ? 'Template' : 'Campaign'}
+                {intent === 'new-template' ? 'Save Template' : 'Send Campaign'}
               </button>
             </div>
           </div>
@@ -213,12 +216,14 @@ export default function AutomationsComposerPage() {
             isDarkMode ? 'text-slate-100' : 'text-gray-900'
           }`}>
             <div className="max-w-full overflow-x-auto">
-              <AutomationsEditor 
-                onClose={handleClose} 
-                templates={templates} 
-                tenants={tenant ? [tenant] : []} 
-                currentUser={{ email: 'you@example.com', tenantId: tenant?.id }} 
-                initialTemplate={automationTemplate || template} 
+              <AutomationsEditor
+                onClose={handleClose}
+                onSend={(templateId) => navigate(`/mailbuilder/send/${templateId}`)}
+                sendCampaignRef={sendCampaignRef}
+                templates={templates}
+                tenants={tenant ? [tenant] : []}
+                currentUser={{ email: 'you@example.com', tenantId: tenant?.id }}
+                initialTemplate={automationTemplate || template}
                 intent={campaignType && emailType ? 'automation-email' : intent}
                 campaignContext={campaignType && emailType ? {
                   campaignType,
