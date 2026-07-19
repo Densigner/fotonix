@@ -177,10 +177,11 @@ function PayPalButtonRenderer({ amount, productName, productId, ownerId, onSucce
             const response = await fetch(`${API_URL}/api/paypal/capture-order`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
+              body: JSON.stringify({
                 orderId: data.orderID,
                 productId: productId || null,
-                ownerId: ownerId || null
+                ownerId: ownerId || null,
+                productName: productName || null
               })
             });
             

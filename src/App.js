@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import useAffiliateRef from './hooks/useAffiliateRef';
 import Header from './components/shared/Header';
 import Hero from './components/landing/Hero';
 import HeroWithSlider from './components/landing/HeroWithSlider';
@@ -26,9 +27,9 @@ import AffiliateClickCard from './components/affiliate/AffiliateClickCard';
 import ShortReviewPage from './pages/ShortReviewPage';
 import SubscriptionGate from './components/payments/SubscriptionGate';
 import AffiliateSignupPage from './components/affiliate/AffiliateSignupPage';
-import AffiliateShopBuilderPage, { AffiliateStorefrontEditor, AffiliateStorefrontViewer } from './components/affiliate/AffiliateShopBuilderPage';
+import { AffiliateStorefrontEditor, AffiliateStorefrontViewer } from './components/affiliate/AffiliateShopBuilderPage';
 import AffiliateProductPageCleanAccryl from './components/products/AffiliateProductPageCleanAccryl';
-import AffiliateAddProductPage, { AffiliateProductsPanel } from './components/affiliate/AffiliateAddProductPage';
+import { AffiliateProductsPanel } from './components/affiliate/AffiliateProductsPanel';
 import AffiliateCreateProduct from './components/affiliate/AffiliateCreateProduct';
 import AcrylicComposerWithMask from './components/designers/AcrylicComposerWithMask';
 import MembersDashboard from './components/admin/MembersDashboard';
@@ -73,11 +74,13 @@ const FunnelTemplatesPage = React.lazy(() => import('./components/marketing/funn
 // lazy import of FunnelViewer for public funnel pages
 const FunnelViewer = React.lazy(() => import('./components/marketing/funnelBuilder/FunnelViewer'));
 // lazy import of DeadRedSearch for database searching
-const DeadRedSearch = React.lazy(() => import('./components/deadRed/DeadRedSearch'));
 
 function AppContent() {
   const auth = useAuth();
-  
+  // Capture ?ref=<affiliateCode> on any landing page and record the click,
+  // so a later purchase can be attributed back to that affiliate.
+  useAffiliateRef();
+
   // initialize page from URL hash so direct links like #about work
   const getInitialPage = () => {
     if (typeof window !== 'undefined') {
@@ -153,7 +156,7 @@ function AppContent() {
         setAffiliateProducts([]);
       }
     }
-  }, [currentPage, auth && auth.currentUser && auth.currentUser.uid]);
+  }, [currentPage, auth && auth.currentUser && auth.currentUser.uid, auth && auth.isAuthenticated, auth && auth.currentUser && auth.currentUser.emailVerified]);
   
   // Handle Firebase email verification actions
   useEffect(() => {
@@ -232,7 +235,7 @@ function AppContent() {
   };
 
   const handleLogin = () => {
-    setCurrentPage('member'); // Go to member dashboard after login
+    setCurrentPage('member-dashboard'); // Go to member dashboard after login
   };
 
   const handleSignup = () => {
@@ -303,13 +306,34 @@ function AppContent() {
     if (!uid) return setAffiliateProducts([]);
     setAffiliateProductsLoading(true);
     try {
-      const res = await fetch(`/api/products?ownerUid=${encodeURIComponent(uid)}`);
-      if (!res.ok) throw new Error('Failed to fetch products');
-      const data = await res.json();
-      // Expecting an array of products with the shape AffiliateProductsPanel expects
-      if (Array.isArray(data)) setAffiliateProducts(data);
-      else if (Array.isArray(data.products)) setAffiliateProducts(data.products);
-      else setAffiliateProducts([]);
+      // Products created via AffiliateCreateProduct.js are written to Firebase
+      // Realtime Database at products/{uid}/{productId} — read from there, not
+      // the /api/products (flat-file) endpoint, which is a separate data store.
+      const dbm = await import("firebase/database");
+      const { getDatabase, ref: dbRef, get } = dbm;
+      const db = getDatabase();
+      const snapshot = await get(dbRef(db, `products/${uid}`));
+
+      if (snapshot.exists()) {
+        const productsData = snapshot.val();
+        const productsList = Object.entries(productsData).map(([id, p]) => ({
+          id,
+          title: p.title || 'Untitled product',
+          sku: p.sku || null,
+          price: p.price ?? 0,
+          commissionRate: p.commissionRate ?? 0,
+          status: p.status || 'active',
+          clicks: p.clicks || 0,
+          conversions: p.conversions || 0,
+          itemsSold: p.itemsSold || 0,
+          earnings: p.earnings || 0,
+          images: p.images || [],
+          mainImageIndex: p.mainImageIndex || 0,
+        }));
+        setAffiliateProducts(productsList);
+      } else {
+        setAffiliateProducts([]);
+      }
     } catch (e) {
       console.warn('fetchAffiliateProducts failed', e);
       setAffiliateProducts([]);
@@ -490,7 +514,11 @@ function AppContent() {
         )}
 
         {currentPage === 'account' && (
-          <CustomerDashboard />
+          auth && auth.isAuthenticated && auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development') ? (
+            <CustomerDashboard />
+          ) : (
+            <EmailVerificationGate onBackToLogin={handleSwitchToLogin} />
+          )
         )}
         
         {/* Main Content Pages */}
@@ -521,8 +549,8 @@ function AppContent() {
         {currentPage === 'affiliates' && (
           auth && auth.isAuthenticated ? (
             (auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development')) ? (
-              <AffiliateDashboard 
-                affiliateCode="ALEX10" 
+              <AffiliateDashboard
+                affiliateCode={auth.userProfile?.affiliateCode}
                 programUrl={window.location.origin}
                 onCreateProduct={() => setShowCreateProductModal(true)}
               />
@@ -554,7 +582,7 @@ function AppContent() {
 
         {currentPage === 'affiliate-clicks' && (
           <React.Suspense fallback={<div className="p-8">Loading dashboard…</div>}>
-            <AffiliateDashboardclick userId={(auth && auth.currentUser && auth.currentUser.uid) || 'affiliate_demo'} />
+            <AffiliateDashboardclick affiliateCode={auth.userProfile?.affiliateCode} />
           </React.Suspense>
         )}
 
@@ -624,21 +652,7 @@ function AppContent() {
           )
         )}
 
-        {currentPage === 'deadred-search' && (
-          auth && auth.isAuthenticated && auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development') ? (
-            <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="text-lg">Loading DeadRed Search...</div></div>}>
-              <DeadRedSearch />
-            </React.Suspense>
-          ) : (
-            <div className="mx-auto max-w-lg px-6 py-10">
-              <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
-                <h3 className="text-lg font-semibold mb-2">Access Required</h3>
-                <p className="text-sm text-gray-600 mb-4">Please log in and verify your email to access DeadRed Search.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
-              </div>
-            </div>
-          )
-        )}
+
 
         {currentPage === 'affiliate-add-product' && (
           auth && auth.isAuthenticated && auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development') ? (
@@ -671,11 +685,9 @@ function AppContent() {
 
         {currentPage === 'member-dashboard' && (
           auth && auth.isAuthenticated && auth.currentUser ? (
-            <EmailVerificationGate>
-              <SubscriptionGate>
-                <MembersDashboard />
-              </SubscriptionGate>
-            </EmailVerificationGate>
+            <SubscriptionGate>
+              <MembersDashboard />
+            </SubscriptionGate>
           ) : (
             <div className="mx-auto max-w-3xl px-6 py-10">
               {/* Show the onboarding / sales (features) screen to non-members who click "Members" */}

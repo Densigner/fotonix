@@ -3,6 +3,18 @@ import Footer from '../landing/Footer';
 import PreviewModal from '../products/PreviewModal';
 import PayPalSDKLoader from '../payments/PayPalSDKLoader';
 import PayPalButton from '../payments/PayPalButton';
+import { useAuth } from '../../contexts/AuthContext';
+
+const STANDARD_MIRROR_BASE_PRICE = 29.99;
+
+function dataUrlToBlob(dataUrl) {
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
 
 // Inline fallback header so the file compiles even if ./Header is missing.
 // Replace <AppHeader /> with your own Header component later if desired.
@@ -81,6 +93,8 @@ function ensureFont(family) {
 }
 
 export default function StandardMirrorDesigner() {
+  const { currentUser, userProfile } = useAuth();
+  const isAffiliate = !!userProfile?.affiliateCode;
   const canvasRef = useRef(null);
   const fabricCanvasRef = useRef(null);
   const [ready, setReady] = useState(false);
@@ -89,6 +103,9 @@ export default function StandardMirrorDesigner() {
   const [generating, setGenerating] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewDataUrl, setPreviewDataUrl] = useState(null);
+  const [designTitle, setDesignTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // { ok, msg }
 
   // Popular engraving-friendly fonts
   const FONTS = [
@@ -289,6 +306,63 @@ export default function StandardMirrorDesigner() {
     setPreviewOpen(true);
   };
 
+  // Save the current design (structured Fabric JSON + thumbnail) so it can be
+  // picked later from the affiliate product-creation dropdown
+  const saveDesign = async () => {
+    if (!fabricCanvasRef.current) return;
+    if (!currentUser) {
+      setSaveStatus({ ok: false, msg: 'Please log in to save your design.' });
+      return;
+    }
+    if (!isAffiliate) {
+      setSaveStatus({ ok: false, msg: 'Saving designs is available to affiliate accounts.' });
+      return;
+    }
+    if (!designTitle.trim()) {
+      setSaveStatus({ ok: false, msg: 'Give your design a name first.' });
+      return;
+    }
+
+    setSaving(true);
+    setSaveStatus(null);
+    try {
+      const c = fabricCanvasRef.current;
+      const canvasJSON = c.toJSON();
+      const dataUrl = c.toDataURL({ format: 'png', quality: 1, multiplier: 2 });
+
+      const designId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const uid = currentUser.uid;
+
+      const stm = await import("firebase/storage");
+      const { getStorage, ref: stRef, uploadBytes, getDownloadURL } = stm;
+      const storage = getStorage();
+      const thumbRef = stRef(storage, `designs/${uid}/${designId}.png`);
+      await uploadBytes(thumbRef, dataUrlToBlob(dataUrl));
+      const thumbnailUrl = await getDownloadURL(thumbRef);
+
+      const dbm = await import("firebase/database");
+      const { getDatabase, ref: dbRef, set } = dbm;
+      const db = getDatabase();
+      await set(dbRef(db, `designs/${uid}/${designId}`), {
+        id: designId,
+        title: designTitle.trim(),
+        type: 'standard-mirror',
+        basePrice: STANDARD_MIRROR_BASE_PRICE,
+        thumbnailUrl,
+        canvasJSON: JSON.stringify(canvasJSON),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      setSaveStatus({ ok: true, msg: 'Design saved! You can now pick it when creating a product.' });
+    } catch (e) {
+      console.error('Failed to save design:', e);
+      setSaveStatus({ ok: false, msg: e?.message || "Couldn't save your design." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Drag and drop
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -429,7 +503,34 @@ export default function StandardMirrorDesigner() {
               </div>
             </div>
 
-            {/* Purchase Section */}
+            {/* Save Design Section — affiliates only; normal customers just create & buy below */}
+            {isAffiliate && (
+              <div className="rounded-2xl bg-white p-6 shadow-sm">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Save Your Design</h3>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={designTitle}
+                    onChange={(e) => setDesignTitle(e.target.value.slice(0, 80))}
+                    placeholder="Name this design…"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                  <button
+                    onClick={saveDesign}
+                    disabled={saving}
+                    className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Save Design'}
+                  </button>
+                  {saveStatus && (
+                    <p className={`text-xs ${saveStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>{saveStatus.msg}</p>
+                  )}
+                  <p className="text-xs text-slate-500">Saved designs can be picked later when creating a product to sell.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Purchase Section — available to everyone: create your design and buy it */}
             <div className="rounded-2xl bg-white p-6 shadow-sm">
               <h3 className="mb-4 text-sm font-semibold text-slate-900">Purchase Your Design</h3>
               <div className="space-y-4">

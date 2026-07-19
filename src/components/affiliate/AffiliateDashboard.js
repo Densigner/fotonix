@@ -37,29 +37,30 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
     (async function fetchData() {
       setLoading(true);
       try {
-        // Fetch analytics from the DB-backed route
-        const res = await fetch(`${apiBase || ''}/api/affiliate/stats?user=${encodeURIComponent(affiliateCode)}`);
-        if (!res.ok) throw new Error('Failed to load stats');
-        const body = await res.json();
+        const headers = { 'x-affiliate-code': affiliateCode };
 
-        // Map the backend shape to the UI shape used here
-        const summary = body.summary || {};
-        const daily = Array.isArray(body.daily) ? body.daily : [];
+        // Fetch analytics from the live route (server/routes/affiliate/affiliates.js,
+        // mounted at /api/affiliates). It already returns the shape this dashboard
+        // uses directly: { clicks, conversions, pendingCommissionCents,
+        // approvedCommissionCents, currency, timeseries }
+        const statsRes = await fetch(`${apiBase || ''}/api/affiliates/stats?code=${encodeURIComponent(affiliateCode)}`, { headers });
+        if (!statsRes.ok) throw new Error('Failed to load stats');
+        const body = await statsRes.json();
 
-        const mapped = {
-          clicks: summary.total_clicks || 0,
-          conversions: summary.conversions || 0,
-          pendingCommissionCents: 0,
-          approvedCommissionCents: 0,
-          currency: "GBP",
-          // timeseries expects [{date, clicks}] — map daily -> timeseries
-          timeseries: daily.map(d => ({ date: d.date, clicks: d.clicks || 0 }))
-        };
+        // Fetch per-order attributions (Commissions table) from the same live route
+        const attrsRes = await fetch(`${apiBase || ''}/api/affiliates/attributions?code=${encodeURIComponent(affiliateCode)}`, { headers });
+        const attrs = attrsRes.ok ? await attrsRes.json() : [];
 
         if (alive) {
-          setStats(mapped);
-          // We don't yet have per-order attributions in this endpoint; clear rows.
-          setRows([]);
+          setStats({
+            clicks: body.clicks || 0,
+            conversions: body.conversions || 0,
+            pendingCommissionCents: body.pendingCommissionCents || 0,
+            approvedCommissionCents: body.approvedCommissionCents || 0,
+            currency: body.currency || "GBP",
+            timeseries: Array.isArray(body.timeseries) ? body.timeseries : [],
+          });
+          setRows(Array.isArray(attrs) ? attrs : []);
         }
       } catch (e) {
         if (alive) {

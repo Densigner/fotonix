@@ -14,7 +14,9 @@ const navigateToHash = (page) => {
 };
 
 function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, onProductSelect, onClearSearch }) {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout, currentUser, userProfile } = useAuth();
+  const isMember = currentUser?.email === 'joshmarsden28@gmail.com';
+  const isAffiliate = !!userProfile?.affiliateCode;
   const [open, setOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -150,7 +152,16 @@ function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, o
         {/* Desktop Nav - always show on product page to avoid logo-only collapse */}
   <nav className="hidden md:flex items-center gap-6 ml-2">
           {/* Products, Community, Store Builder, Members, Support, Affiliates, Advanced Inbox hidden for launch */}
-          <a href="/my-orders" className="text-sm text-neutral-200 hover:text-white">My Orders</a>
+          {isAuthenticated && isAffiliate ? (
+            <button
+              onClick={() => onNavigate ? onNavigate('affiliates') : navigateToHash('affiliates')}
+              className="text-sm text-neutral-200 hover:text-white"
+            >
+              Affiliate Dashboard
+            </button>
+          ) : (
+            <a href="/my-orders" className="text-sm text-neutral-200 hover:text-white">My Orders</a>
+          )}
           <a href="/tools/stencil-generator" className="text-sm bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent font-semibold hover:from-purple-400 hover:to-pink-400">Stencil Generator</a>
           <a href="/tools/paint-by-numbers" className="text-sm bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent font-semibold hover:from-amber-300 hover:to-orange-400">PaintYourPhoto</a>
         </nav>
@@ -189,6 +200,14 @@ function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, o
           >
             Download App
           </button>
+          {isAuthenticated && isMember && (
+            <button
+              onClick={() => onNavigate ? onNavigate('member-dashboard') : navigateToHash('member-dashboard')}
+              className="px-3 py-2 rounded-xl text-sm font-medium text-neutral-200 hover:text-white hover:bg-white/10 transition"
+            >
+              Member Dashboard
+            </button>
+          )}
           {isAuthenticated ? (
             <button
               onClick={() => onNavigate ? onNavigate('account') : navigateToHash('account')}
@@ -289,7 +308,24 @@ function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, o
           {/* Mobile nav */}
           <nav className="px-4 py-2 space-y-1">
             {/* Products, Community, Store Builder, Members, Support, Affiliates, Advanced Inbox hidden for launch */}
-            <a href="/my-orders" className="block px-2 py-2 rounded-lg text-neutral-200 hover:bg-white/10">📦 My Orders</a>
+            {isMember && (
+              <button
+                onClick={() => { setOpen(false); onNavigate ? onNavigate('member-dashboard') : navigateToHash('member-dashboard'); }}
+                className="block w-full text-left px-2 py-2 rounded-lg text-fuchsia-300 hover:bg-white/10 font-medium"
+              >
+                ⚙️ Member Dashboard
+              </button>
+            )}
+            {isAuthenticated && isAffiliate ? (
+              <button
+                onClick={() => { setOpen(false); onNavigate ? onNavigate('affiliates') : navigateToHash('affiliates'); }}
+                className="block w-full text-left px-2 py-2 rounded-lg text-neutral-200 hover:bg-white/10"
+              >
+                📈 Affiliate Dashboard
+              </button>
+            ) : (
+              <a href="/my-orders" className="block px-2 py-2 rounded-lg text-neutral-200 hover:bg-white/10">📦 My Orders</a>
+            )}
             <a href="/tools/stencil-generator" className="block px-2 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold hover:from-purple-600 hover:to-pink-600">🎨 Stencil Generator</a>
             <a href="/tools/paint-by-numbers" className="block px-2 py-2 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 text-white font-semibold hover:from-amber-500 hover:to-orange-600">🖌️ PaintYourPhoto</a>
           </nav>
