@@ -1,3 +1,0 @@
-OPENAI_API_KEY present: true
-SKIP_OPENAI dev fallback enabled: false
-openaiImageProxy prototype listening on 0.0.0.0:5002
