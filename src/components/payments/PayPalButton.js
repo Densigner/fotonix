@@ -168,6 +168,7 @@ function PayPalButtonRenderer({ amount, productName, productId, ownerId, onSucce
           return fetch(`${API_URL}/api/paypal/create-order`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ items: [{ name: productName || 'Product', unitAmount: amount, quantity: 1 }], currency: 'GBP' })
           }).then(r => r.json()).then(j => j.id);
         },
@@ -177,6 +178,7 @@ function PayPalButtonRenderer({ amount, productName, productId, ownerId, onSucce
             const response = await fetch(`${API_URL}/api/paypal/capture-order`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
               body: JSON.stringify({
                 orderId: data.orderID,
                 productId: productId || null,
