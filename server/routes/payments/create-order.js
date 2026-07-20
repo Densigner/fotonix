@@ -4,6 +4,7 @@ const { getClient } = require('../../paypal');
 const merchants = require('../merchants/merchants');
 const fetch = global.fetch || require('node-fetch');
 const { toCents, parseCurrency } = require('../../utils');
+const db = require('../../db');
 
 function centsToDecimalString(cents) { return (Number(cents) / 100).toFixed(2); }
 
@@ -21,7 +22,26 @@ async function createOrderHandler(req, res) {
       totalCents += Math.round(unitCents * qty);
     });
 
-    const clickId = (req.signedCookies && req.signedCookies.aff_click) || '';
+    let clickId = (req.signedCookies && req.signedCookies.aff_click) || '';
+
+    // Fallback: if no aff_click cookie made it through (e.g. the landing-page
+    // beacon was blocked or dropped, or a cross-subdomain cookie got refused),
+    // the frontend sends the ref it kept in localStorage. Backfill a click
+    // record here so the purchase is still attributed instead of lost.
+    if (!clickId && body.ref) {
+      try {
+        const affiliateId = String(body.ref).trim();
+        if (affiliateId) {
+          const click = db.createClick({ affiliateId });
+          clickId = click.id;
+          try {
+            res.cookie('aff_click', click.id, { signed: true, httpOnly: true, maxAge: 30 * 24 * 60 * 60 * 1000 });
+          } catch (e) {}
+        }
+      } catch (e) {
+        console.warn('Failed to backfill click from ref', e);
+      }
+    }
 
     // If merchant_id cookie present, try to create order using merchant access token
     const merchantId = (req.cookies && req.cookies.merchant_id) || null;
