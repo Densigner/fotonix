@@ -7,7 +7,7 @@ import PayPalButton from '../payments/PayPalButton';
 import { API_URL } from '../../config/environment';
 import { useAuth } from '../../contexts/AuthContext';
 
-const STANDARD_MIRROR_BASE_PRICE = 1.00;
+const STANDARD_MIRROR_BASE_PRICE = 29.99;
 
 function dataUrlToBlob(dataUrl) {
   const [header, base64] = dataUrl.split(',');
@@ -1286,7 +1286,7 @@ export default function ProductPage() {
                         <div className="flex-1">
                           <h4 className="font-medium">Standard Mirror</h4>
                           <p className="text-sm text-slate-600">Simple engraving, suitable for most designs.</p>
-                          <div className="mt-3 text-2xl font-bold">£1.00</div>
+                          <div className="mt-3 text-2xl font-bold">£29.99</div>
                         </div>
                         
 
@@ -1295,10 +1295,10 @@ export default function ProductPage() {
                         <div className="mt-4 p-3 rounded bg-white/90 text-slate-900 border border-white/10">
                           <div className="text-base font-semibold">Standard Mirror</div>
                           <div className="text-sm text-slate-600 mt-1">Simple engraving, suitable for most designs.</div>
-                          <div className="mt-2 text-xl font-bold">£1.00</div>
+                          <div className="mt-2 text-xl font-bold">£29.99</div>
                         </div>
                         <div className="mt-4 block w-full" style={{ display: 'block', minWidth: 200 }}>
-                          <PayPalButton amount="1.00" productName="Fotonix Standard Mirror" onSuccess={handleOrderPaid} />
+                          <PayPalButton amount="29.99" productName="Fotonix Standard Mirror" onSuccess={handleOrderPaid} />
                         </div>
                         {submittingOrder && (
                           <p className="mt-2 text-sm text-slate-300">Saving your order…</p>
