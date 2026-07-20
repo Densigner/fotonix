@@ -3,10 +3,9 @@ import {
   RefreshCcw, Download, TrendingUp, DollarSign,
   CheckCircle2, Clock, XCircle, ExternalLink, Package,
   MousePointerClick, Filter, Search, Plus, Mail,
-  Video, BarChart3, Workflow, Users, ShoppingBag, Database
+  Video, BarChart3, Workflow, ShoppingBag, Database
 } from "lucide-react";
 import { LinkDashboard, LinkCreator } from '../../features/links';
-import { AffiliateManager } from '../../features/affiliates';
 import EmailVerificationNotice from '../auth/EmailVerificationNotice';
 import OrderCenter from '../ordersReceived/OrderCenter';
 
@@ -45,9 +44,6 @@ export default function MembersDashboard() {
   // Link management state
   const [showLinkDashboard, setShowLinkDashboard] = useState(false);
   const [showLinkCreator, setShowLinkCreator] = useState(false);
-  
-  // Affiliate management state
-  const [showAffiliateManager, setShowAffiliateManager] = useState(false);
 
   const money = (cents) =>
     new Intl.NumberFormat(undefined, { style: "currency", currency: "GBP" })
@@ -390,17 +386,8 @@ export default function MembersDashboard() {
                 window.dispatchEvent(event);
               }}
             />
-            <ShopBuilderButton 
-              icon={Users} 
-              title="Manage Affiliates" 
-              description="Create & manage your affiliate network"
-              onClick={() => {
-                setShowAffiliateManager(true);
-                setActiveTab('affiliates');
-              }}
-            />
-            <ShopBuilderButton 
-              icon={MousePointerClick} 
+            <ShopBuilderButton
+              icon={MousePointerClick}
               title="Click Dashboard" 
               description="Track affiliate clicks & conversions"
               onClick={() => {
@@ -484,11 +471,10 @@ export default function MembersDashboard() {
           onClick={() => {
             setActiveTab('overview');
             setShowLinkDashboard(false);
-            setShowAffiliateManager(false);
           }}
           className={`px-4 py-2 text-sm font-medium rounded-t-xl border-b-2 transition-colors ${
-            activeTab === 'overview' 
-              ? 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-950/20' 
+            activeTab === 'overview'
+              ? 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-950/20'
               : 'border-transparent text-zinc-500 hover:text-zinc-700'
           }`}
         >
@@ -498,11 +484,10 @@ export default function MembersDashboard() {
           onClick={() => {
             setActiveTab('products');
             setShowLinkDashboard(false);
-            setShowAffiliateManager(false);
           }}
           className={`px-4 py-2 text-sm font-medium rounded-t-xl border-b-2 transition-colors ${
-            activeTab === 'products' 
-              ? 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-950/20' 
+            activeTab === 'products'
+              ? 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-950/20'
               : 'border-transparent text-zinc-500 hover:text-zinc-700'
           }`}
         >
@@ -510,27 +495,12 @@ export default function MembersDashboard() {
         </button>
         <button
           onClick={() => {
-            setActiveTab('affiliates');
-            setShowLinkDashboard(false);
-            setShowAffiliateManager(true);
-          }}
-          className={`px-4 py-2 text-sm font-medium rounded-t-xl border-b-2 transition-colors ${
-            activeTab === 'affiliates' 
-              ? 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-950/20' 
-              : 'border-transparent text-zinc-500 hover:text-zinc-700'
-          }`}
-        >
-          My Affiliates
-        </button>
-        <button
-          onClick={() => {
             setActiveTab('links');
             setShowLinkDashboard(true);
-            setShowAffiliateManager(false);
           }}
           className={`px-4 py-2 text-sm font-medium rounded-t-xl border-b-2 transition-colors ${
-            activeTab === 'links' 
-              ? 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-950/20' 
+            activeTab === 'links'
+              ? 'border-fuchsia-500 text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-950/20'
               : 'border-transparent text-zinc-500 hover:text-zinc-700'
           }`}
         >
@@ -540,7 +510,6 @@ export default function MembersDashboard() {
           onClick={() => {
             setActiveTab('orders');
             setShowLinkDashboard(false);
-            setShowAffiliateManager(false);
           }}
           className={`px-4 py-2 text-sm font-medium rounded-t-xl border-b-2 transition-colors flex items-center gap-1.5 ${
             activeTab === 'orders' 
@@ -794,15 +763,6 @@ export default function MembersDashboard() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {activeTab === 'affiliates' && (
-        <div className="space-y-8">
-          <AffiliateManager
-            memberUserId="current-member-id" // TODO: Get from auth context
-            className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6"
-          />
         </div>
       )}
 
