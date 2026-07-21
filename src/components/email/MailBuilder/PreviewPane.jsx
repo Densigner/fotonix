@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useRef } from 'react';
+import { API_URL } from '../../../config/environment';
 
 function toast(msg, type = 'info') {
   // very small toast using alert for now; replace with nicer UI if available
@@ -27,7 +28,7 @@ export default function PreviewPane({ tid = 'default', inlinedHtml = '', default
     lastTestTs = now;
     setSending(true);
     try {
-      const res = await fetch(`/api/tenants/${tid}/campaigns/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, html: inlinedHtml }) });
+      const res = await fetch(`${API_URL}/api/tenants/${tid}/campaigns/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, html: inlinedHtml }) });
       if (res.status === 429) {
         const j = await res.json();
         toast('Rate limited. Retry after ' + Math.ceil((j.retry_after_ms || 0) / 1000) + 's', 'error');

@@ -8,6 +8,7 @@ import {
 import { LinkDashboard, LinkCreator } from '../../features/links';
 import EmailVerificationNotice from '../auth/EmailVerificationNotice';
 import OrderCenter from '../ordersReceived/OrderCenter';
+import { API_URL } from '../../config/environment';
 
 /**
  * MembersDashboard
@@ -101,7 +102,7 @@ export default function MembersDashboard() {
         
         try {
           console.log('Fetching member stats...');
-          const statsResponse = await fetch("/api/member/stats", {
+          const statsResponse = await fetch(`${API_URL}/api/member/stats`, {
             headers: { 'x-member-uid': 'current-member-id' }
           });
           console.log('Stats response status:', statsResponse.status);
@@ -123,7 +124,7 @@ export default function MembersDashboard() {
         }
         
         try {
-          const attributionsResponse = await fetch("/api/member/attributions", {
+          const attributionsResponse = await fetch(`${API_URL}/api/member/attributions`, {
             headers: { 'x-member-uid': 'current-member-id' }
           });
           if (attributionsResponse.ok) {
@@ -168,7 +169,7 @@ export default function MembersDashboard() {
   async function loadProducts() {
     try {
       setProductsLoading(true);
-      const response = await fetch("/api/member/products", {
+      const response = await fetch(`${API_URL}/api/member/products`, {
         headers: { 'x-member-uid': 'current-member-id' }
       });
       if (response.ok) {
@@ -246,7 +247,7 @@ export default function MembersDashboard() {
   async function markPaid(attributionIds) {
     try {
       setMarking(true);
-      const response = await fetch("/api/member/attributions/mark-paid", {
+      const response = await fetch(`${API_URL}/api/member/attributions/mark-paid`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",

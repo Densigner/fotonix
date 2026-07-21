@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { RefreshCcw, Download, TrendingUp, DollarSign, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { API_URL } from "../../config/environment";
 
 /**
  * AffiliateMasterDashboard
@@ -20,8 +21,8 @@ export default function AffiliateMasterDashboard() {
       try {
         setLoading(true);
         const [statsRes, attrRes] = await Promise.all([
-          fetch("/api/affiliates/stats").then((r) => r.json()),
-          fetch("/api/affiliates/attributions").then((r) => r.json()),
+          fetch(`${API_URL}/api/affiliates/stats`).then((r) => r.json()),
+          fetch(`${API_URL}/api/affiliates/attributions`).then((r) => r.json()),
         ]);
         setStats(statsRes);
         setAttributions(attrRes);
@@ -197,7 +198,7 @@ export default function AffiliateMasterDashboard() {
 
   async function markAsPaid(affiliateId) {
     // Optional: PATCH API call to mark attributions for this affiliate as approved
-    await fetch(`/api/affiliates/mark-paid/${affiliateId}`, { method: "POST" });
+    await fetch(`${API_URL}/api/affiliates/mark-paid/${affiliateId}`, { method: "POST" });
     window.location.reload();
   }
 }

@@ -3,7 +3,9 @@
  * Handles all link-related API calls with consistent error handling and data formatting
  */
 
-const API_BASE = process.env.REACT_APP_API_BASE || '';
+import { API_URL } from '../../../config/environment';
+
+const API_BASE = API_URL;
 
 class LinkService {
   

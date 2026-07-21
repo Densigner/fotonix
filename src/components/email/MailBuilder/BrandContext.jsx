@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { API_URL } from '../../../config/environment';
 
 const BrandContext = createContext(null);
 
@@ -19,7 +20,7 @@ export function BrandProvider({ tid = 'default', children }) {
     async function load() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/tenants/${tid}/settings/branding`);
+        const res = await fetch(`${API_URL}/api/tenants/${tid}/settings/branding`);
         if (!res.ok) {
           // if not found, keep defaults
           setLoading(false);
@@ -52,7 +53,7 @@ export function BrandProvider({ tid = 'default', children }) {
     setBrand(next);
     try {
       const body = Object.assign({}, next, { syncToTemplates: !!options.syncToTemplates });
-      const res = await fetch(`/api/tenants/${tid}/settings/branding`, {
+      const res = await fetch(`${API_URL}/api/tenants/${tid}/settings/branding`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

@@ -1,5 +1,6 @@
 import React from "react";
 import { TrendingUp, DollarSign, Package, MousePointerClick, RefreshCcw, Filter, Download, Search } from "lucide-react";
+import { API_URL } from "../../config/environment";
 
 // ==============================
 // Affiliate Products Panel (for affiliates, internal dashboard)
@@ -248,7 +249,7 @@ export function CommissionRateField({ product, setProduct }) {
   React.useEffect(() => {
     let cancelled = false;
     // Fetch program default commission percent (server returns programDefaultCommissionPct as whole number)
-    fetch('/api/affiliates/settings')
+    fetch(`${API_URL}/api/affiliates/settings`)
       .then((r) => r.json())
       .then((s) => {
         if (cancelled) return;

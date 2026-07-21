@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_URL } from '../../config/environment';
 
 export default function AdminMerchantsPage() {
   const [secret, setSecret] = useState('');
@@ -10,7 +11,7 @@ export default function AdminMerchantsPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch('/api/merchants', { headers: { 'x-admin-secret': secret } });
+      const resp = await fetch(`${API_URL}/api/merchants`, { headers: { 'x-admin-secret': secret } });
       if (!resp.ok) {
         const txt = await resp.text();
         throw new Error(txt || resp.statusText);

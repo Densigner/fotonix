@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { API_URL } from "../../config/environment";
 
 export default function AffiliateDashboardclick({ affiliateCode }) {
   const [data, setData] = React.useState(null);
@@ -14,7 +15,7 @@ export default function AffiliateDashboardclick({ affiliateCode }) {
       return;
     }
     setLoading(true);
-    fetch(`/api/affiliates/stats?code=${encodeURIComponent(affiliateCode)}`, {
+    fetch(`${API_URL}/api/affiliates/stats?code=${encodeURIComponent(affiliateCode)}`, {
       headers: { 'x-affiliate-code': affiliateCode }
     })
       .then(async (r) => {

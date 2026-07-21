@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/database';
+import { API_URL } from '../config/environment';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -70,7 +71,7 @@ export const AuthProvider = ({ children }) => {
   // Sync user to PostgreSQL (single source of truth for user data)
   const syncUserToPostgres = async (firebaseUser, options = {}) => {
     try {
-      const response = await fetch('/api/users/sync', {
+      const response = await fetch(`${API_URL}/api/users/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

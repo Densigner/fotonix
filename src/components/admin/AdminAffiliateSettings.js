@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_URL } from '../../config/environment';
 
 export default function AdminAffiliateSettings() {
   const [pct, setPct] = useState('');
@@ -8,7 +9,7 @@ export default function AdminAffiliateSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/affiliates/settings')
+    fetch(`${API_URL}/api/affiliates/settings`)
       .then((r) => r.json())
       .then((j) => {
         if (cancelled) return;
@@ -27,7 +28,7 @@ export default function AdminAffiliateSettings() {
     setMsg('');
     try {
       const body = { programDefaultCommissionPct: Number(pct) };
-      const r = await fetch('/api/affiliates/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await fetch(`${API_URL}/api/affiliates/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error('save failed');
       setMsg('Saved');
     } catch (err) {
