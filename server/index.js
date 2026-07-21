@@ -8,7 +8,6 @@ const bodyParser = require('body-parser');
 // Payment routes
 const createOrder = require('./routes/payments/create-order');
 const captureOrder = require('./routes/payments/capture-order');
-const subscriptions = require('./routes/payments/subscriptions');
 const stencilOrder = require('./routes/payments/stencil-order');
 const pbnOrder = require('./routes/payments/pbn-order');
 
@@ -70,7 +69,7 @@ app.use('/api/email/receive-webhook', express.json(), emailWebhook);
 app.use('/api/email/track', emailTracking);
 
 // Use json for normal routes (mounted after webhook)
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 // mount create + capture routes
 app.use(createOrder);
@@ -91,8 +90,6 @@ app.use(products);
 app.use('/api/stores', stores);
 // mount member API (dashboard, links, payments)
 app.use('/api/member', member);
-// mount subscriptions API (billing, trials, PayPal)
-app.use('/api/subscriptions', subscriptions);
 // mount leads API (email capture, conversion tracking)
 app.use('/api/leads', leads);
 // mount chatbot API (AI conversations, qualified leads)
@@ -146,6 +143,15 @@ app.get('/api/download-proxy', async (req, res) => {
     console.error('Download proxy error:', error);
     res.status(500).json({ error: 'Download failed', message: error.message });
   }
+});
+
+// JSON error handler — ensures body-parser parse failures and route errors
+// always return JSON (never HTML), so clients can parse the response.
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || 'Internal server error';
+  console.error(`[${req.method} ${req.path}] ${status} – ${message}`);
+  res.status(status).json({ error: message, status });
 });
 
 app.listen(PORT, () => console.log('Server listening on', PORT));

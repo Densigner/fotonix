@@ -25,7 +25,6 @@ import CustomerDashboard from './components/auth/CustomerDashboard';
 import AffiliateDashboard from './components/affiliate/AffiliateDashboard';
 import AffiliateClickCard from './components/affiliate/AffiliateClickCard';
 import ShortReviewPage from './pages/ShortReviewPage';
-import SubscriptionGate from './components/payments/SubscriptionGate';
 import AffiliateSignupPage from './components/affiliate/AffiliateSignupPage';
 import { AffiliateStorefrontEditor, AffiliateStorefrontViewer } from './components/affiliate/AffiliateShopBuilderPage';
 import AffiliateProductPageCleanAccryl from './components/products/AffiliateProductPageCleanAccryl';
@@ -685,9 +684,7 @@ function AppContent() {
 
         {currentPage === 'member-dashboard' && (
           auth && auth.isAuthenticated && auth.currentUser ? (
-            <SubscriptionGate>
-              <MembersDashboard />
-            </SubscriptionGate>
+            <MembersDashboard />
           ) : (
             <div className="mx-auto max-w-3xl px-6 py-10">
               {/* Show the onboarding / sales (features) screen to non-members who click "Members" */}
