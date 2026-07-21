@@ -179,6 +179,17 @@ export const AuthProvider = ({ children }) => {
 
   const resetPassword = (email) => auth.sendPasswordResetEmail(email);
 
+  // Apply a Firebase email-verification action code, then refresh currentUser
+  // so emailVerified updates immediately instead of waiting on the next
+  // natural token refresh (same staleness issue as the onAuthStateChanged fix above).
+  const applyActionCode = async (code) => {
+    await auth.applyActionCode(code);
+    if (auth.currentUser) {
+      try { await auth.currentUser.reload(); } catch (e) {}
+      setCurrentUser(auth.currentUser);
+    }
+  };
+
   const updateUser = async (data) => {
     if (!currentUser) return;
     try {
@@ -211,6 +222,14 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
+      if (firebaseUser) {
+        // The restored session carries a cached ID token whose emailVerified
+        // claim reflects its state when the token was issued — if verification
+        // happened server-side since then (our custom VPS verify-email flow,
+        // via Firebase Admin), the cached token won't know until it naturally
+        // expires (up to 1hr). Force a reload so it's checked fresh every load.
+        try { await firebaseUser.reload(); } catch (e) {}
+      }
       setCurrentUser(firebaseUser);
 
       if (firebaseUser) {
@@ -230,6 +249,10 @@ export const AuthProvider = ({ children }) => {
 
     const tokenUnsub = auth.onIdTokenChanged(async (tokenUser) => {
       if (tokenUser) {
+        // Refresh currentUser so emailVerified (and other token claims) stay
+        // current — without this, verifying email after login never updates
+        // the emailVerified flag every gated page checks, causing a permanent loop.
+        setCurrentUser(tokenUser);
         await fetchUserProfile(tokenUser.uid);
       }
     });
@@ -253,6 +276,7 @@ export const AuthProvider = ({ children }) => {
     signInWithGoogle,
     logout,
     resetPassword,
+    applyActionCode,
     updateUser,
     fetchUserProfile,
     syncUserToPostgres
