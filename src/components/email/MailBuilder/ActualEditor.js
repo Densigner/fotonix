@@ -485,14 +485,14 @@ function TenantDefaultsEditor({ tenant, onSave, currentUser }) {
   const [brandColor, setBrandColor] = useState(tenant?.defaults?.brandColor || '#000000');
   const [font, setFont] = useState(tenant?.defaults?.font || "'Helvetica Neue', Arial, sans-serif");
   const [contentWidth, setContentWidth] = useState(tenant?.defaults?.contentWidth || 600);
-  const [companyAddress, setCompanyAddress] = useState(tenant?.defaults?.companyAddress || '123 Business St, City, Country');
+  const [companyAddress, setCompanyAddress] = useState(tenant?.defaults?.companyAddress || 'Shropshire Gardens, St Helens, England');
   const [companyName, setCompanyName] = useState(tenant?.defaults?.companyName || tenant?.name || 'Your Company');
 
   useEffect(() => { 
     setBrandColor(tenant?.defaults?.brandColor || '#000000'); 
     setFont(tenant?.defaults?.font || "'Helvetica Neue', Arial, sans-serif"); 
     setContentWidth(tenant?.defaults?.contentWidth || 600);
-    setCompanyAddress(tenant?.defaults?.companyAddress || '123 Business St, City, Country');
+    setCompanyAddress(tenant?.defaults?.companyAddress || 'Shropshire Gardens, St Helens, England');
     setCompanyName(tenant?.defaults?.companyName || tenant?.name || 'Your Company');
   }, [tenant]);
 
@@ -955,7 +955,7 @@ function ComposerPage({ onBack, onNext, templates = [], setTemplates = null, sel
 
     // Automatically append legal compliance footer
     const companyName = currentTenant?.defaults?.companyName || currentTenant?.name || 'Our Company';
-    const companyAddress = currentTenant?.defaults?.companyAddress || '123 Business St, City, Country';
+    const companyAddress = currentTenant?.defaults?.companyAddress || 'Shropshire Gardens, St Helens, England';
     
     const legalFooter = `
       <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e6e6e6;text-align:center;font-size:12px;color:#666;line-height:1.4;">
@@ -1164,7 +1164,7 @@ function ComposerPage({ onBack, onNext, templates = [], setTemplates = null, sel
                     </p>
                     <p className="text-gray-500 text-xs">
                       {currentTenant?.defaults?.companyName || currentTenant?.name || 'Our Company'}<br/>
-                      {currentTenant?.defaults?.companyAddress || '123 Business St, City, Country'}<br/>
+                      {currentTenant?.defaults?.companyAddress || 'Shropshire Gardens, St Helens, England'}<br/>
                       This email was sent by {currentTenant?.defaults?.companyName || currentTenant?.name || 'Our Company'} to [recipient@email.com]
                     </p>
                   </div>

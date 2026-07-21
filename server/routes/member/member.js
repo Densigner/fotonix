@@ -132,11 +132,22 @@ router.get('/stats', async (req, res) => {
 
     console.log('Member UID:', memberUid);
 
-    // Get member's affiliates from PostgreSQL
-    const affiliatesResult = await query(
-      'SELECT affiliate_code FROM affiliates WHERE member_uid = $1',
-      [memberUid]
-    );
+    // Get member's affiliates from PostgreSQL. The `affiliates` table only ever
+    // belonged to the manual affiliate-creation feature (removed) — it was never
+    // actually created, so treat "no such table" the same as "no affiliates yet".
+    let affiliatesResult;
+    try {
+      affiliatesResult = await query(
+        'SELECT affiliate_code FROM affiliates WHERE member_uid = $1',
+        [memberUid]
+      );
+    } catch (e) {
+      if (e.code === '42P01') {
+        affiliatesResult = { rows: [] };
+      } else {
+        throw e;
+      }
+    }
     const memberAffiliateCodes = affiliatesResult.rows.map(row => row.affiliate_code);
     
     console.log('Member affiliates:', affiliatesResult.rows.length);

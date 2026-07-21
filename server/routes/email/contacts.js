@@ -5,8 +5,9 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
 
-// Import database connection
-const { query } = require('../../db');
+// Import database connection (real Postgres client — NOT server/db.js, which is
+// the flat-JSON-file store used for clicks/orders and has no query() export)
+const { query } = require('../../../src/db/client');
 
 // Configure multer for CSV uploads
 const upload = multer({ 
@@ -57,7 +58,11 @@ async function syncPBNCustomers(tenantId) {
       'pbn_signup',
       uev.created_at,
       NOW()
-    FROM user_email_verification uev
+    FROM (
+      SELECT DISTINCT ON (email) *
+      FROM user_email_verification
+      ORDER BY email, created_at DESC
+    ) uev
     ON CONFLICT (tenant_id, email) DO UPDATE SET
       engagement_score = EXCLUDED.engagement_score,
       first_name       = CASE WHEN contacts.first_name = '' THEN EXCLUDED.first_name ELSE contacts.first_name END,
@@ -88,12 +93,16 @@ async function syncConversionLeads(tenantId) {
         'captured_data', cl.captured_data
       ) as custom_fields,
       cl.created_at
-    FROM conversion_leads cl
+    FROM (
+      SELECT DISTINCT ON (email) *
+      FROM conversion_leads
+      WHERE email IS NOT NULL AND email != ''
+      ORDER BY email, created_at DESC
+    ) cl
     WHERE cl.email NOT IN (
       SELECT email FROM contacts WHERE tenant_id = $1
     )
-    AND cl.email IS NOT NULL
-    AND cl.email != ''
+    ON CONFLICT (tenant_id, email) DO NOTHING
   `;
   
   const result = await query(syncQuery, [tenantId]);

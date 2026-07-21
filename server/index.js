@@ -33,6 +33,7 @@ const emails = require('./routes/email/emails');
 const emailWebhook = require('./routes/email/receive-webhook');
 const emailTracking = require('./routes/email/tracking');
 const shippingNotification = require('./routes/email/shipping-notification');
+const contacts = require('./routes/email/contacts');
 
 // Marketing routes
 const chatbot = require('./routes/marketing/chatbot');
@@ -96,6 +97,8 @@ app.use('/api/leads', leads);
 app.use('/api/chatbot', chatbot);
 // mount email API (SMTP sending, inbox management)
 app.use('/api/email', emails);
+// mount contacts API (list, CSV import, segments)
+app.use('/api/contacts', contacts);
 // mount shipping notification API
 app.use('/api/email/shipping-notification', shippingNotification);
 // mount custom auth API (VPS email verification)

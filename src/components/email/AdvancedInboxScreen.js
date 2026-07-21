@@ -2031,7 +2031,7 @@ export default function AdvancedInboxScreen() {
                           ? "bg-white/5 border-white/10 focus:border-white/20" 
                           : "bg-gray-50 border-gray-200 focus:border-gray-300"
                       )}
-                      placeholder="123 Business Street, London, UK"
+                      placeholder="Shropshire Gardens, St Helens, England"
                     />
                   </div>
                 </div>
