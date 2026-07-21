@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, CreditCard, Calendar, CheckCircle2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { API_URL } from '../../config/environment';
 
 // Import the enhanced conversion components
 import FeaturesShowcase from '../landing/FeaturesShowcase';
@@ -51,7 +52,7 @@ export default function SubscriptionGate({ children, onAccessDenied }) {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('/api/subscriptions/status', {
+      const response = await fetch(`${API_URL}/api/subscriptions/status`, {
         headers: {
           'x-member-uid': currentUser?.uid || (process.env.NODE_ENV === 'development' ? 'current-member-id' : 'cookie-session')
         },
@@ -116,12 +117,13 @@ export default function SubscriptionGate({ children, onAccessDenied }) {
       setPaypalLoading(true);
       setError(null);
 
-      const response = await fetch('/api/subscriptions/create', {
+      const response = await fetch(`${API_URL}/api/subscriptions/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-member-uid': currentUser.uid
         },
+        credentials: 'include',
         body: JSON.stringify({
           memberEmail: currentUser.email,
           memberName: currentUser.displayName || 'Member'
