@@ -27,15 +27,18 @@ async function query(sql, params = []) {
 
 // Helper function to get tenant ID from request
 function getTenantId(req) {
-  // Support both 'tenant' and 'tenantId' query params, and map string values
+  // Support both 'tenant' and 'tenantId' query params, and map string values.
+  // Single-tenant platform — tenant_id columns are integers referencing
+  // tenants(id), so slug-style values must map to the real numeric tenant (1),
+  // not the string 'default' (which fails "invalid input syntax for integer").
   const tenant = req.headers['x-tenant-id'] || req.query.tenant || req.query.tenantId;
-  
-  // If tenant is a string like 'fotonix-prod', map to 'default' for consistency
-  if (tenant === 'fotonix-prod' || tenant === 'default') {
-    return 'default';
+
+  if (tenant === 'fotonix-prod' || tenant === 'default' || !tenant) {
+    return 1;
   }
-  
-  return tenant || 1;
+
+  const numeric = Number(tenant);
+  return Number.isFinite(numeric) ? numeric : 1;
 }
 
 // Send individual email (UPDATED with business_email support and defensive checks)

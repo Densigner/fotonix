@@ -12,11 +12,12 @@ import {
 import { storage } from '../../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
+import { API_URL } from '../../config/environment';
 
 /**
  * CONFIG — point this at your deployed API + tenant
  */
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:4000";
+const API_BASE = API_URL;
 const TENANT_SLUG = process.env.REACT_APP_TENANT_SLUG || "fotonix-prod";
 
 /**

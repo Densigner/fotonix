@@ -105,13 +105,12 @@ router.post('/', async (req, res) => {
           email_references,
           received_at,
           is_read,
-          created_at,
-          updated_at
+          created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'inbound', 'received', $8, $9, $10, NOW(), false, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'inbound', 'received', $8, $9, $10, NOW(), false, NOW())
         RETURNING id
       `, [
-        'default', // tenant_id
+        1, // tenant_id — single-tenant platform, integer column (was the string 'default', which always failed)
         businessEmailId,
         from,
         recipientAddress,
