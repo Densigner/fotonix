@@ -1666,13 +1666,26 @@ export default function AdvancedInboxScreen() {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const missing = [
+                      !composeData.from && 'From',
+                      !composeData.to && 'To',
+                      !composeData.subject && 'Subject'
+                    ].filter(Boolean);
+                    if (missing.length === 0) return null;
+                    return (
+                      <span className={clsx("text-xs", isDarkMode ? "text-amber-400" : "text-amber-600")}>
+                        Missing: {missing.join(', ')}
+                      </span>
+                    );
+                  })()}
                   <button
                     onClick={() => setIsComposing(false)}
                     className={clsx(
                       "px-4 py-2 text-sm border rounded-xl transition-colors",
-                      isDarkMode 
-                        ? "border-white/10 hover:bg-white/5" 
+                      isDarkMode
+                        ? "border-white/10 hover:bg-white/5"
                         : "border-gray-200 hover:bg-gray-50"
                     )}
                   >
