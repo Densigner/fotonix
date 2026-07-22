@@ -812,14 +812,14 @@ export default function AdvancedInboxScreen() {
     // Prepare email body based on mode
     let bodyContent = '';
     if (isForward) {
-      bodyContent = `\\n\\n--- Forwarded message ---\\nFrom: ${detail.from_address || detail.from?.[0]?.address}\\nDate: ${new Date(detail.created_at).toLocaleString()}\\nSubject: ${detail.subject}\\n\\n${detail.text || detail.html?.replace(/<[^>]*>/g, '') || ''}`;
+      bodyContent = `\n\n--- Forwarded message ---\nFrom: ${detail.from_address || detail.from?.[0]?.address}\nDate: ${new Date(detail.created_at).toLocaleString()}\nSubject: ${detail.subject}\n\n${detail.text || detail.html?.replace(/<[^>]*>/g, '') || ''}`;
     } else {
       // For replies, add the original message as quoted text at the bottom
       const originalSender = detail.from_address || detail.from?.[0]?.address || 'Unknown';
       const originalDate = new Date(detail.created_at).toLocaleString();
       const originalText = detail.text || detail.html?.replace(/<[^>]*>/g, '') || '';
-      
-      bodyContent = `[Type your reply here]\\n\\n\\n\\n--- Original Message ---\\nFrom: ${originalSender}\\nDate: ${originalDate}\\nSubject: ${detail.subject || '(no subject)'}\\n\\n${originalText.split('\\n').map(line => `> ${line}`).join('\\n')}`;
+
+      bodyContent = `[Type your reply here]\n\n\n\n--- Original Message ---\nFrom: ${originalSender}\nDate: ${originalDate}\nSubject: ${detail.subject || '(no subject)'}\n\n${originalText.split('\n').map(line => `> ${line}`).join('\n')}`;
     }
     
     setComposeData(prev => ({
