@@ -1200,11 +1200,14 @@ export default function AdvancedInboxScreen() {
         </div>
 
         {/* Email list */}
-        <div className="flex-1 flex">
+        <div className="flex-1 flex min-h-0">
           <div className={clsx(
-            "w-96 border-r",
-            isDarkMode 
-              ? "border-white/10 bg-white/5" 
+            // Was a plain block div — the inner list's flex-1/min-h-0/overflow-auto
+            // had no effect at all without a flex column parent to size against,
+            // which is why the list never actually became scrollable.
+            "w-96 border-r flex flex-col min-h-0",
+            isDarkMode
+              ? "border-white/10 bg-white/5"
               : "border-gray-200 bg-gray-50"
           )}>
             {/* Bulk actions */}
@@ -1357,7 +1360,7 @@ export default function AdvancedInboxScreen() {
           </div>
 
           {/* Message detail pane */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0">
             {!activeItem ? (
               <div className={clsx(
                 "flex-1 flex items-center justify-center",
