@@ -1255,7 +1255,22 @@ export default function AdvancedInboxScreen() {
             )}
 
             {/* Message list */}
-            <div ref={listRef} className="flex-1 min-h-0 overflow-auto">
+            <style>{`
+              .inbox-message-list::-webkit-scrollbar { width: 8px; }
+              .inbox-message-list::-webkit-scrollbar-track { background: transparent; }
+              .inbox-message-list::-webkit-scrollbar-thumb {
+                background: ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'};
+                border-radius: 4px;
+              }
+              .inbox-message-list::-webkit-scrollbar-thumb:hover {
+                background: ${isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)'};
+              }
+              .inbox-message-list {
+                scrollbar-width: thin;
+                scrollbar-color: ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} transparent;
+              }
+            `}</style>
+            <div ref={listRef} className="inbox-message-list flex-1 min-h-0 overflow-auto">
               {items.map((message, idx) => (
                 <div
                   key={`${message.id}-${idx}`}
