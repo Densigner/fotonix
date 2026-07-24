@@ -69,7 +69,8 @@ router.post('/', async (req, res) => {
     // Attachments are the same for every recipient on this one incoming email.
     let attachmentMeta = [];
     try {
-      const uploaded = await uploadAttachments(rawAttachments, `inbound-${headers['message-id'] || Date.now()}`);
+      const safeKey = String(headers['message-id'] || Date.now()).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const uploaded = await uploadAttachments(rawAttachments, `inbound-${safeKey}`);
       attachmentMeta = uploaded.map(({ filename, contentType, size, url }) => ({ filename, contentType, size, url }));
     } catch (attachErr) {
       console.error('⚠️  Attachment upload failed, saving message without them:', attachErr.message);
