@@ -1114,7 +1114,12 @@ export default function AdvancedInboxScreen() {
       </header>
 
       {/* Main layout */}
-      <div className="flex h-[calc(100vh-120px)]">
+      {/* Not min-h/max-h off 100vh — this screen renders inside the normal page
+          flow (site Header above, site Footer below), not as a standalone
+          full-viewport page, so sizing off 100vh overflowed past the page's
+          real footer. Fixed height keeps the internal lists' overflow-auto
+          scrolling contained instead. */}
+      <div className="flex h-[720px] max-h-[75vh]">
         {/* Sidebar */}
         <div className={clsx(
           "w-64 border-r p-4",
@@ -1366,86 +1371,95 @@ export default function AdvancedInboxScreen() {
                     </div>
                     
                     {/* Action buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <button
                         onClick={() => startReply('reply')}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Reply (R)"
                       >
                         <Reply className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Reply</span>
                       </button>
                       <button
                         onClick={() => startReply('reply-all')}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Reply All (A)"
                       >
                         <ReplyAll className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Reply All</span>
                       </button>
                       <button
                         onClick={() => startReply('forward')}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Forward (F)"
                       >
                         <Forward className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Forward</span>
                       </button>
                       <button
                         onClick={() => toggleStar([activeId])}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Star (S)"
                       >
                         <Star className={clsx("w-4 h-4", activeItem.is_starred && "fill-current text-yellow-400")} />
+                        <span className="text-[9px] leading-none">Star</span>
                       </button>
                       <button
                         onClick={() => archiveMessages([activeId])}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Archive (E)"
                       >
                         <Archive className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Archive</span>
                       </button>
                       <button
                         onClick={() => deleteMessages([activeId])}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Delete</span>
                       </button>
-                      <button className={clsx(
-                        "p-2 rounded-xl border transition-colors",
-                        isDarkMode 
-                          ? "border-white/10 bg-white/5 hover:bg-white/10" 
-                          : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-                      )}>
+                      <button
+                        title="More options"
+                        className={clsx(
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
+                            : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                        )}>
                         <MoreHorizontal className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">More</span>
                       </button>
                     </div>
                   </div>
