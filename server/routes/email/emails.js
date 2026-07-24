@@ -429,7 +429,6 @@ router.get('/messages', async (req, res) => {
     if (searchQuery) {
       sql += ` AND (m.subject ILIKE $${++paramIndex} OR m.text ILIKE $${++paramIndex})`;
       params.push(`%${searchQuery}%`, `%${searchQuery}%`);
-      paramIndex++;
     }
     if (cursor) {
       sql += ` AND m.created_at < $${++paramIndex}`;
