@@ -930,8 +930,14 @@ export default function AdvancedInboxScreen() {
 
   return (
     <div className={clsx(
-      "h-screen w-full transition-colors duration-200",
-      isDarkMode 
+      // Not h-screen: this renders inside the normal page flow (site Header
+      // above, site Footer below), not as a standalone full-viewport page.
+      // h-screen with no overflow-hidden let the overflowing message list
+      // visually spill past this box into the Footer below, since the
+      // Footer's document position is based on this box's declared height,
+      // not where the spilling content actually renders.
+      "w-full transition-colors duration-200",
+      isDarkMode
         ? "bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100"
         : "bg-gradient-to-b from-gray-50 via-white to-gray-50 text-gray-900"
     )}>
