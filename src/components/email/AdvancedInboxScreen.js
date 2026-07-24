@@ -1125,7 +1125,14 @@ export default function AdvancedInboxScreen() {
           full-viewport page, so sizing off 100vh overflowed past the page's
           real footer. Fixed height keeps the internal lists' overflow-auto
           scrolling contained instead. */}
-      <div className="flex h-[720px] max-h-[75vh]">
+      {/* overflow-hidden here + min-h-0 on the scrollable children below: flex
+          children default to min-height:auto, which lets their natural content
+          size override a bounded flex parent's height — the overflow-auto on
+          the list/detail panes below was silently defeated by this, so a long
+          list grew past its box instead of scrolling inside it (only visible
+          with enough items to exceed the box — hence it never reproduced with
+          a short local list). */}
+      <div className="flex h-[720px] max-h-[75vh] overflow-hidden">
         {/* Sidebar */}
         <div className={clsx(
           "w-64 border-r p-4",
@@ -1248,7 +1255,7 @@ export default function AdvancedInboxScreen() {
             )}
 
             {/* Message list */}
-            <div ref={listRef} className="flex-1 overflow-auto">
+            <div ref={listRef} className="flex-1 min-h-0 overflow-auto">
               {items.map((message, idx) => (
                 <div
                   key={`${message.id}-${idx}`}
@@ -1472,7 +1479,7 @@ export default function AdvancedInboxScreen() {
                 </div>
 
                 {/* Message body */}
-                <div className="flex-1 overflow-auto p-4">
+                <div className="flex-1 min-h-0 overflow-auto p-4">
                   {detailLoading ? (
                     <div className={clsx(
                       "text-sm",
