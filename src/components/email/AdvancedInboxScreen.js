@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { 
-  Search, Star, Archive, Trash2, Tag, Forward, Reply, ReplyAll, 
+  Search, Archive, Trash2, Tag, Forward, Reply, ReplyAll,
   MoreHorizontal, Clock, Send, Paperclip, Eye, EyeOff, Flag,
   ChevronDown, Filter, SortAsc, SortDesc, Settings, Plus,
   ArrowRight, ArrowLeft, Maximize2, Minimize2, X, Sun, Moon,
@@ -340,8 +340,6 @@ export default function AdvancedInboxScreen() {
       params.set("status", "spam");
     } else if (currentFilter === 'trash') {
       params.set("status", "deleted");
-    } else if (currentFilter === 'starred') {
-      params.set("filter", "starred");
     } else if (currentFilter === 'unread') {
       params.set("filter", "unread");
     } else if (currentFilter.startsWith('label:')) {
@@ -600,13 +598,6 @@ export default function AdvancedInboxScreen() {
           }
           break;
           
-        case 's':
-          e.preventDefault();
-          if (activeId) {
-            toggleStar([activeId]);
-          }
-          break;
-          
         case 'e':
         case 'y':
           e.preventDefault();
@@ -672,47 +663,31 @@ export default function AdvancedInboxScreen() {
   // Message actions
   const markAsRead = async (ids) => {
     try {
-      await fetch(`${API_BASE}/api/email/messages/mark-read`, {
+      const res = await fetch(`${API_BASE}/api/email/messages/mark-read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids, read: true })
       });
-      
-      setItems(prev => prev.map(item => 
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      setItems(prev => prev.map(item =>
         ids.includes(item.id) ? { ...item, is_read: true } : item
       ));
     } catch (e) {
       console.error('Failed to mark as read:', e);
-    }
-  };
-
-  const toggleStar = async (ids) => {
-    try {
-      const currentItem = items.find(item => ids.includes(item.id));
-      const newStarred = !currentItem?.is_starred;
-      
-      await fetch(`${API_BASE}/api/email/messages/star`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids, starred: newStarred })
-      });
-      
-      setItems(prev => prev.map(item => 
-        ids.includes(item.id) ? { ...item, is_starred: newStarred } : item
-      ));
-    } catch (e) {
-      console.error('Failed to toggle star:', e);
+      setError('Failed to mark as read — please try again');
     }
   };
 
   const archiveMessages = async (ids) => {
     try {
-      await fetch(`${API_BASE}/api/email/messages/archive`, {
+      const res = await fetch(`${API_BASE}/api/email/messages/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids })
       });
-      
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       setItems(prev => prev.filter(item => !ids.includes(item.id)));
       setSelectedItems(new Set());
       if (ids.includes(activeId)) {
@@ -721,17 +696,19 @@ export default function AdvancedInboxScreen() {
       }
     } catch (e) {
       console.error('Failed to archive:', e);
+      setError('Failed to archive — please try again');
     }
   };
 
   const deleteMessages = async (ids) => {
     try {
-      await fetch(`${API_BASE}/api/email/messages/delete`, {
+      const res = await fetch(`${API_BASE}/api/email/messages/delete`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids })
       });
-      
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       setItems(prev => prev.filter(item => !ids.includes(item.id)));
       setSelectedItems(new Set());
       if (ids.includes(activeId)) {
@@ -740,6 +717,7 @@ export default function AdvancedInboxScreen() {
       }
     } catch (e) {
       console.error('Failed to delete:', e);
+      setError('Failed to delete — please try again');
     }
   };
 
@@ -1077,7 +1055,7 @@ export default function AdvancedInboxScreen() {
                 "text-xs",
                 isDarkMode ? "text-slate-400" : "text-gray-500"
               )}>Filter:</span>
-              {['inbox', 'starred', 'unread', 'sent', 'archive'].map(filter => (
+              {['inbox', 'unread', 'sent', 'archive'].map(filter => (
                 <button
                   key={filter}
                   onClick={() => setCurrentFilter(filter)}
@@ -1153,7 +1131,7 @@ export default function AdvancedInboxScreen() {
             )}>
               Folders
             </div>
-            {['inbox', 'starred', 'sent', 'drafts', 'archive', 'spam', 'trash'].map(folder => (
+            {['inbox', 'sent', 'drafts', 'archive', 'spam', 'trash'].map(folder => (
               <button
                 key={folder}
                 onClick={() => setCurrentFilter(folder)}
@@ -1167,7 +1145,6 @@ export default function AdvancedInboxScreen() {
                 )}
               >
                 {folder === 'inbox' && '📥'}
-                {folder === 'starred' && '⭐'}
                 {folder === 'sent' && '📤'}
                 {folder === 'drafts' && '📝'}
                 {folder === 'archive' && '📦'}
@@ -1230,13 +1207,6 @@ export default function AdvancedInboxScreen() {
                     title="Mark as read"
                   >
                     <Eye className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => toggleStar([...selectedItems])}
-                    className="p-1 rounded hover:bg-white/10"
-                    title="Star"
-                  >
-                    <Star className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => archiveMessages([...selectedItems])}
@@ -1318,7 +1288,6 @@ export default function AdvancedInboxScreen() {
                           </div>
                           
                           <div className="flex items-center gap-1 ml-auto">
-                            {message.is_starred && <Star className="w-3 h-3 text-yellow-400 fill-current" />}
                             {message.priority > 1 && <Flag className="w-3 h-3 text-red-400" />}
                             {message.has_attachments && <Paperclip className={clsx(
                               "w-3 h-3",
@@ -1447,19 +1416,6 @@ export default function AdvancedInboxScreen() {
                       >
                         <Forward className="w-4 h-4" />
                         <span className="text-[9px] leading-none">Forward</span>
-                      </button>
-                      <button
-                        onClick={() => toggleStar([activeId])}
-                        className={clsx(
-                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
-                          isDarkMode
-                            ? "border-white/10 bg-white/5 hover:bg-white/10"
-                            : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-                        )}
-                        title="Star (S)"
-                      >
-                        <Star className={clsx("w-4 h-4", activeItem.is_starred && "fill-current text-yellow-400")} />
-                        <span className="text-[9px] leading-none">Star</span>
                       </button>
                       <button
                         onClick={() => archiveMessages([activeId])}

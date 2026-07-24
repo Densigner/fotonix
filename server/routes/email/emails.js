@@ -423,18 +423,11 @@ router.get('/messages', async (req, res) => {
       sql += ` AND m.status = 'deleted'`;
     }
     
-    if (filter === 'starred') {
-      sql += ` AND m.is_starred = true`;
-    }
     if (filter === 'unread') {
       sql += ` AND m.is_read = false`;
     }
-    if (label) {
-      sql += ` AND $${++paramIndex} = ANY(m.labels)`;
-      params.push(label);
-    }
     if (searchQuery) {
-      sql += ` AND (m.subject ILIKE $${++paramIndex} OR m.text_content ILIKE $${++paramIndex})`;
+      sql += ` AND (m.subject ILIKE $${++paramIndex} OR m.text ILIKE $${++paramIndex})`;
       params.push(`%${searchQuery}%`, `%${searchQuery}%`);
       paramIndex++;
     }
@@ -524,6 +517,72 @@ router.get('/messages/:messageId', async (req, res) => {
       error: 'Internal server error',
       detail: error.message
     });
+  }
+});
+
+// Mark messages read/unread
+router.post('/messages/mark-read', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { message_ids, read } = req.body || {};
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return res.status(400).json({ error: 'message_ids array is required' });
+    }
+
+    await query(
+      `UPDATE email_messages SET is_read = $1 WHERE id = ANY($2) AND tenant_id = $3`,
+      [read !== false, message_ids, tenantId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Mark-read error:', error);
+    res.status(500).json({ error: 'Internal server error', detail: error.message });
+  }
+});
+
+// Archive messages
+router.post('/messages/archive', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { message_ids } = req.body || {};
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return res.status(400).json({ error: 'message_ids array is required' });
+    }
+
+    await query(
+      `UPDATE email_messages SET status = 'archived' WHERE id = ANY($1) AND tenant_id = $2`,
+      [message_ids, tenantId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Archive error:', error);
+    res.status(500).json({ error: 'Internal server error', detail: error.message });
+  }
+});
+
+// Delete messages (soft delete — moves to Trash, matching the 'deleted' status filter)
+router.delete('/messages/delete', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { message_ids } = req.body || {};
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return res.status(400).json({ error: 'message_ids array is required' });
+    }
+
+    await query(
+      `UPDATE email_messages SET status = 'deleted' WHERE id = ANY($1) AND tenant_id = $2`,
+      [message_ids, tenantId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({ error: 'Internal server error', detail: error.message });
   }
 });
 
