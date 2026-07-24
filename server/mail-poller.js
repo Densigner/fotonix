@@ -54,6 +54,16 @@ async function importFile(mailboxName, filePath) {
     ? parsed.references
     : (parsed.references ? [parsed.references] : []);
 
+  // Inline images (cid: references) come through as attachments too — only
+  // forward ones the sender actually meant as attachments, not embedded images.
+  const attachments = (parsed.attachments || [])
+    .filter(a => !a.contentDisposition || a.contentDisposition === 'attachment')
+    .map(a => ({
+      filename: a.filename || 'attachment',
+      contentType: a.contentType || 'application/octet-stream',
+      dataBase64: a.content ? a.content.toString('base64') : ''
+    }));
+
   const resp = await fetch(WEBHOOK_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-webhook-secret': WEBHOOK_SECRET },
@@ -63,6 +73,7 @@ async function importFile(mailboxName, filePath) {
       subject: parsed.subject || '(no subject)',
       html: parsed.html || parsed.textAsHtml || '',
       text: parsed.text || '',
+      attachments,
       headers: {
         'message-id': messageId,
         'in-reply-to': parsed.inReplyTo || null,

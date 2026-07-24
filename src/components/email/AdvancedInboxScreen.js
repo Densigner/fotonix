@@ -108,7 +108,8 @@ export default function AdvancedInboxScreen() {
     signature: null,
     priority: 0,
     trackingEnabled: true,
-    scheduleAt: null
+    scheduleAt: null,
+    attachments: [] // array of File objects, converted to base64 at send time
   });
 
   // Business emails state
@@ -749,9 +750,10 @@ export default function AdvancedInboxScreen() {
       priority: 0,
       trackingEnabled: true,
       scheduleAt: null,
-      originalMessageId: null
+      originalMessageId: null,
+      attachments: []
     });
-    
+
     // Focus compose area
     setTimeout(() => {
       if (composeRef.current) {
@@ -837,11 +839,27 @@ export default function AdvancedInboxScreen() {
     }, 150);
   };
 
+  // Read a File as base64 (without the data: URL prefix) for JSON transport.
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
   const sendMessage = async () => {
     try {
       // Find the business email object for the selected from address
       const selectedBusinessEmail = businessEmails.find(be => be.email === composeData.from);
-      
+
+      const attachments = await Promise.all(
+        (composeData.attachments || []).map(async (file) => ({
+          filename: file.name,
+          contentType: file.type || 'application/octet-stream',
+          dataBase64: await fileToBase64(file)
+        }))
+      );
+
       const payload = {
         tenant_slug: TENANT_SLUG,
         from: composeData.from,
@@ -856,6 +874,7 @@ export default function AdvancedInboxScreen() {
         tracking_enabled: composeData.trackingEnabled,
         schedule_at: composeData.scheduleAt,
         signature_id: composeData.signature,
+        attachments,
         in_reply_to_id: replyMode && replyMode !== 'forward' ? composeData.originalMessageId : undefined
       };
 
@@ -893,7 +912,8 @@ export default function AdvancedInboxScreen() {
         priority: 0,
         trackingEnabled: true,
         scheduleAt: null,
-        fromEmailId: selectedBusinessEmail?.id
+        fromEmailId: selectedBusinessEmail?.id,
+        attachments: []
       });
 
       // Show success message
@@ -1289,7 +1309,7 @@ export default function AdvancedInboxScreen() {
                           
                           <div className="flex items-center gap-1 ml-auto">
                             {message.priority > 1 && <Flag className="w-3 h-3 text-red-400" />}
-                            {message.has_attachments && <Paperclip className={clsx(
+                            {Array.isArray(message.attachments) && message.attachments.length > 0 && <Paperclip className={clsx(
                               "w-3 h-3",
                               isDarkMode ? "text-slate-400" : "text-gray-500"
                             )} />}
@@ -1471,7 +1491,45 @@ export default function AdvancedInboxScreen() {
                       isDarkMode ? "text-rose-300" : "text-red-600"
                     )}>Error: {detail.error}</div>
                   ) : (
-                    <MessageBody html={detail?.html} text={detail?.text} isDarkMode={isDarkMode} />
+                    <>
+                      <MessageBody html={detail?.html} text={detail?.text} isDarkMode={isDarkMode} />
+                      {Array.isArray(detail?.attachments) && detail.attachments.length > 0 && (
+                        <div className={clsx(
+                          "mt-4 pt-4 border-t space-y-2",
+                          isDarkMode ? "border-white/10" : "border-gray-200"
+                        )}>
+                          <div className={clsx(
+                            "text-xs font-semibold uppercase tracking-wide",
+                            isDarkMode ? "text-slate-400" : "text-gray-500"
+                          )}>
+                            {detail.attachments.length} Attachment{detail.attachments.length > 1 ? 's' : ''}
+                          </div>
+                          {detail.attachments.map((att, idx) => (
+                            <a
+                              key={idx}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={att.filename}
+                              className={clsx(
+                                "flex items-center gap-2 text-sm px-3 py-2 rounded-lg border w-fit transition-colors",
+                                isDarkMode
+                                  ? "border-white/10 bg-white/5 hover:bg-white/10"
+                                  : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                              )}
+                            >
+                              <Paperclip className="w-4 h-4 shrink-0" />
+                              <span className="truncate max-w-[240px]">{att.filename}</span>
+                              {att.size != null && (
+                                <span className={isDarkMode ? "text-slate-500" : "text-gray-400"}>
+                                  {(att.size / 1024).toFixed(0)}KB
+                                </span>
+                              )}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </>
@@ -1623,6 +1681,55 @@ export default function AdvancedInboxScreen() {
                   )}
                   placeholder="Write your message..."
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className={clsx(
+                  "text-sm flex items-center gap-2 cursor-pointer w-fit",
+                  isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-gray-600 hover:text-gray-900"
+                )}>
+                  <Paperclip className="w-4 h-4" />
+                  Attach files
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files || []);
+                      setComposeData(prev => ({ ...prev, attachments: [...(prev.attachments || []), ...newFiles] }));
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {composeData.attachments && composeData.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {composeData.attachments.map((file, idx) => (
+                      <div
+                        key={`${file.name}-${idx}`}
+                        className={clsx(
+                          "flex items-center gap-2 text-xs px-2 py-1 rounded-lg border",
+                          isDarkMode ? "border-white/10 bg-white/5" : "border-gray-200 bg-gray-50"
+                        )}
+                      >
+                        <span className="truncate max-w-[160px]">{file.name}</span>
+                        <span className={isDarkMode ? "text-slate-500" : "text-gray-400"}>
+                          {(file.size / 1024).toFixed(0)}KB
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setComposeData(prev => ({
+                            ...prev,
+                            attachments: prev.attachments.filter((_, i) => i !== idx)
+                          }))}
+                          className="hover:text-red-400"
+                          title="Remove"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Compose actions */}

@@ -2,6 +2,7 @@ const express = require('express');
 const { Client } = require('pg');
 const { loadTransport } = require('../../../src/email/smtp');
 const { renderTemplate } = require('../../../src/email/renderer');
+const { uploadAttachments } = require('../../email-attachments');
 const router = express.Router();
 
 // PostgreSQL helper function using same pattern as other routes
@@ -45,10 +46,19 @@ function getTenantId(req) {
 router.post('/send', async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { to, from, subject, html, text, templateName, templateData, businessEmailId } = req.body;
+    const { to, from, subject, html, text, templateName, templateData, businessEmailId, attachments: rawAttachments } = req.body;
 
     if (!to || !subject) {
       return res.status(400).json({ error: 'to and subject are required' });
+    }
+
+    // Upload any attachments before creating the message record, so their
+    // metadata can be stored alongside it in one insert.
+    let uploadedAttachments = [];
+    try {
+      uploadedAttachments = await uploadAttachments(rawAttachments, `send-${Date.now()}`);
+    } catch (attachErr) {
+      return res.status(400).json({ error: 'Attachment upload failed', detail: attachErr.message });
     }
 
     // Check if recipient is suppressed
@@ -119,13 +129,15 @@ router.post('/send', async (req, res) => {
       }
     }
 
+    const attachmentMeta = uploadedAttachments.map(({ filename, contentType, size, url }) => ({ filename, contentType, size, url }));
+
     // Create message record (DEFENSIVE: handle empty result)
     const messageResult = await query(`
-      INSERT INTO email_messages 
-      (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta, business_email_id)
-      VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7, $8)
+      INSERT INTO email_messages
+      (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta, business_email_id, attachments)
+      VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7, $8, $9)
       RETURNING id
-    `, [tenantId, actualFrom, to, subject, finalHtml, finalText, JSON.stringify(req.body), businessEmailId || null]);
+    `, [tenantId, actualFrom, to, subject, finalHtml, finalText, JSON.stringify(req.body), businessEmailId || null, JSON.stringify(attachmentMeta)]);
 
     // DEFENSIVE CHECK: Ensure we got an ID back
     if (!messageResult.rows || messageResult.rows.length === 0 || !messageResult.rows[0]?.id) {
@@ -142,6 +154,7 @@ router.post('/send', async (req, res) => {
         subject: subject,
         html: finalHtml,
         text: finalText,
+        attachments: uploadedAttachments.map(a => ({ filename: a.filename, content: a.buffer, contentType: a.contentType })),
         headers: {
           'Message-ID': `<${messageId}@${req.get('host') || 'fotonix.co.uk'}>`,
           'X-Tenant-ID': tenantId,
@@ -211,7 +224,7 @@ router.post('/send', async (req, res) => {
 router.post('/send-bulk', async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { recipients, subject, html, text, templateName, templateData, campaignId, fromEmail, fromName, replyTo } = req.body;
+    const { recipients, subject, html, text, templateName, templateData, campaignId, fromEmail, fromName, replyTo, attachments: rawAttachments } = req.body;
 
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'recipients array is required' });
@@ -220,6 +233,17 @@ router.post('/send-bulk', async (req, res) => {
     if (!subject) {
       return res.status(400).json({ error: 'subject is required' });
     }
+
+    // Upload attachments once — the same files are sent to every recipient,
+    // no need to re-upload per recipient.
+    let uploadedAttachments = [];
+    try {
+      uploadedAttachments = await uploadAttachments(rawAttachments, `campaign-${campaignId || Date.now()}`);
+    } catch (attachErr) {
+      return res.status(400).json({ error: 'Attachment upload failed', detail: attachErr.message });
+    }
+    const attachmentMeta = uploadedAttachments.map(({ filename, contentType, size, url }) => ({ filename, contentType, size, url }));
+    const nodemailerAttachments = uploadedAttachments.map(a => ({ filename: a.filename, content: a.buffer, contentType: a.contentType }));
 
     const results = [];
     const { transport, defaultFrom } = await loadTransport(tenantId);
@@ -269,11 +293,11 @@ router.post('/send-bulk', async (req, res) => {
 
           // Create message record
           const messageResult = await query(`
-            INSERT INTO email_messages 
-            (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta)
-            VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7)
+            INSERT INTO email_messages
+            (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta, attachments)
+            VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7, $8)
             RETURNING id
-          `, [tenantId, fromEmail || defaultFrom, recipient.email || recipient, subject, finalHtml, finalText, JSON.stringify({ campaignId, recipient })]);
+          `, [tenantId, fromEmail || defaultFrom, recipient.email || recipient, subject, finalHtml, finalText, JSON.stringify({ campaignId, recipient }), JSON.stringify(attachmentMeta)]);
 
           const messageId = messageResult.rows[0].id;
 
@@ -285,6 +309,7 @@ router.post('/send-bulk', async (req, res) => {
             subject: subject,
             html: finalHtml,
             text: finalText,
+            attachments: nodemailerAttachments,
             headers: {
               'Message-ID': `<${messageId}@${req.get('host') || 'fotonix.co.uk'}>`,
               'X-Tenant-ID': tenantId,
