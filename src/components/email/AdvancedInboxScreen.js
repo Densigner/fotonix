@@ -552,7 +552,13 @@ export default function AdvancedInboxScreen() {
   useEffect(() => {
     function onKey(e) {
       if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
-      
+      // These are bare single-letter shortcuts (Gmail-style). Without this
+      // guard, e.key is still 'c'/'r'/'a'/'f'/'s'/'x' even when Ctrl/Cmd is
+      // held, so Ctrl+C, Ctrl+R, Ctrl+A, Ctrl+F, Ctrl+S, Ctrl+X were all
+      // being hijacked (copy/refresh/select-all/find/save/cut) instead of
+      // reaching the browser.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       const selectedCount = selectedItems.size;
       const currentIndex = items.findIndex(m => m.id === activeId);
       
