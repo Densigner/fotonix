@@ -195,31 +195,15 @@ Also removed: `genMockTimeseries`, `genMockRows`, `safeGet` — three unused
 helper functions left over in `AffiliateDashboard.js` from an earlier
 mock-data version, never called from the live render path.
 
-## The affiliate storefront existed but generated zero commission (fixed 2026-07-26)
+## The affiliate storefront's commission-tracking bug moved to store-builder/gotchas.md
 
-Asked to let affiliates build their own promotional pages, the instinct
-was to build this from scratch via the Funnel Builder — until a closer
-look showed a separate, already-real, already-reachable feature had been
-sitting unused: `AffiliateShopBuilderPage.js`'s `/@handle` storefront
-(Firebase RTDB-backed, real handle-claiming via `runTransaction`, curated
-product picker, live preview — see `storefront.md` for the full writeup).
-Unlike the funnel builder, this one genuinely persists and genuinely
-renders real saved data.
-
-But it had never been wired to the click/attribution pipeline at all —
-two bugs, both silent: (1) visiting `/@handle` never set
-`fotonix_aff_ref`/called `/api/clicks/create`, so no visit was ever
-tracked, and (2) the "View Details" button pointed at a hash route
-(`#product/${id}`) that matches no actual page — the real product page is
-`/product/:ownerId/:productId`. Neither failure surfaced as an error;
-browsing the storefront and clicking through just silently did nothing
-useful. Fixed by resolving the visitor's landing affiliate (handle → uid →
-`users/{uid}.affiliateCode` — note the handle and the referral code are
-two different strings, using the handle directly would have created
-clicks that never matched the affiliate's own stats query) and firing the
-same beacon `useAffiliateRef.js` uses elsewhere, plus fixing the dead
-route. See `storefront.md` for the full before/after and how it was
-verified.
+A separate affiliate self-serve page (`/@handle`, via
+`AffiliateShopBuilderPage.js`) had a commission-tracking bug found and
+fixed 2026-07-26 — full writeup lives in `../store-builder/gotchas.md`
+(grouped with the codebase's other page-builder systems rather than
+nested under affiliates specifically). Short version: the page itself was
+real and worked, but never tracked a click or linked to a working product
+page, so it generated zero commission until fixed.
 
 ## Self-signup codes were improved, not just left alone
 

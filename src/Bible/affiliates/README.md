@@ -18,11 +18,11 @@ just "should work."
 - **`gotchas.md`** — the actual bugs found and fixed, in the order they were
   found, since the debugging story itself explains a lot about how the
   pieces fit together.
-- **`storefront.md`** — the affiliate "Shop Builder" self-serve page
-  (`/@handle`), the real answer to "how do affiliates build their own
-  page" — separate from, and much further along than, the Funnel Builder
-  (see `../funnel-builder/`). Read this if you're working on anything
-  affiliate-facing that isn't the plain `?ref=` link flow.
+- The affiliate "Shop Builder" self-serve page (`/@handle`) has its own
+  documentation in `../store-builder/` (grouped with the codebase's other
+  page-builder systems, not nested here) — see that folder for how
+  affiliates get their own promotional page, and the commission-tracking
+  bug fixed there 2026-07-26.
 
 ## The one-sentence version
 

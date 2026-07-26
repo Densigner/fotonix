@@ -1,30 +1,22 @@
 # Roadmap — making Funnel Builder real, and wiring it to affiliates
 
-Sketched 2026-07-26, then **paused the same day** — see "Pivot" below
-before reading further. This is a plan, not a changelog — before trusting
-any phase below as "done," check the actual files (see
+Sketched 2026-07-26. This is a plan, not a changelog — before trusting any
+phase below as "done," check the actual files (see
 `architecture.md`/`gotchas.md` for what "done" would even look like).
 
-## Pivot (2026-07-26): the affiliate self-serve page need was already met elsewhere
+## Note on a separate, related system (2026-07-26)
 
-Before Phase 1 below was started, it turned out the actual thing being
-asked for — affiliates building their own promotional page — already
-exists as a separate, much further-along feature:
-`AffiliateShopBuilderPage.js`'s `/@handle` storefront (Firebase-backed,
-real persistence, real handle-claiming, curated products, live preview).
-See `../affiliates/storefront.md` for the full writeup and
-`../affiliates/gotchas.md`'s dated entry for what was actually broken in
-it (click tracking was entirely missing, and the product link was dead —
-both fixed 2026-07-26).
-
-**This roadmap below was not built.** It remains here because the
-underlying problem it describes (Funnel Builder has no backend at all) is
-still true, and this plan is still the right shape *if* funnel pages are
-ever wanted for something the storefront doesn't cover — e.g. a dedicated
-single-product launch page or A/B-tested landing page, as opposed to a
-whole curated storefront. Don't resume it as "the way affiliates get their
-own page" — that need is met. Resume it only if a genuine funnel/landing-page
-use case comes up that the storefront genuinely can't do.
+There's also an **Affiliate Shop Builder** (`/@handle` storefronts,
+`AffiliateShopBuilderPage.js`, Firebase-backed) — a different, already-
+working page builder for affiliates, documented in `../store-builder/`.
+It briefly got conflated with this Funnel Builder mid-session (a click-
+tracking bug in it was found and fixed the same day — see
+`../store-builder/gotchas.md`), but the user clarified they specifically
+mean **this** file (`FunnelBuilder.js`) and want it built out, not the
+storefront. Treat the two as genuinely separate efforts: the storefront is
+a curated-product landing page per affiliate, already live; this roadmap
+is about single-purpose funnel/landing pages with their own drag-and-drop
+block editor. Both can end up affiliate-promotable independently.
 
 ## Why phases matter here specifically
 
