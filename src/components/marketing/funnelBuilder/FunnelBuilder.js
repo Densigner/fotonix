@@ -128,7 +128,7 @@ const BLOCKS = {
       subhead: "A blazing‑fast funnel built with our drag‑and‑drop editor.",
       ctaLabel: "Get Started",
       ctaHref: "#",
-      image: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=1200&auto=format&fit=crop",
+      image: "/images/AmeliaBedroom.png",
       align: "center",
       gradient: true,
     }),
@@ -198,9 +198,7 @@ const BLOCKS = {
             <Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} />
           </Field>
         </div>
-        <Field label="Image URL">
-          <Input value={data.image} onChange={e=>onChange({ image: e.target.value })} />
-        </Field>
+        <ImageUrlField label="Image URL" value={data.image} onChange={(image) => onChange({ image })} />
         <Field label="Alignment">
           <div className="flex items-center gap-2">
             <Button variant={data.align === "center" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "center" })}>Center</Button>
@@ -306,9 +304,7 @@ const BLOCKS = {
         <Field label="Button link">
           <Input value={data.buttonHref} onChange={(e) => onChange({ buttonHref: e.target.value })} />
         </Field>
-        <Field label="Background image">
-          <Input value={data.background} onChange={(e) => onChange({ background: e.target.value })} />
-        </Field>
+        <ImageUrlField label="Background image" value={data.background} onChange={(background) => onChange({ background })} />
         <ToggleField label="Overlay" checked={data.overlay} onCheckedChange={(v) => onChange({ overlay: v })} />
         <ToggleField label="Dark text" checked={data.darkText} onCheckedChange={(v) => onChange({ darkText: v })} />
         <Field label="Alignment">
@@ -372,7 +368,7 @@ const BLOCKS = {
   image: {
     name: "Image",
     icon: ImageIcon,
-    defaults: () => ({ url: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1200&auto=format&fit=crop", radius: 16, shadow: true }),
+    defaults: () => ({ url: "/images/products/lucasroom.jpg", radius: 16, shadow: true }),
     render: ({ data, onChange, editable }) => (
       <div className="relative group">
         <img src={data.url} alt="" className={`w-full ${data.shadow? 'shadow-md':''}`} style={{ borderRadius: data.radius }} />
@@ -383,7 +379,7 @@ const BLOCKS = {
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
-        <Field label="Image URL"><Input value={data.url} onChange={e=>onChange({ url: e.target.value })} /></Field>
+        <ImageUrlField label="Image URL" value={data.url} onChange={(url) => onChange({ url })} />
         <Field label="Corner radius"><Slider value={[data.radius]} min={0} max={32} step={1} onValueChange={(v)=>onChange({ radius: v[0] })} /></Field>
         <ToggleField label="Shadow" checked={data.shadow} onCheckedChange={(v)=>onChange({ shadow: v })} />
       </div>
@@ -1040,6 +1036,92 @@ function TooltipWrap({ label, children }){
   );
 }
 
+// Resize + re-encode an image client-side before it ever reaches Firebase
+// Storage. Storage cost (and every later page load's bandwidth) scales with
+// stored bytes — an un-resized phone photo can be 4000px+ and several MB;
+// funnel images are never displayed larger than the page width, so there's
+// no reason to store more than ~1600px on the long edge. WebP at 0.82
+// quality typically lands a photo like that in the low hundreds of KB
+// (vs multiple MB for the original) with no visible quality loss at
+// display size. Falls back to JPEG if the browser can't encode WebP.
+async function compressImageFile(file, { maxDimension = 1600, quality = 0.82 } = {}) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    let { width, height } = bitmap;
+    if (width > maxDimension || height > maxDimension) {
+      const scale = maxDimension / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+
+    const webpBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+    if (webpBlob) return { blob: webpBlob, extension: 'webp' };
+
+    const jpegBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (jpegBlob) return { blob: jpegBlob, extension: 'jpg' };
+  } catch (e) {
+    // createImageBitmap/canvas unsupported for this file — fall through to the original
+  }
+  return { blob: file, extension: (file.name.split('.').pop() || 'jpg').toLowerCase() };
+}
+
+async function uploadFunnelImage(file) {
+  const { blob, extension } = await compressImageFile(file);
+  const path = `uploads/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
+  const sRef = storageRef(storage, path);
+  const task = uploadBytesResumable(sRef, blob);
+  await new Promise((res, rej) => {
+    task.on('state_changed', null, (err) => rej(err), () => res());
+  });
+  return getDownloadURL(task.snapshot.ref);
+}
+
+// ImageUrlField — an inspector field that accepts either a pasted URL or a
+// direct file upload (compressed via uploadFunnelImage before it's stored).
+function ImageUrlField({ label = "Image URL", value, onChange }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      setUploading(true);
+      const url = await uploadFunnelImage(file);
+      onChange(url);
+    } catch (err) {
+      console.error('Upload failed', err);
+      alert('Image upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = null;
+    }
+  }
+
+  return (
+    <Field label={label}>
+      <div className="flex items-center gap-2">
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Paste an image URL…" />
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="shrink-0 text-black"
+          disabled={uploading}
+          onClick={() => inputRef.current && inputRef.current.click()}
+        >
+          {uploading ? 'Uploading…' : 'Upload'}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
 // UploadImage — small helper that opens a file picker and uploads the image
 function UploadImage({ onUploaded, accept = 'image/*', className }){
   const inputRef = useRef(null);
@@ -1050,13 +1132,7 @@ function UploadImage({ onUploaded, accept = 'image/*', className }){
     if (!file) return;
     try {
       setUploading(true);
-      const path = `uploads/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g,'')}`;
-      const sRef = storageRef(storage, path);
-      const task = uploadBytesResumable(sRef, file);
-      await new Promise((res, rej) => {
-        task.on('state_changed', null, (err)=> rej(err), ()=> res());
-      });
-      const url = await getDownloadURL(task.snapshot.ref);
+      const url = await uploadFunnelImage(file);
       if (onUploaded) onUploaded(url);
     } catch (err) {
       console.error('Upload failed', err);
