@@ -37,6 +37,7 @@ const contacts = require('./routes/email/contacts');
 
 // Marketing routes
 const chatbot = require('./routes/marketing/chatbot');
+const funnels = require('./routes/marketing/funnels');
 
 // Webhook routes
 const webhook = require('./routes/webhooks/webhook');
@@ -95,6 +96,8 @@ app.use('/api/member', member);
 app.use('/api/leads', leads);
 // mount chatbot API (AI conversations, qualified leads)
 app.use('/api/chatbot', chatbot);
+// mount funnels API (Funnel Builder persistence)
+app.use('/api/funnels', funnels);
 // mount email API (SMTP sending, inbox management)
 app.use('/api/email', emails);
 // mount contacts API (list, CSV import, segments)
