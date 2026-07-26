@@ -388,18 +388,38 @@ const BLOCKS = {
   button: {
     name: "Button",
     icon: Link,
-    defaults: () => ({ label: "Get started", href: "#", style: "default", full: false }),
-    render: ({ data }) => (
-      <div className={`flex ${data.full? '':'justify-center'}`}>
-        <Button asChild className={data.full? 'w-full':''} variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}>
-          <a href={data.href}>{data.label}</a>
-        </Button>
-      </div>
+    defaults: () => ({ label: "Get started", href: "#", style: "default", full: false, actionType: "link" }),
+    render: ({ data, editable, funnelOwnerUid }) => (
+      data.actionType === 'subscribe' ? (
+        <SubscribeInlineForm
+          label={data.label}
+          full={data.full}
+          style={data.style}
+          funnelOwnerUid={funnelOwnerUid}
+          editable={editable}
+        />
+      ) : (
+        <div className={`flex ${data.full? '':'justify-center'}`}>
+          <Button asChild className={data.full? 'w-full':''} variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}>
+            <a href={data.href}>{data.label}</a>
+          </Button>
+        </div>
+      )
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
         <Field label="Label"><Input value={data.label} onChange={e=>onChange({ label: e.target.value })} /></Field>
-        <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
+        <Field label="Action">
+          <div className="flex gap-2">
+            <Button size="sm" variant={data.actionType !== 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
+            <Button size="sm" variant={data.actionType === 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
+          </div>
+        </Field>
+        {data.actionType === 'subscribe' ? (
+          <p className="text-xs text-gray-500">Visitors who click this button enter their email right there to join your mailing list — no link needed.</p>
+        ) : (
+          <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
+        )}
         <Field label="Style">
           <div className="flex gap-2">
             {['default','outline','ghost'].map(s=> (
@@ -415,13 +435,19 @@ const BLOCKS = {
     name: "Email Capture",
     icon: Mail,
     defaults: () => ({ headline: "Get early access", placeholder: "you@example.com", button: "Notify me", success: "Thanks! Check your inbox." }),
-    render: ({ data }) => (
+    render: ({ data, editable, funnelOwnerUid }) => (
       <div className="mx-auto max-w-md w-full">
         <h3 className="text-xl font-semibold tracking-tight text-center">{data.headline}</h3>
-        <form onSubmit={(e)=>e.preventDefault()} className="mt-3 flex gap-2">
-          <Input placeholder={data.placeholder} className="flex-1" />
-          <Button type="submit">{data.button}</Button>
-        </form>
+        <div className="mt-3">
+          <SubscribeInlineForm
+            label={data.button}
+            placeholder={data.placeholder}
+            successMessage={data.success}
+            full
+            funnelOwnerUid={funnelOwnerUid}
+            editable={editable}
+          />
+        </div>
   <p className="text-xs text-gray-600 mt-2 text-center">We respect your privacy.</p>
       </div>
     ),
@@ -933,6 +959,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                       block={block}
                       editable={editMode}
                       onChange={(patch) => updateBlock(block.id, patch)}
+                      funnelOwnerUid={currentUserId}
                     />
                     <div className="mt-3 flex items-center justify-end gap-2">
                       <Button
@@ -971,6 +998,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                       onChange={(patch) =>
                         updateBlock(activeBlock.id, patch)
                       }
+                      funnelOwnerUid={currentUserId}
                     />
                   </div>
                 ) : null}
@@ -991,13 +1019,13 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
   );
 }
 
-function BLOCKRenderer({ block, editable = false, onChange }){
+function BLOCKRenderer({ block, editable = false, onChange, funnelOwnerUid }){
   const def = BLOCKS[block.type];
   if (!def) return <div className="text-red-500">Unknown block: {block.type}</div>;
   return (
     <AnimatePresence mode="popLayout">
       <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-        {def.render({ data: block.data, onChange, editable })}
+        {def.render({ data: block.data, onChange, editable, funnelOwnerUid })}
       </motion.div>
     </AnimatePresence>
   );
@@ -1033,6 +1061,78 @@ function TooltipWrap({ label, children }){
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// SubscribeInlineForm — real email-capture submission, shared by the
+// "Join mailing list" button action and the Email Capture block. Posts to
+// the funnel owner's contacts (via server/routes/email/contacts.js, using
+// their uid as the x-member-uid header) rather than a separate per-affiliate
+// list system, which doesn't exist — see src/Bible/emails/gotchas.md.
+function SubscribeInlineForm({
+  label = "Subscribe",
+  placeholder = "you@example.com",
+  successMessage = "Thanks — you're on the list!",
+  full = false,
+  style = 'default',
+  funnelOwnerUid,
+  editable,
+}) {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState('idle'); // idle | submitting | success | error
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!email || status === 'submitting') return;
+
+    // In the editor canvas this is just a live preview of the block — don't
+    // write a real signup every time someone testing the funnel clicks it.
+    if (editable) {
+      setStatus('success');
+      return;
+    }
+
+    setStatus('submitting');
+    try {
+      const res = await fetch(`${API_URL}/api/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-member-uid': funnelOwnerUid || '' },
+        body: JSON.stringify({ email, source: 'funnel_signup' }),
+      });
+      // 409 = this email is already subscribed — that's a success from the visitor's point of view.
+      setStatus(res.ok || res.status === 409 ? 'success' : 'error');
+    } catch (err) {
+      setStatus('error');
+    }
+  }
+
+  if (status === 'success') {
+    return <p className="text-sm text-center text-emerald-700 font-medium py-2">{successMessage}</p>;
+  }
+
+  return (
+    <div className={full ? 'w-full' : ''}>
+      <form onSubmit={handleSubmit} className={`flex gap-2 ${full ? 'w-full' : 'justify-center'}`}>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 min-w-0 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
+        />
+        <Button
+          type="submit"
+          disabled={status === 'submitting'}
+          variant={style === 'ghost' ? 'ghost' : style === 'outline' ? 'outline' : 'default'}
+        >
+          {status === 'submitting' ? '…' : label}
+        </Button>
+      </form>
+      {status === 'error' && (
+        <p className="text-xs text-red-600 text-center mt-1">Something went wrong — please try again.</p>
+      )}
+    </div>
   );
 }
 

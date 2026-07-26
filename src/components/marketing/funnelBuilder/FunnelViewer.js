@@ -87,7 +87,7 @@ export default function FunnelViewer() {
             if (!def) return null;
             return (
               <div key={block.id}>
-                {def.render({ data: block.data, editable: false })}
+                {def.render({ data: block.data, editable: false, funnelOwnerUid: funnel.user_id })}
               </div>
             );
           })

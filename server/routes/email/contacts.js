@@ -251,8 +251,8 @@ router.post('/', async (req, res) => {
       return res.status(401).json({ error: 'Member UID required' });
     }
 
-    const { email, firstName, lastName, isVip = false } = req.body;
-    
+    const { email, firstName, lastName, isVip = false, source } = req.body;
+
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
@@ -266,17 +266,19 @@ router.post('/', async (req, res) => {
     const tenantId = await getTenantId(memberUid);
 
     const insertQuery = `
-      INSERT INTO contacts (tenant_id, email, first_name, last_name, is_vip, engagement_score)
-      VALUES ($1, $2, $3, $4, $5, 0.5)
+      INSERT INTO contacts (tenant_id, member_uid, email, first_name, last_name, is_vip, source, engagement_score)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 0.5)
       RETURNING *
     `;
 
     const result = await query(insertQuery, [
       tenantId,
+      memberUid,
       email.toLowerCase().trim(),
       firstName || '',
       lastName || '',
-      isVip
+      isVip,
+      source || 'manual'
     ]);
 
     res.json(result.rows[0]);
