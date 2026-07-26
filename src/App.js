@@ -29,6 +29,7 @@ import AffiliateSignupPage from './components/affiliate/AffiliateSignupPage';
 import { AffiliateStorefrontEditor, AffiliateStorefrontViewer } from './components/affiliate/AffiliateShopBuilderPage';
 import AffiliateProductPageCleanAccryl from './components/products/AffiliateProductPageCleanAccryl';
 import { AffiliateProductsPanel } from './components/affiliate/AffiliateProductsPanel';
+import AffiliateMailingList from './components/affiliate/AffiliateMailingList';
 import AffiliateCreateProduct from './components/affiliate/AffiliateCreateProduct';
 import AcrylicComposerWithMask from './components/designers/AcrylicComposerWithMask';
 import MembersDashboard from './components/admin/MembersDashboard';
@@ -584,6 +585,10 @@ function AppContent() {
           <React.Suspense fallback={<div className="p-8">Loading dashboard…</div>}>
             <AffiliateDashboardclick affiliateCode={auth.userProfile?.affiliateCode} />
           </React.Suspense>
+        )}
+
+        {currentPage === 'affiliate-mailing-list' && (
+          <AffiliateMailingList currentUserId={auth?.currentUser?.uid} />
         )}
 
         {currentPage === 'funnel-builder' && (
