@@ -136,7 +136,16 @@ a no-op). Supports `?search=`, `?segment=` (`vip`|`high_engagement`|
 `low_engagement`|a named `audience_segments` label), `?page=`/`?limit=`.
 
 ### `POST /`
-Add one contact manually. Body: `{ email, firstName?, lastName?, isVip? }`.
+Add one contact. Body: `{ email, firstName?, lastName?, isVip?, source? }`.
+Requires `x-member-uid` — **note this isn't really "the logged-in member
+adding a contact" specifically**, it's just whatever uid is in that header,
+stored directly onto the new row's `member_uid` column. This is what the
+Funnel Builder's "Join mailing list" button/Email Capture block uses for
+real public signups (2026-07-26) — the funnel's *owner* uid is sent as
+`x-member-uid` on behalf of an anonymous visitor, so a public, unauthenticated
+signup form can still populate `member_uid` correctly. Until 2026-07-26,
+`member_uid` and `source` were columns on the table that this route never
+actually wrote to (see `gotchas.md`) — they're populated for real now.
 
 ### `POST /import-csv`
 Multipart form upload, field name `file`. Flexible column mapping — accepts

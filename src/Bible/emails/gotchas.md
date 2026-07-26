@@ -154,3 +154,38 @@ the empty result. Run the underlying SQL directly via `psql` first.**
 If you're debugging and find yourself in either of those two files, you're
 almost certainly in the wrong place — go to `server/routes/email/emails.js`
 instead.
+
+## There is no "per-affiliate mailing list" — investigated 2026-07-26, one shared list exists
+
+Asked to wire up "add this email to the affiliate's mailing list" from the
+Funnel Builder, the honest finding first: **there is no concept anywhere in
+this codebase of each affiliate having their own separate contact list.**
+There is exactly one — `contacts`, scoped to `tenant_id = 1` (the whole
+site, see `database.md`'s single-tenant note) — used for the site's own
+campaign/newsletter sends.
+
+The table *does* have a `member_uid` column (confirmed live via `\d
+contacts`) that looks like it was meant to support per-member/per-affiliate
+attribution — but `POST /api/contacts`, the one route that requires an
+`x-member-uid` header at all, never actually wrote that header's value into
+the row. Same for the `source` column. Both existed, both were always
+`NULL` in practice. Grepped `contacts.js` for `member_uid` before this date:
+zero matches, despite the header being required for auth.
+
+**What this means for "affiliate mailing list" requests going forward**:
+there's no ready-made per-affiliate segment to plug into. What was actually
+built (2026-07-26, see `routes.md`'s `POST /` entry): the two dormant
+columns are now genuinely populated — a funnel's "Join mailing list"
+button/Email Capture block sends the *funnel owner's* uid as
+`x-member-uid` on a public visitor's behalf, so signups from a given
+affiliate's funnel are now attributable to them (`member_uid` = that
+affiliate's uid, `source = 'funnel_signup'`). That's real attribution data,
+not a fake feature — but it lands everyone in the **same shared list**,
+just taggable per contact. If genuinely separate, affiliate-owned lists are
+wanted later (e.g. so an affiliate can only ever see/export *their* leads,
+not everyone's), that's new work: either a `GET /api/contacts?member_uid=`
+filter (route doesn't currently support this — `GET /` has no such param,
+see `routes.md`) plus a real permission boundary, or a genuinely separate
+table/system. Don't assume the `member_uid` column alone gives affiliates
+any kind of list boundary today — nothing currently enforces or exposes
+one.

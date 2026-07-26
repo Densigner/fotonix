@@ -114,7 +114,44 @@ Block registry (`BLOCKS`, now `export`ed so `FunnelViewer.js` can reuse the
 exact same render functions) supports: `hero`, `volunteerHero`, `heading`,
 `paragraph`, `image`, `button`, `emailCapture`, `features`. No `product` or
 `checkout` block exists yet — that's Phase 2 of `roadmap.md`, still not
-built. Image blocks upload to Firebase Storage, unchanged from before.
+built.
+
+**Images (2026-07-26)**: every "Image URL" field in the inspector (hero,
+`volunteerHero`'s background, the standalone image block) now has an
+`ImageUrlField` — a paste-a-URL input plus an **Upload** button, instead of
+URL-only. Any file picked (whether via that button or the canvas-side
+`UploadImage` overlay) goes through `compressImageFile()` first — resized
+to a max 1600px on the long edge, re-encoded as WebP (quality 0.82, JPEG
+fallback if the browser can't encode WebP) — before `uploadFunnelImage()`
+puts it in Firebase Storage. This matters for cost: an unresized phone
+photo can be several MB; funnel images are never displayed larger than
+page width, so storing/serving the original resolution was pure waste.
+Block defaults were also swapped from generic Unsplash stock photos to
+real Fotonix product photos served as static files from `public/images/`
+(`hero` → `AmeliaBedroom.png`, the standalone `image` block →
+`products/lucasroom.jpg`) — zero Storage cost since they're static assets,
+not something uploaded through the editor.
+
+**Mailing-list signup (2026-07-26)**: the `button` block gained an
+`actionType` (`'link'` default, or `'subscribe'`) — in subscribe mode, the
+Link field is replaced by an explanation, and the rendered button becomes
+a real inline email-capture form (`SubscribeInlineForm`), not a link at
+all. The `emailCapture` block's form — previously `onSubmit={(e) =>
+e.preventDefault()}`, i.e. did genuinely nothing — now uses the same
+`SubscribeInlineForm` for real. Both submit to `POST /api/contacts` with
+the funnel owner's uid as `x-member-uid` (see
+`../emails/gotchas.md`'s "There is no per-affiliate mailing list" entry —
+**there's no separate list per affiliate**, this is the one shared
+tenant-wide `contacts` table, just now correctly tagged with
+`member_uid`/`source: 'funnel_signup'` so signups are at least
+attributable to which affiliate's funnel brought them in). In the editor's
+own canvas (`editable: true`), submitting doesn't actually call the API —
+it just shows the success state, so testing the button doesn't pollute the
+real contacts list with test emails; only the public `FunnelViewer.js`
+page (`editable: false`) submits for real.
+
+Image blocks upload to Firebase Storage, unchanged mechanism from before,
+just compressed first now.
 
 **Persistence, now real**: accepts `funnelId`/`currentUserId`/`companySlug`
 props (passed from `App.js`, sourced from the dashboard). If `funnelId` is
