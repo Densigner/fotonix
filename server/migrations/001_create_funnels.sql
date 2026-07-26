@@ -4,9 +4,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS funnels (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id uuid,
+  user_id varchar(255) NOT NULL,
   name text,
-  slug text,
+  slug text NOT NULL,
   blocks jsonb NOT NULL,
   variant char(1) DEFAULT 'A',
   published boolean DEFAULT false,
@@ -21,7 +21,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS funnels_user_slug_idx ON funnels (user_id, slu
 CREATE TABLE IF NOT EXISTS funnel_revisions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   funnel_id uuid REFERENCES funnels(id) ON DELETE CASCADE,
-  user_id uuid,
+  user_id varchar(255),
   snapshot jsonb NOT NULL,
   version integer,
   note text,

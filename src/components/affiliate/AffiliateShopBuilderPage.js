@@ -6,6 +6,7 @@ import { getDatabase, ref as dbRef, get, set, runTransaction } from "firebase/da
 import { getStorage, ref as stRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import ProductCard from '../products/ProductCard';
 import StorePageBuilder from '../store-builder/StorePageBuilder';
+import { API_URL } from '../../config/environment';
 import CommandPalette from '../shared/CommandPalette';
 import DeviceToolbar from '../shared/DeviceToolbar';
 import { createSection } from '../shared/sections';
@@ -1010,6 +1011,7 @@ export function AffiliateStorefrontViewer({ handle }) {
   const [storeData, setStoreData] = useState(null);
   const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
+  const [ownerUid, setOwnerUid] = useState(null);
 
   useEffect(() => {
     const loadStore = async () => {
@@ -1027,6 +1029,7 @@ export function AffiliateStorefrontViewer({ handle }) {
         }
 
         const userId = handleSnap.val();
+        setOwnerUid(userId);
 
         // Load the storefront data
         const storeRef = dbRef(db, `storefronts/${userId}`);
@@ -1051,6 +1054,32 @@ export function AffiliateStorefrontViewer({ handle }) {
             ...product
           }));
           setProducts(productsArray);
+        }
+
+        // Record this as an affiliate click, same as visiting any ?ref= link
+        // (see src/hooks/useAffiliateRef.js) — the handle picked for the
+        // storefront isn't the same string as the affiliate's referral code,
+        // so it has to be resolved via the user profile before it can be
+        // attributed to a click/commission.
+        try {
+          const profileSnap = await get(dbRef(db, `users/${userId}`));
+          const affiliateCode = profileSnap.exists() ? profileSnap.val()?.affiliateCode : null;
+          if (affiliateCode) {
+            try { localStorage.setItem('fotonix_aff_ref', affiliateCode); } catch (e) {}
+
+            const sessionKey = `aff_tracked_${affiliateCode}`;
+            if (!sessionStorage.getItem(sessionKey)) {
+              sessionStorage.setItem(sessionKey, '1');
+              fetch(`${API_URL}/api/clicks/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ affiliateId: affiliateCode }),
+                credentials: 'include',
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          // non-fatal — the storefront itself still renders even if click tracking fails
         }
 
       } catch (err) {
@@ -1187,9 +1216,8 @@ export function AffiliateStorefrontViewer({ handle }) {
                             window.location.hash = 'affiliate-product-accryl';
                             try { window.dispatchEvent(new Event('hashchange')); } catch(e) {}
                           }
-                        } else {
-                          window.location.hash = `product/${product.id}`;
-                          try { window.dispatchEvent(new Event('hashchange')); } catch(e) {}
+                        } else if (ownerUid) {
+                          window.location.href = `${window.location.origin}/product/${ownerUid}/${product.id}`;
                         }
                       }}
                       className="rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 active:translate-y-[1px]"
