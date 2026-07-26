@@ -106,12 +106,20 @@ UNIQUE (tenant_id, address)
 Powers `server/routes/email/contacts.js`. Auto-populated from three other
 data sources on every `GET /api/contacts` call (see `routes.md`).
 
+**`member_uid` and `source` were dead columns until 2026-07-26** — always
+`NULL` in practice, despite existing in the schema and despite `POST /`
+requiring an `x-member-uid` header for auth. Now genuinely populated: a
+funnel's mailing-list signup sends the funnel owner's uid as that header,
+and it's stored on the row along with `source: 'funnel_signup'`. See
+`gotchas.md` for the full story and the real, filtered `GET /mine` this
+enabled.
+
 ```
 id, tenant_id (default 1), member_uid
 email             varchar(255) not null
 first_name / last_name / display_name
 phone
-source            varchar(100) — e.g. 'pbn_signup'
+source            varchar(100) — e.g. 'pbn_signup', 'funnel_signup'
 tags              jsonb, default []
 custom_fields     jsonb, default {}
 meta              jsonb, default {}

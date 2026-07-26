@@ -241,3 +241,35 @@ gets added anywhere, it would be trivially bypassable by just changing the
 header, unless real verification is added first. **Any permission system
 built on top of `x-member-uid` as it exists today would be security
 theater** — it would look like access control without actually being any.
+
+### A real per-affiliate filtered view was added anyway (2026-07-26) — deliberately, not by accident
+
+The auth-hardening work above was explicitly deferred (user's call), but a
+genuinely filtered "my contacts" view was still wanted so affiliates could
+be told "this is your list" truthfully. Added `GET /api/contacts/mine` —
+same `x-member-uid` trust model as every other route here (not hardened),
+but it does now actually filter `WHERE member_uid = $1`, unlike the plain
+`GET /` which returns everyone's regardless of the header. Verified live:
+two different `x-member-uid` values each only see their own row, not each
+other's (see `../store-builder/architecture.md`-style verification —
+create as A, create as B, confirm `/mine` under A never returns B's row).
+
+**This does not close the gap above.** It's an *additive* filtered view on
+top of the same unverified header — someone who already knows or guesses
+another affiliate's Firebase uid could still pass it as `x-member-uid` and
+pull up *their* mailing list through this same endpoint. What changed is
+that the app now has a real "my list" concept to show an affiliate, not
+that the underlying identity check became trustworthy. If real
+security/API-key-swapping between affiliates is ever a concrete worry (not
+just theoretical), the auth-hardening work is still the actual fix — this
+addition doesn't substitute for it, it just delivers the visible feature on
+the same foundation everything else in this codebase already stands on.
+
+Frontend: `src/components/affiliate/AffiliateMailingList.js` (new), a
+simple table + CSV export, reachable from the affiliate dashboard's "Your
+Mailing List" button. Fetches `/api/contacts/mine` with the logged-in
+Firebase uid as `x-member-uid` — note this is the **Firebase uid**, not the
+affiliate's referral *code* (`TESTAFF72`-style) used elsewhere on that same
+dashboard for stats — see `../funnel-builder/architecture.md`'s "Company
+slugs" section for the same code-vs-uid distinction playing out elsewhere
+in this codebase.

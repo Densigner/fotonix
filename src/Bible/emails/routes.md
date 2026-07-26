@@ -135,6 +135,15 @@ exist; it's wrapped in `.catch(() => {})` so it's harmless, just permanently
 a no-op). Supports `?search=`, `?segment=` (`vip`|`high_engagement`|
 `low_engagement`|a named `audience_segments` label), `?page=`/`?limit=`.
 
+### `GET /mine`
+Same shape as `GET /` but filtered `WHERE member_uid = <x-member-uid
+header>` — a real per-affiliate view, added 2026-07-26 so an affiliate's
+"Your Mailing List" page only shows contacts attributed to them, not the
+whole tenant. No sync-from-other-sources side effect (unlike `GET /`) —
+those other sources (PBN, conversion leads, Stencil Forge) never set
+`member_uid` anyway. See `gotchas.md` for the caveat this shares with every
+other route here (the header itself isn't verified against a real session).
+
 ### `POST /`
 Add one contact. Body: `{ email, firstName?, lastName?, isVip?, source? }`.
 Requires `x-member-uid` — **note this isn't really "the logged-in member
