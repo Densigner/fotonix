@@ -243,6 +243,49 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/contacts/mine - contacts attributed to the requesting member
+// (e.g. an affiliate's own funnel signups) — unlike GET /, this is scoped
+// down to member_uid, not the whole tenant. See src/Bible/emails/gotchas.md
+// for the same-header-trust caveat this shares with every other route here.
+router.get('/mine', async (req, res) => {
+  try {
+    const memberUid = req.headers['x-member-uid'];
+    if (!memberUid) {
+      return res.status(401).json({ error: 'Member UID required' });
+    }
+
+    const tenantId = await getTenantId(memberUid);
+
+    const page   = parseInt(req.query.page)  || 1;
+    const limit  = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+
+    const contacts = await query(
+      `SELECT id, email, first_name, last_name, display_name, is_vip,
+              engagement_score, custom_fields, source, created_at, updated_at
+       FROM contacts
+       WHERE tenant_id = $1 AND member_uid = $2
+       ORDER BY created_at DESC
+       LIMIT $3 OFFSET $4`,
+      [tenantId, memberUid, limit, offset]
+    );
+
+    const countResult = await query(
+      `SELECT COUNT(*) FROM contacts WHERE tenant_id = $1 AND member_uid = $2`,
+      [tenantId, memberUid]
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+
+    res.json({
+      contacts: contacts.rows,
+      pagination: { page, limit, total: totalCount, pages: Math.ceil(totalCount / limit) },
+    });
+  } catch (error) {
+    console.error('Error fetching my contacts:', error);
+    res.status(500).json({ error: 'Failed to fetch contacts' });
+  }
+});
+
 // POST /api/contacts - Add new contact
 router.post('/', async (req, res) => {
   try {
