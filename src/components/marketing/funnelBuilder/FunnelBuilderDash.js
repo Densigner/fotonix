@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Search,
@@ -7,44 +7,11 @@ import {
   CheckCircle2,
   XCircle,
 } from "lucide-react";
-
-/** --- Mock data --------------------------------------------------------- */
-const seed = [
-  {
-    id: "f1",
-    name: "Punked",
-    companyName: "PunkStyle",
-    domain: "punked.punkstyle.fotonix.co.uk",
-    slug: "punked",
-    companySlug: "punkstyle",
-    status: "active", // active | archived
-    createdAt: new Date(),
-  },
-  {
-    id: "f2",
-    name: "Q4 Holiday Promo",
-    companyName: "MyBrand",
-    domain: "q4-holiday-promo.mybrand.fotonix.co.uk",
-    slug: "q4-holiday-promo",
-    companySlug: "mybrand",
-    status: "active",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-  },
-  {
-    id: "f3",
-    name: "Legacy—Spring 2024",
-    companyName: "OldCo",
-    domain: "legacy-spring-2024.oldco.fotonix.co.uk",
-    slug: "legacy-spring-2024",
-    companySlug: "oldco",
-    status: "archived",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 120),
-  },
-];
+import { API_URL } from '../../../config/environment';
 
 /** --- Utilities --------------------------------------------------------- */
 const fmt = (d) =>
-  d.toLocaleString(undefined, {
+  new Date(d).toLocaleString(undefined, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -52,31 +19,32 @@ const fmt = (d) =>
     minute: "2-digit",
   });
 
+const slugify = (name) =>
+  (name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 30);
+
 /** --- Create Funnel Modal ---------------------------------------------- */
-function CreateFunnelModal({ open, onClose, onCreate }) {
+function CreateFunnelModal({ open, onClose, onCreate, existingCompanySlug, creating, error }) {
   const [form, setForm] = useState({
     name: "",
-    companyName: "",
+    companyName: existingCompanySlug || "",
     goal: "",
     currency: "GBP",
   });
 
-  // Generate the funnel slug from name (lowercase, hyphens, no special chars)
-  const generateSlug = (name) => {
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .substring(0, 30);
-  };
+  useEffect(() => {
+    if (open) setForm((f) => ({ ...f, companyName: existingCompanySlug || f.companyName }));
+  }, [open, existingCompanySlug]);
 
-  // Generate the full funnel URL
-  const funnelSlug = generateSlug(form.name);
-  const companySlug = generateSlug(form.companyName);
-  const funnelDomain = funnelSlug && companySlug 
-    ? `${funnelSlug}.${companySlug}.fotonix.co.uk`
-    : 'your-funnel.your-company.fotonix.co.uk';
+  const funnelSlug = slugify(form.name);
+  const companySlug = slugify(form.companyName);
+  const funnelDomain = funnelSlug && companySlug
+    ? `fotonix.co.uk/funnel/${companySlug}/${funnelSlug}`
+    : 'fotonix.co.uk/funnel/your-company/your-funnel';
 
   const goals = [
     { id: "audience", title: "Build an audience", desc: "Collect emails." },
@@ -119,10 +87,17 @@ function CreateFunnelModal({ open, onClose, onCreate }) {
               className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               placeholder="e.g. MyBrand"
               value={form.companyName}
+              disabled={!!existingCompanySlug}
               onChange={(e) =>
                 setForm((s) => ({ ...s, companyName: e.target.value }))
               }
             />
+            {existingCompanySlug && (
+              <p className="mt-1 text-xs text-neutral-500">
+                Your funnels are all published under this same company slug
+                — every one of your funnels shares this URL prefix.
+              </p>
+            )}
           </div>
 
           <div>
@@ -130,11 +105,10 @@ function CreateFunnelModal({ open, onClose, onCreate }) {
               Your Funnel URL
             </label>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
-              <span className="text-sm text-neutral-500">https://</span>
               <span className="text-sm font-medium text-indigo-600">{funnelDomain}</span>
             </div>
             <p className="mt-1 text-xs text-neutral-500">
-              This will be your public funnel link
+              This will be your public funnel link once you publish it
             </p>
           </div>
 
@@ -177,6 +151,8 @@ function CreateFunnelModal({ open, onClose, onCreate }) {
             </select>
           </div>
 
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
           <div className="mt-2 flex justify-end gap-2">
             <button
               className="rounded-lg border border-neutral-200 px-4 py-2 text-sm hover:bg-neutral-50"
@@ -185,14 +161,11 @@ function CreateFunnelModal({ open, onClose, onCreate }) {
               Cancel
             </button>
             <button
-              disabled={!form.name || !form.companyName || !form.goal}
+              disabled={!form.name || !form.companyName || !form.goal || creating}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={() => {
-                onCreate?.({ ...form, domain: funnelDomain, slug: funnelSlug, companySlug });
-                onClose?.();
-              }}
+              onClick={() => onCreate({ ...form, slug: funnelSlug, companySlug })}
             >
-              Save
+              {creating ? 'Creating…' : 'Create'}
             </button>
           </div>
         </div>
@@ -202,22 +175,21 @@ function CreateFunnelModal({ open, onClose, onCreate }) {
 }
 
 /** --- Row status pill --------------------------------------------------- */
-function StatusPill({ status }) {
-  const ok = status === "active";
+function StatusPill({ published }) {
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
-        ok
+        published
           ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
           : "bg-neutral-50 text-neutral-700 ring-1 ring-neutral-200"
       }`}
     >
-      {ok ? (
+      {published ? (
         <CheckCircle2 className="h-3.5 w-3.5" />
       ) : (
         <XCircle className="h-3.5 w-3.5" />
       )}
-      {ok ? "Active" : "Archived"}
+      {published ? "Published" : "Draft"}
     </span>
   );
 }
@@ -232,21 +204,97 @@ function RowActions() {
 }
 
 /** --- Main Page --------------------------------------------------------- */
-export default function FunnelsListPage() {
+export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("active"); // "all" | "active" | "archived"
-  const [rows, setRows] = useState(seed);
+  const [status, setStatus] = useState("all"); // "all" | "published" | "draft"
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [openCreate, setOpenCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState(null);
+  const [companySlug, setCompanySlug] = useState(null);
+
+  const authHeaders = useMemo(() => ({
+    'Content-Type': 'application/json',
+    'x-member-uid': currentUserId || 'test_user_1',
+  }), [currentUserId]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [funnelsRes, slugRes] = await Promise.all([
+          fetch(`${API_URL}/api/funnels`, { headers: authHeaders }),
+          fetch(`${API_URL}/api/funnels/company-slug/mine`, { headers: authHeaders }),
+        ]);
+        if (!mounted) return;
+        if (funnelsRes.ok) {
+          const data = await funnelsRes.json();
+          setRows(data.funnels || []);
+        }
+        if (slugRes.ok) {
+          const data = await slugRes.json();
+          setCompanySlug(data.companySlug || null);
+        }
+      } catch (e) {
+        // leave rows empty — the empty state below handles this gracefully
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [authHeaders]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      const matchesQ = !q || r.name.toLowerCase().includes(q);
+      const matchesQ = !q || (r.name || '').toLowerCase().includes(q);
       const matchesS =
-        status === "all" ? true : status === "active" ? r.status === "active" : r.status === "archived";
+        status === "all" ? true : status === "published" ? r.published : !r.published;
       return matchesQ && matchesS;
     });
   }, [rows, query, status]);
+
+  async function handleCreate(form) {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      // Claim (or reconfirm) the company slug this user's funnels live under.
+      const slugRes = await fetch(`${API_URL}/api/funnels/company-slug`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ companySlug: form.companySlug }),
+      });
+      if (!slugRes.ok) {
+        const err = await slugRes.json().catch(() => ({}));
+        setCreateError(err.error || 'That company slug is already taken.');
+        setCreating(false);
+        return;
+      }
+      const slugData = await slugRes.json();
+      setCompanySlug(slugData.companySlug);
+
+      const createRes = await fetch(`${API_URL}/api/funnels`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ name: form.name, slug: form.slug }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        setCreateError(err.error || 'You already have a funnel with that name.');
+        setCreating(false);
+        return;
+      }
+      const { funnel } = await createRes.json();
+      setRows((s) => [funnel, ...s]);
+      setOpenCreate(false);
+      setCreating(false);
+      onOpenFunnel?.(funnel, slugData.companySlug);
+    } catch (e) {
+      setCreateError('Something went wrong creating this funnel.');
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-16">
@@ -272,8 +320,8 @@ export default function FunnelsListPage() {
           onChange={(e) => setStatus(e.target.value)}
         >
           <option value="all">All</option>
-          <option value="active">Active</option>
-          <option value="archived">Archived</option>
+          <option value="published">Published</option>
+          <option value="draft">Draft</option>
         </select>
 
         <button className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-neutral-50">
@@ -283,7 +331,7 @@ export default function FunnelsListPage() {
 
         <button
           className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
-          onClick={() => setOpenCreate(true)}
+          onClick={() => { setCreateError(null); setOpenCreate(true); }}
         >
           <Plus className="h-4 w-4" />
           Create
@@ -295,7 +343,7 @@ export default function FunnelsListPage() {
         {/* Header strip */}
         <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
           <div className="text-sm font-medium text-neutral-700">
-            {filtered.length} {filtered.length === 1 ? "Funnel" : "Funnels"}
+            {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? "Funnel" : "Funnels"}`}
           </div>
           <div className="text-xs text-neutral-500">
             Click a row to open the funnel.
@@ -308,15 +356,15 @@ export default function FunnelsListPage() {
             <thead className="bg-neutral-50/60">
               <tr className="text-left text-xs font-semibold text-neutral-600">
                 <th className="px-5 py-3">Name</th>
-                <th className="px-5 py-3">Domain</th>
+                <th className="px-5 py-3">Public URL</th>
                 <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3">Created</th>
+                <th className="px-5 py-3">Updated</th>
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-neutral-100">
-              {filtered.length === 0 ? (
+              {!loading && filtered.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-10">
                     <div className="grid place-items-center text-center">
@@ -327,7 +375,7 @@ export default function FunnelsListPage() {
                         Create your first funnel to start tracking performance.
                       </div>
                       <button
-                        onClick={() => setOpenCreate(true)}
+                        onClick={() => { setCreateError(null); setOpenCreate(true); }}
                         className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
                       >
                         <Plus className="h-4 w-4" />
@@ -341,10 +389,7 @@ export default function FunnelsListPage() {
                   <tr
                     key={r.id}
                     className="group cursor-pointer hover:bg-neutral-50/60"
-                    onClick={() => {
-                      // navigate to templates chooser first, then user will pick a template and go to editor
-                      try { window.location.hash = 'funnel-builder/templates'; } catch(e) {}
-                    }}
+                    onClick={() => onOpenFunnel?.(r, companySlug)}
                   >
                     <td className="px-5 py-4">
                       <div className="text-sm font-medium text-indigo-700 group-hover:underline">
@@ -352,21 +397,25 @@ export default function FunnelsListPage() {
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <a
-                        href={`/funnel/${r.companySlug}/${r.slug}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-sm text-indigo-600 hover:underline"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {r.domain || 'No domain set'}
-                      </a>
+                      {companySlug ? (
+                        <a
+                          href={`/funnel/${companySlug}/${r.slug}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-sm text-indigo-600 hover:underline"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          fotonix.co.uk/funnel/{companySlug}/{r.slug}
+                        </a>
+                      ) : (
+                        <span className="text-sm text-neutral-400">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-4">
-                      <StatusPill status={r.status} />
+                      <StatusPill published={r.published} />
                     </td>
                     <td className="px-5 py-4 text-sm text-neutral-700">
-                      {fmt(r.createdAt)}
+                      {fmt(r.updated_at)}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end">
@@ -385,23 +434,10 @@ export default function FunnelsListPage() {
       <CreateFunnelModal
         open={openCreate}
         onClose={() => setOpenCreate(false)}
-        onCreate={(form) => {
-          const newRow = {
-            id: crypto.randomUUID().slice(0, 8),
-            name: form.name,
-            companyName: form.companyName,
-            domain: form.domain,
-            slug: form.slug,
-            companySlug: form.companySlug,
-            goal: form.goal,
-            currency: form.currency,
-            status: "active",
-            createdAt: new Date(),
-          };
-          setRows((s) => [newRow, ...s]);
-          // OPTIONALLY: route to builder with modal prefilled
-          // router.push(`/funnels/${newRow.id}/builder?name=${encodeURIComponent(form.name)}&goal=${form.goal}`)
-        }}
+        onCreate={handleCreate}
+        existingCompanySlug={companySlug}
+        creating={creating}
+        error={createError}
       />
     </div>
   );

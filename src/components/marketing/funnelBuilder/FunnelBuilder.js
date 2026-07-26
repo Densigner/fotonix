@@ -49,6 +49,7 @@ import { getStarterBlocks } from './templateRegistry';
 // Firebase storage helper (upload images to the project storage bucket)
 import { storage } from '../../../firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { API_URL } from '../../../config/environment';
 
 // local funnel icons (used in the create-funnel modal)
 import funnelAudienceIcon from './funnel-icon_audience.svg';
@@ -490,6 +491,11 @@ const BLOCKS = {
   },
 };
 
+// Exported so the public viewer (FunnelViewer.js) can render a saved
+// funnel's real blocks with the exact same markup as the editor, instead
+// of maintaining a second copy of every block's display logic.
+export { BLOCKS };
+
 // (Templates gallery removed — templates are now managed in the separate TemplatesPage)
 
 // ----- Utilities ----- //
@@ -539,7 +545,7 @@ function SortableItem({ id, children, selected, onSelect }) {
 }
 
 // ----- Main App ----- //
-export default function FunnelBuilder({ initialTemplateId = null }) {
+export default function FunnelBuilder({ initialTemplateId = null, funnelId = null, currentUserId = null, companySlug = null }) {
   // Map simple template ids (from the TemplatesPage) to block type arrays.
   const TEMPLATE_MAP = {
     volunteer: ['volunteerHero', 'paragraph'],
@@ -571,9 +577,91 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
 
+  // Real persistence — funnelId is set when this editor was opened from the
+  // dashboard for an existing (or just-created) funnel row. Before this,
+  // the editor only ever wrote to a single shared localStorage key; that
+  // stays as a crash-recovery draft cache, but the funnels API is now the
+  // source of truth whenever we have a real id to save against.
+  const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+  const [publishStatus, setPublishStatus] = useState('idle'); // idle | publishing | published | error
+  const [publicUrl, setPublicUrl] = useState(null);
+  const authHeaders = useMemo(() => ({
+    'Content-Type': 'application/json',
+    'x-member-uid': currentUserId || 'test_user_1',
+  }), [currentUserId]);
+
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 5 } }), useSensor(TouchSensor));
 
   useEffect(()=>{ localStorage.setItem('funnel.blocks', JSON.stringify(blocks)); },[blocks]);
+
+  // If we're editing a real, already-saved funnel, load its actual blocks
+  // from the backend — this overrides whatever loadInitial() guessed from
+  // a template or the shared localStorage draft.
+  useEffect(() => {
+    if (!funnelId) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/funnels/${funnelId}`, { headers: authHeaders });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.funnel?.blocks)) {
+          setBlocks(data.funnel.blocks);
+        }
+        if (data.funnel?.published) {
+          setPublishStatus('published');
+        }
+      } catch (e) {
+        // non-fatal — editor still usable against whatever loadInitial() gave it
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [funnelId]);
+
+  // Debounced autosave to the real backend whenever blocks change, if we
+  // have a funnel to save against.
+  useEffect(() => {
+    if (!funnelId) return;
+    setSaveStatus('saving');
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/funnels/${funnelId}`, {
+          method: 'PATCH',
+          headers: authHeaders,
+          body: JSON.stringify({ blocks }),
+        });
+        setSaveStatus(res.ok ? 'saved' : 'error');
+      } catch (e) {
+        setSaveStatus('error');
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, funnelId]);
+
+  async function publishFunnel() {
+    if (!funnelId) {
+      alert('Create this funnel from the Funnels dashboard first, then publishing will be available here.');
+      return;
+    }
+    setPublishStatus('publishing');
+    try {
+      const res = await fetch(`${API_URL}/api/funnels/${funnelId}/publish`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      if (!res.ok) {
+        setPublishStatus('error');
+        return;
+      }
+      const data = await res.json();
+      setPublishStatus('published');
+      if (companySlug && data.funnel?.slug) {
+        setPublicUrl(`${window.location.origin}/funnel/${companySlug}/${data.funnel.slug}`);
+      }
+    } catch (e) {
+      setPublishStatus('error');
+    }
+  }
 
   // If the URL contains a ?template=... param (navigated from TemplatesPage),
   // hydrate the editor with the starter blocks from the central registry.
@@ -768,6 +856,10 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
             importSchema={importSchema}
             editMode={editMode}
             setEditMode={setEditMode}
+            saveStatus={saveStatus}
+            publishStatus={publishStatus}
+            publishFunnel={publishFunnel}
+            publicUrl={publicUrl}
           />
 
           <div className="pt-[72px] md:pt-[86px]">
@@ -1129,6 +1221,10 @@ function EditorHeader({
   importSchema,
   editMode,
   setEditMode,
+  saveStatus,
+  publishStatus,
+  publishFunnel,
+  publicUrl,
 }) {
   return (
     <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/80 border-b border-gray-200 shadow-sm">
@@ -1220,12 +1316,35 @@ function EditorHeader({
             </DialogContent>
           </Dialog>
 
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-md hover:shadow-lg transition-all">
+          <span className="hidden md:inline text-xs text-gray-400">
+            {saveStatus === 'saving' && 'Saving…'}
+            {saveStatus === 'saved' && 'Saved'}
+            {saveStatus === 'error' && 'Save failed'}
+          </span>
+
+          <Button
+            onClick={publishFunnel}
+            disabled={publishStatus === 'publishing'}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-60"
+          >
             <Play className="h-4 w-4 mr-2" />
-            Publish
+            {publishStatus === 'publishing' ? 'Publishing…' : publishStatus === 'published' ? 'Published' : 'Publish'}
           </Button>
         </div>
       </div>
+
+      {publicUrl && (
+        <div className="max-w-[1400px] mx-auto px-4 md:px-6 pb-2 text-xs text-emerald-700 flex items-center gap-2">
+          Live at
+          <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="underline font-medium">{publicUrl}</a>
+          <button
+            className="text-emerald-600 hover:text-emerald-800"
+            onClick={() => navigator.clipboard?.writeText(publicUrl)}
+          >
+            Copy
+          </button>
+        </div>
+      )}
     </header>
   );
 }

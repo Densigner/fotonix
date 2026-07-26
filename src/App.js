@@ -57,7 +57,6 @@ import { useExitIntent } from './hooks/useExitIntent';
 import { EmailCaptureService } from './services/emailCapture';
 
 // lazy imports must come after all top-level ES imports (eslint: import/first)
-const AffiliateLinkDashboard = React.lazy(() => import('./links/AffiliateLinkDashboard'));
 // lazy import of the affiliate clicks dashboard (now inside src/components)
 const AffiliateDashboardclick = React.lazy(() => import('./components/affiliate/AffiliateDashboardclick'));
 // lazy import of FunnelBuilder
@@ -145,6 +144,8 @@ function AppContent() {
   const [affiliateProducts, setAffiliateProducts] = useState([]);
   const [affiliateProductsLoading, setAffiliateProductsLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [selectedFunnelId, setSelectedFunnelId] = useState(null);
+  const [selectedFunnelCompanySlug, setSelectedFunnelCompanySlug] = useState(null);
 
   // Fetch affiliate products when navigating to the add-product page
   React.useEffect(() => {
@@ -585,15 +586,17 @@ function AppContent() {
           </React.Suspense>
         )}
 
-        {currentPage === 'affiliate-links' && (
-          <React.Suspense fallback={<div className="p-8">Loading links…</div>}>
-            <AffiliateLinkDashboard affiliateCode={(auth && auth.currentUser && auth.currentUser.uid) || 'affiliate_demo'} apiBase={''} />
-          </React.Suspense>
-        )}
-
         {currentPage === 'funnel-builder' && (
           <React.Suspense fallback={<div className="p-8">Loading funnel builder…</div>}>
-            <FunnelBuilderDash />
+            <FunnelBuilderDash
+              currentUserId={auth?.currentUser?.uid}
+              onOpenFunnel={(funnel, companySlug) => {
+                setSelectedFunnelId(funnel.id);
+                setSelectedFunnelCompanySlug(companySlug);
+                setSelectedTemplateId(null);
+                setCurrentPage('funnel-builder/editor');
+              }}
+            />
           </React.Suspense>
         )}
 
@@ -611,7 +614,12 @@ function AppContent() {
 
         {currentPage === 'funnel-builder/editor' && (
           <React.Suspense fallback={<div className="p-8">Loading funnel builder…</div>}>
-            <FunnelBuilder initialTemplateId={selectedTemplateId} />
+            <FunnelBuilder
+              initialTemplateId={selectedTemplateId}
+              funnelId={selectedFunnelId}
+              currentUserId={auth?.currentUser?.uid}
+              companySlug={selectedFunnelCompanySlug}
+            />
           </React.Suspense>
         )}
 
