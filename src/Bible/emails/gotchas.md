@@ -189,3 +189,55 @@ see `routes.md`) plus a real permission boundary, or a genuinely separate
 table/system. Don't assume the `member_uid` column alone gives affiliates
 any kind of list boundary today — nothing currently enforces or exposes
 one.
+
+### The exact save path, step by step
+
+Useful to have written down plainly, since "where does this actually land"
+is the first question anyone building on top of this will ask:
+
+1. Visitor is on a published funnel page, `fotonix.co.uk/funnel/:companySlug/:funnelSlug`
+   (`src/components/marketing/funnelBuilder/FunnelViewer.js`). The page
+   already has the funnel record in memory, including `funnel.user_id` —
+   the affiliate who owns this funnel.
+2. Visitor fills in the email field of a `button` block in `'subscribe'`
+   mode, or an `emailCapture` block — both render
+   `SubscribeInlineForm` (`FunnelBuilder.js`), which receives
+   `funnelOwnerUid={funnel.user_id}` as a prop from the viewer.
+3. On submit: `fetch(`${API_URL}/api/contacts`, { method: 'POST', headers:
+   { 'x-member-uid': funnelOwnerUid }, body: JSON.stringify({ email,
+   source: 'funnel_signup' }) })` — a plain, unauthenticated browser
+   `fetch`, no Firebase/session token attached at all.
+4. Hits `server/routes/email/contacts.js`'s `POST /` (mounted at
+   `/api/contacts` in `server/index.js`), which reads `x-member-uid`
+   straight off the request header — **whatever value the client sent,
+   with no verification that the request actually came from that user, or
+   from the funnel page at all** (see "the security gap" below).
+5. `INSERT INTO contacts (tenant_id, member_uid, email, first_name,
+   last_name, is_vip, source, engagement_score) VALUES (1, <that header
+   value>, email, '', '', false, 'funnel_signup', 0.5)`.
+6. Lands in the `fotonix_dev` Postgres database on the VPS
+   (`178.104.153.63`), `contacts` table, `tenant_id = 1` always (see
+   `database.md` — this is a single-tenant deployment, there's no
+   multi-tenant partitioning at the database level either).
+7. Nothing reads it back out scoped to that affiliate — `GET /api/contacts`
+   (the only read path) returns the *entire* tenant's contact list to
+   whoever calls it, regardless of what `x-member-uid` they send. There is
+   currently no code path anywhere that filters contacts down to "just
+   this member's."
+
+### The security gap this depends on — worth fixing before any permission model
+
+Step 4 above is the real problem, and it's bigger than just this one
+route: `x-member-uid` is a **client-supplied, unverified header** —
+literally any value the caller decides to send. This isn't unique to
+contacts — `server/routes/member/member.js`, `server/routes/marketing/funnels.js`,
+and every other "member" route in this codebase trusts the same header the
+same way (see each file's own `getUserId()`/equivalent). Today, anyone who
+knows (or guesses) another affiliate's Firebase uid can already call
+`GET /api/contacts` with that uid in the header and get back... the same
+full tenant list everyone else gets, since the route doesn't even filter by
+it — but the moment a `?member_uid=` filter or a "my funnels only" check
+gets added anywhere, it would be trivially bypassable by just changing the
+header, unless real verification is added first. **Any permission system
+built on top of `x-member-uid` as it exists today would be security
+theater** — it would look like access control without actually being any.
