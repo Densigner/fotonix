@@ -1,6 +1,13 @@
 # Gotchas — the "looks finished" investigation
 
-This is the most thoroughly-disconnected feature found in the whole
+**This describes the state as found, before the 2026-07-26 build** (see
+the dated section at the end of this file, and `architecture.md`, for what
+changed). Kept as-is rather than rewritten, because the investigation
+itself — how each piece looked plausible in isolation while none of them
+actually talked to each other — is exactly the kind of thing worth
+recognizing early in any other "looks done" feature in this codebase.
+
+This was the most thoroughly-disconnected feature found in the whole
 codebase this session — more so than the affiliate Links dashboard that
 got removed, because here *every single piece* looked plausible in
 isolation and none of them actually talk to each other. Worth reading in
@@ -76,3 +83,42 @@ Contrast with `../affiliates/architecture.md`'s `buildReferralLink()`
 pattern, already used elsewhere (`AffiliateDashboard.js`) — nothing in
 funnelBuilder calls or references it. Any affiliate integration here is new
 work, not wiring up something half-built. See `roadmap.md` for the plan.
+
+## Phase 1 built (2026-07-26): everything above is now fixed
+
+All four disconnected pieces described above were wired together in one
+session:
+
+- Built the missing backend (`server/routes/marketing/funnels.js`,
+  `/api/funnels`) — real Postgres CRUD, publish/unpublish, and a public
+  by-slug route.
+- Applied the migration to production — confirmed via `\d funnels`
+  beforehand that it had genuinely never been run (this file's claim
+  above, verified true). Fixed one bug in the migration before applying
+  it: `user_id` was typed `uuid`, but Firebase UIDs aren't valid
+  RFC4122 UUIDs — changed to `varchar(255)` to match the convention used
+  elsewhere in this codebase (e.g. `email_messages.member_uid`).
+- Added a new `funnel_owners` table (not in the original migration) to
+  resolve the public URL's `companySlug` segment — see `architecture.md`
+  for why this needed its own table rather than a column or a Firebase
+  lookup.
+- Wired the dashboard to the real list/create endpoints, the editor to
+  real load/autosave/publish, and the public viewer to the real
+  by-slug endpoint, rendering actual saved blocks via the editor's own
+  `BLOCKS` registry (now exported) instead of a second, separate copy of
+  block-rendering logic.
+- The dead duplicate `src/pages/FunnelBuilder/templateRegistry.js` was
+  left as-is (still unreferenced, still broken if anything ever did import
+  it) — out of scope for this build, noted above for whoever eventually
+  cleans it up.
+- Verified end-to-end via direct API calls (create → claim company slug →
+  publish → fetch by public slug → confirm the real React Router page
+  returns `200`) — see `architecture.md` for the current, accurate
+  description of how each piece works now.
+
+**Not done in this pass** (see `roadmap.md` Phases 2–3): no product/checkout
+block exists yet, so a funnel still can't actually sell anything; no
+affiliate-facing "here are funnels you can promote" UI exists yet, though
+the underlying click-tracking needs no new work once that UI is built —
+any real page on this domain already gets the referral tracking
+automatically.

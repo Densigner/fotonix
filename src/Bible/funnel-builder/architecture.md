@@ -1,86 +1,138 @@
 # Funnel Builder — Current Architecture
 
-Four frontend pieces, zero backend. Read this alongside `gotchas.md`, which
-explains why each piece is disconnected from the others.
+**Updated 2026-07-26**: this used to describe four disconnected frontend
+pieces with zero backend — that history (and why each piece was
+disconnected) is preserved in `gotchas.md`. As of this date, Phase 1 of
+`roadmap.md` is built: there's a real backend, real persistence, and a
+real public viewer. This file now describes the current, working state.
+
+## The backend — `server/routes/marketing/funnels.js`, mounted at `/api/funnels`
+
+Real Postgres CRUD (didn't exist before 2026-07-26):
+
+- `GET /api/funnels` — list the current user's funnels.
+- `POST /api/funnels` — create `{name, slug, blocks}`; 409s if the user
+  already has a funnel with that slug.
+- `GET /api/funnels/:id` / `PATCH /api/funnels/:id` — load/save (owner-only,
+  checked via the same weak `x-member-uid` header convention as
+  `member.js` — not real auth, consistent with the rest of this codebase).
+- `POST /api/funnels/:id/publish` / `POST /api/funnels/:id/unpublish` —
+  publish snapshots the current blocks into `funnel_revisions` and bumps
+  `version` before flipping `published = true`.
+- `GET /api/funnels/company-slug/mine` / `POST /api/funnels/company-slug` —
+  see "Company slugs" below.
+- `GET /api/funnels/public/:companySlug/:funnelSlug` — **no auth**, the
+  route the public viewer actually calls. Resolves `companySlug` →
+  `user_id` via `funnel_owners`, then returns that user's funnel by
+  `slug`, only if `published = true`.
+
+Uses the same per-file `pg.Pool` pattern as `server/routes/stores/stores.js`
+(see `../store-builder/architecture.md`) — not the tidiest architecture,
+but consistent with the rest of this codebase.
+
+## The Postgres schema — `server/migrations/001_create_funnels.sql`
+
+Applied to production 2026-07-26 (confirmed via `\d funnels` beforehand
+that it had never been run — see `gotchas.md`). One column type was fixed
+before applying: `user_id` was originally typed `uuid`, but every identity
+in this codebase is a Firebase UID (an arbitrary string, not an RFC4122
+UUID) — changed to `varchar(255)` to match the convention used elsewhere
+(e.g. `email_messages.member_uid`, see `../emails/database.md`).
+
+- `funnels` — `id uuid, user_id varchar(255), name, slug, blocks jsonb,
+  variant char(1) default 'A'` (unused — looks like it was meant for A/B
+  testing, nothing reads it yet), `published boolean, version integer,
+  metadata jsonb`, timestamps. Unique index on `(user_id, slug)`.
+- `funnel_revisions` — a snapshot written on every publish (`funnel_id`
+  FK, `snapshot jsonb`, `version`, `note`, timestamp). Nothing reads these
+  back yet (no "revision history" UI exists) — they're captured for when
+  that's wanted.
+- `funnel_owners` (**new table, not in the original migration** — added
+  2026-07-26) — `user_id varchar(255) PRIMARY KEY, company_slug text
+  UNIQUE NOT NULL`. One company slug per user, claimed once via
+  `POST /api/funnels/company-slug`, used as the first segment of every one
+  of that user's public funnel URLs. Kept as its own table rather than a
+  column on `funnels` because it's a single claim per *user*, not per
+  funnel, with its own independent uniqueness constraint.
+
+## Company slugs — why a separate claim step exists
+
+The public URL is `/funnel/:companySlug/:funnelSlug` — two segments. The
+`funnelSlug` half is just `(user_id, slug)` uniqueness, already enforced.
+The `companySlug` half needed its own resolution mechanism, since two
+different users can't be allowed to claim the same one. Rather than doing
+that resolution against Firebase (which would have made this route depend
+on a second database for something as simple as slug lookup), it's a
+small dedicated Postgres table (`funnel_owners`) — one claim per user,
+enforced with a plain `UNIQUE` constraint, resolved with one JOIN-free
+query before looking up the funnel itself.
 
 ## The editor — `src/components/marketing/funnelBuilder/FunnelBuilder.js`
 
-A real drag-and-drop page builder (1200+ lines). Block registry (`BLOCKS`
-object) supports exactly these types, nothing else:
+Block registry (`BLOCKS`, now `export`ed so `FunnelViewer.js` can reuse the
+exact same render functions) supports: `hero`, `volunteerHero`, `heading`,
+`paragraph`, `image`, `button`, `emailCapture`, `features`. No `product` or
+`checkout` block exists yet — that's Phase 2 of `roadmap.md`, still not
+built. Image blocks upload to Firebase Storage, unchanged from before.
 
-- `hero`
-- `volunteerHero`
-- `heading`
-- `paragraph`
-- `image`
-- `button`
-- `emailCapture` — a lead-capture form block
-- `features`
+**Persistence, now real**: accepts `funnelId`/`currentUserId`/`companySlug`
+props (passed from `App.js`, sourced from the dashboard). If `funnelId` is
+set, it fetches the real saved blocks on mount and debounce-autosaves
+every change via `PATCH /api/funnels/:id` (800ms after the last edit). The
+old single-key `localStorage.funnel.blocks` write is still there
+unconditionally — now a crash-recovery draft cache, not the source of
+truth, and only ever read from if no `funnelId` was provided (e.g.
+reaching the editor directly via a template with no funnel created yet).
+The Publish button (previously had no `onClick` at all — completely dead)
+now calls `POST /api/funnels/:id/publish` and shows the live public URL
+with a copy button once published.
 
-No `product`, `checkout`, or `affiliate-link` block exists. Reordering is
-drag-and-drop (`@dnd-kit`, hence the `ref={setNodeRef}` calls if you go
-looking). Image blocks upload directly to Firebase Storage
-(`uploadBytesResumable`/`getDownloadURL`) — that part is real and working,
-it's the only genuinely-connected-to-a-backend piece of the whole feature.
-
-**Persistence**: a single `useEffect` writes the entire block array to one
-global `localStorage` key, `funnel.blocks`, on every change. Load does the
-reverse on mount. There is no per-funnel, per-user, or per-slug separation
-— editing "funnel A" and "funnel B" both read/write the exact same key, so
-you cannot actually have two funnels open/saved at once.
+**Known limitation**: if the editor is opened without a `funnelId` (e.g.
+picking a template straight from `TemplatesPage` without first creating a
+funnel via the dashboard), Publish shows an alert asking the user to
+create the funnel from the dashboard first, rather than silently failing
+or auto-creating one — creating a funnel always goes through the
+dashboard's create flow (which also handles claiming/confirming the
+company slug), not through the editor itself.
 
 ## The dashboard — `FunnelBuilderDash.js`
 
-A list view seeded from a **hardcoded mock array** of 3 fake funnels
-("Punked", "Q4 Holiday Promo", "Legacy—Spring 2024") kept in local React
-state only. "Create funnel" appends a row to that in-memory array and
-nothing else — no backend call, no localStorage, no link to what the
-editor actually saves. Refresh the page and it's gone. There's a dead
-comment in the create handler: `// OPTIONALLY: route to builder with modal
-prefilled` — the dashboard and the editor were never actually connected.
+No longer a hardcoded mock array. On mount, fetches `GET /api/funnels`
+(the real list) and `GET /api/funnels/company-slug/mine`. "Create funnel"
+claims/confirms the company slug (`POST /api/funnels/company-slug` —
+locked/disabled in the modal once a user already has one, since it's
+shared across all of a user's funnels, not per-funnel) then creates the
+funnel row (`POST /api/funnels`) and navigates straight into the editor
+with a real `funnelId`. Clicking an existing row does the same — opens the
+editor against that funnel's real id, which triggers the load-on-mount
+effect described above.
 
 ## The public viewer — `FunnelViewer.js`
 
-Routed in `App.js` at `/funnel/:companySlug/:funnelSlug` (two-part slug,
-not an id). Despite the route existing and working, the component itself
-is an explicit stub — its own comment says *"For now, we'll use mock data
-based on the slug... In production, this would fetch from your
-database."* It waits 500ms (fake loading state) then fabricates a landing
-page purely from the URL params. The CTA button calls `alert(...)`. Any
-slug you type resolves to visually-identical placeholder content — it
-never reads the `funnel.blocks` localStorage key, never queries Postgres,
-never calls an API.
+Routed in `App.js` at `/funnel/:companySlug/:funnelSlug` (real React
+Router `<Route>`, unchanged). No longer fabricates content — fetches
+`GET /api/funnels/public/:companySlug/:funnelSlug` and renders the actual
+saved `blocks` array using the same `BLOCKS` registry the editor uses
+(imported directly from `FunnelBuilder.js`, `editable: false`), so there's
+only one place that knows how to render a `hero` or `features` block, not
+two copies that could drift apart.
 
 ## Templates — `templateRegistry.js` / `funnelBuilderTemplates/`
 
-Starter presets that just pre-populate the same 8 block types listed above
-(e.g. `productLaunch: ['hero','features','emailCapture']`) — "productLaunch"
-is a label on a preset, not an actual product/commerce integration.
+Unchanged — starter presets that pre-populate the same block types listed
+above. `productLaunch` is still just a preset label, not a real
+product/commerce integration (see roadmap Phase 2).
 
-## Routing — hash/state-based, not React Router, for the editor UI
+## Routing — hash/state-based for the editor UI, real Router for the public page
 
-The editor/dashboard/templates pages are driven by a `currentPage`
-string switched on in `App.js` (`funnel-builder`, `funnel-builder/templates`,
-`funnel-builder/editor`), set via `window.location.hash`, not by the
-`<Routes>` config. The **public viewer** is the one part that does use a
-real React Router `<Route>` — a routing style split worth knowing before
-you go looking for one and find the other.
+Unchanged split: the editor/dashboard/templates pages are driven by a
+`currentPage` string in `App.js` (`funnel-builder`, `funnel-builder/templates`,
+`funnel-builder/editor`), set via `window.location.hash` — but `App.js` now
+also carries `selectedFunnelId`/`selectedFunnelCompanySlug` state alongside
+the existing `selectedTemplateId`, threaded through to `FunnelBuilder` as
+props so the editor knows which real funnel it's editing. The public
+viewer remains the one real `<Route>`.
 
-Reachable from:
-- `src/components/affiliate/AffiliateDashboard.js` — a "Funnel Builder"
-  button, member-facing, not admin-gated.
-- `src/components/admin/MembersDashboard.jsx` — same tool, also reachable
-  from the general members dashboard despite the `admin` folder name (no
-  role check gates this button specifically).
-
-## The unused Postgres schema — `server/migrations/001_create_funnels.sql`
-
-Defines `funnels` (id uuid, user_id uuid, name, slug, blocks jsonb,
-variant char(1) default 'A' — looks like it was meant to support A/B
-variant testing, never used — published boolean, version integer,
-metadata jsonb, timestamps, unique index on `(user_id, slug)`) and
-`funnel_revisions` (a snapshot/version-history table, `funnel_id` FK,
-snapshot jsonb, version, note). **No route file, model, or query anywhere
-in `server/` touches either table.** See `gotchas.md` for why this looks
-like the same "migration written, never actually run or used" pattern as
-the affiliates table.
+Reachable from the same two places as before: `AffiliateDashboard.js`'s
+"Funnel Builder" button, and `MembersDashboard.jsx`'s equivalent (neither
+admin-gated).

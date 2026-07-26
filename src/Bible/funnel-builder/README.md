@@ -1,28 +1,34 @@
 # Funnel Builder
 
 A drag-and-drop landing-page editor, reachable from both the affiliate
-dashboard and the members dashboard. **Read `gotchas.md` before you assume
-anything here works end-to-end** — this is the single most "looks finished
-but isn't wired to anything" feature found in the whole codebase this
-session, more so even than the affiliate Links dashboard that got removed.
+dashboard and the members dashboard. **As of 2026-07-26, Phase 1 of
+`roadmap.md` is built and live** — funnels are now real, persisted,
+publishable pages, not the mock/localStorage-only prototype described
+throughout the rest of this folder's history. Read `gotchas.md` for that
+history before assuming anything *else* here works — Phase 2 (commerce
+blocks) and Phase 3 (affiliate-facing promotion UI) are still not built.
 
-- `architecture.md` — what actually exists today: the editor, the block
-  types, the (fake) dashboard, the (fake) public viewer, how it's routed.
-- `gotchas.md` — the investigation that found none of it is actually
-  connected: no backend, an unused Postgres migration, mock data
-  everywhere, a broken dead duplicate file.
-- `roadmap.md` — the agreed plan for making this real and wiring it into
-  the affiliate program (2026-07-26). **Nothing in this plan has been built
-  yet** — it's a plan, not a changelog. Check git history / re-read the
-  actual files before assuming any phase is done.
+- `architecture.md` — how it actually works now: real backend, real
+  persistence, real public viewer, plus what's still not done.
+- `gotchas.md` — the investigation that originally found none of it was
+  connected (useful history/context), plus what changed in the 2026-07-26
+  build.
+- `roadmap.md` — the phased plan. Phase 1 (make it real) is done. Phase 2
+  (product/checkout blocks) and Phase 3 (affiliate-facing "promote this
+  funnel" UI) are not.
 
 ## One-paragraph summary
 
-The editor (`FunnelBuilder.js`) is genuinely well-built as a UI — hero,
-heading, paragraph, image, button, email-capture, features blocks, drag
-reordering, image upload to Firebase Storage. But it only ever saves to one
-global `localStorage` key, the dashboard list is hardcoded mock rows, there
-is a `funnels` Postgres table defined in a migration that nothing in the
-codebase queries, and the public page renderer (`/funnel/:companySlug/:funnelSlug`)
-literally fabricates content from the URL slug — it never reads anything
-you actually built. Nothing published here reaches a real visitor today.
+The editor (`FunnelBuilder.js`) is a genuinely well-built drag-and-drop UI
+— hero, heading, paragraph, image, button, email-capture, features blocks,
+drag reordering, image upload to Firebase Storage. As of 2026-07-26 it's
+also genuinely persisted: `server/routes/marketing/funnels.js` (`/api/funnels`)
+is a real Postgres-backed CRUD API, the dashboard lists and creates real
+funnel rows, the editor autosaves to the backend and has a working Publish
+button, and the public page at `/funnel/:companySlug/:funnelSlug` fetches
+and renders the actual saved blocks — no more fabricated placeholder
+content. What's still missing: a way to actually sell something from a
+funnel (no product/checkout block exists yet), and any affiliate-specific
+UI for discovering/promoting a funnel (the underlying `?ref=` tracking
+already works automatically on any real page, including this one, once
+someone shares a link to it — see `roadmap.md` Phase 3).
