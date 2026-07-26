@@ -67,6 +67,47 @@ small dedicated Postgres table (`funnel_owners`) — one claim per user,
 enforced with a plain `UNIQUE` constraint, resolved with one JOIN-free
 query before looking up the funnel itself.
 
+A funnel's own `slug` only has to be unique *per user* — two different
+affiliates can each have a funnel called `summer-sale`. The `companySlug`
+is what disambiguates them on a public URL that isn't scoped to a logged-in
+session. It's a claim per **user**, not per **funnel** — if it were a
+column on `funnels` instead, every one of a user's funnel rows would carry
+a repeated copy of the same string, and a plain `UNIQUE` constraint on that
+column would break the moment they created a second funnel.
+
+### The two endpoints
+
+- `GET /api/funnels/company-slug/mine` — returns the caller's current
+  claim, or `companySlug: null` if they haven't picked one yet.
+- `POST /api/funnels/company-slug` — claims it. First checks
+  `WHERE company_slug = $1 AND user_id != $2` (taken by *someone else*) and
+  `409`s if so; otherwise it's an upsert
+  (`ON CONFLICT (user_id) DO UPDATE SET company_slug = EXCLUDED.company_slug`),
+  so calling it again with the same user id just reconfirms/updates their
+  own claim rather than erroring.
+
+### How the dashboard uses it
+
+`FunnelBuilderDash.js`'s "Create funnel" modal fetches the user's existing
+claim on load (`existingCompanySlug` prop/state). If one exists, the
+Company/Brand Name field is shown but **disabled** — the intent is one
+company slug per user, chosen once, not retyped per funnel.
+
+### Gotcha: the "locked after first choice" behavior is UI-only, not enforced by the backend
+
+`POST /api/funnels/company-slug` itself does **not** refuse to change an
+existing claim — the disabled input in the create modal is the only thing
+stopping a normal user from picking a different one later. If it were ever
+called again with a different value for the same `user_id` (directly, or
+via some future UI that doesn't disable the field), the upsert would
+happily overwrite the old claim. Since `funnel_owners` stores only the
+*current* slug, not history, **every funnel that user had already
+published would immediately stop resolving at its old public URL** — the
+lookup would 404 for anyone who already had the old link, since
+`GET /api/funnels/public/:companySlug/:funnelSlug` only ever checks the
+live `funnel_owners` row. Nothing currently warns about this in the UI
+beyond the field simply being disabled after the first claim.
+
 ## The editor — `src/components/marketing/funnelBuilder/FunnelBuilder.js`
 
 Block registry (`BLOCKS`, now `export`ed so `FunnelViewer.js` can reuse the
