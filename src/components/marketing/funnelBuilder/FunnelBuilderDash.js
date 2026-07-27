@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { API_URL } from '../../../config/environment';
+import { getStarterBlocks } from './templateRegistry';
 
 /** --- Utilities --------------------------------------------------------- */
 const fmt = (d) =>
@@ -151,6 +152,16 @@ function CreateFunnelModal({ open, onClose, onCreate, existingCompanySlug, creat
             </select>
           </div>
 
+          {form.currency !== 'GBP' && (
+            <p className="text-xs text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2">
+              Prices may be displayed in your local currency. The final amount
+              can vary slightly due to exchange rates or fees charged by your
+              bank or payment provider. International delivery charges,
+              import VAT, customs duties or handling fees may also apply
+              depending on the customer's country.
+            </p>
+          )}
+
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <p className="text-xs text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2">
@@ -284,7 +295,7 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
       const createRes = await fetch(`${API_URL}/api/funnels`, {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({ name: form.name, slug: form.slug }),
+        body: JSON.stringify({ name: form.name, slug: form.slug, blocks: getStarterBlocks(form.goal) }),
       });
       if (!createRes.ok) {
         const err = await createRes.json().catch(() => ({}));

@@ -47,7 +47,7 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { getStarterBlocks } from './templateRegistry';
 // Firebase storage helper (upload images to the project storage bucket)
-import { storage } from '../../../firebase';
+import { storage, db } from '../../../firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { API_URL } from '../../../config/environment';
 
@@ -197,21 +197,79 @@ function buildFollowLink(platform, handle) {
   return /^https?:\/\//i.test(handle) ? handle : `https://${handle}`;
 }
 
+// Resolves the actual href for whatever CTA action is configured. "shop"
+// needs a live Firebase lookup (the affiliate's storefront handle isn't
+// known until we look it up), so this is a hook, not a plain function —
+// used inside CtaAction and the clickable-image wrapper, both real
+// components, so hooks here are safe regardless of how the parent block's
+// render is written.
+function useResolvedActionHref(data, funnelOwnerUid) {
+  const [shopHref, setShopHref] = useState(undefined); // undefined = still loading, null = no shop set up
+
+  useEffect(() => {
+    if (data.actionType !== 'shop' || !funnelOwnerUid) return;
+    let cancelled = false;
+    setShopHref(undefined);
+    db.ref(`storefronts/${funnelOwnerUid}/handle`).once('value')
+      .then((snap) => {
+        if (cancelled) return;
+        const handle = snap.exists() ? snap.val() : null;
+        setShopHref(handle ? `${window.location.origin}/@${handle}` : null);
+      })
+      .catch(() => { if (!cancelled) setShopHref(null); });
+    return () => { cancelled = true; };
+  }, [data.actionType, funnelOwnerUid]);
+
+  switch (data.actionType) {
+    case 'follow':
+      return { href: buildFollowLink(data.platform, data.handle), ready: true };
+    case 'shop':
+      return { href: shopHref || '#', ready: shopHref !== undefined, missing: shopHref === null };
+    case 'product':
+      return {
+        href: data.productId ? `${window.location.origin}/product/${funnelOwnerUid}/${data.productId}` : '#',
+        ready: true,
+        missing: !data.productId,
+      };
+    case 'subscribe':
+      return { href: '#', ready: true };
+    default:
+      return { href: data.href || data.ctaHref || '#', ready: true };
+  }
+}
+
 // Shared inspector fragment for any block with a CTA — the Action choice
-// (link / join mailing list / follow-a-platform) plus whichever fields
-// that choice needs. Reused by the standalone `button` block, `hero`'s
-// CTA, and the `cta` block, so all three offer the same options instead
-// of three independently-maintained copies.
-function ActionFields({ data, onChange }) {
+// (link / join mailing list / follow-a-platform / go to shop / go to a
+// specific product) plus whichever fields that choice needs. Reused by
+// the standalone `button` block, `hero`'s CTA, and the `cta` block, so all
+// three offer the same options instead of three independently-maintained
+// copies.
+function ActionFields({ data, onChange, funnelOwnerUid, allowSubscribe = true, allowNone = false }) {
+  const [products, setProducts] = useState(null); // null = not loaded yet
+  const effectiveType = data.actionType || (allowNone ? 'none' : 'link');
+
+  useEffect(() => {
+    if (effectiveType !== 'product' || !funnelOwnerUid || products !== null) return;
+    db.ref(`products/${funnelOwnerUid}`).once('value').then((snap) => {
+      const val = snap.val() || {};
+      setProducts(Object.entries(val).map(([id, p]) => ({ id, title: p.title || '(untitled product)' })));
+    }).catch(() => setProducts([]));
+  }, [effectiveType, funnelOwnerUid, products]);
+
   return (
     <>
       <Field label="Action">
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant={(!data.actionType || data.actionType === 'link') ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
-          <Button size="sm" variant={data.actionType === 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
+          {allowNone && (
+            <Button size="sm" variant={effectiveType === 'none' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'none' })}>No click action</Button>
+          )}
+          <Button size="sm" variant={effectiveType === 'link' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
+          {allowSubscribe && (
+            <Button size="sm" variant={effectiveType === 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
+          )}
           <Button
             size="sm"
-            variant={data.actionType === 'follow' ? 'default':'outline'}
+            variant={effectiveType === 'follow' ? 'default':'outline'}
             className="text-black"
             onClick={() => {
               const platform = data.platform || 'youtube';
@@ -226,9 +284,41 @@ function ActionFields({ data, onChange }) {
           >
             Follow / Subscribe
           </Button>
+          <Button size="sm" variant={effectiveType === 'shop' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'shop' })}>Go to my Shop</Button>
+          <Button size="sm" variant={effectiveType === 'product' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'product' })}>Go to a Product</Button>
         </div>
       </Field>
-      {data.actionType === 'follow' && (
+      {effectiveType === 'shop' && (
+        <p className="text-xs text-gray-500">
+          Sends visitors to your storefront (the page you built in Shop
+          Builder). If you haven't set one up yet, this link won't work
+          until you do.
+        </p>
+      )}
+      {effectiveType === 'product' && (
+        <Field label="Product">
+          {products === null ? (
+            <p className="text-xs text-gray-500">Loading your products…</p>
+          ) : products.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              You don't have any products yet — add one from your affiliate
+              dashboard first.
+            </p>
+          ) : (
+            <select
+              value={data.productId || ''}
+              onChange={(e) => onChange({ productId: e.target.value })}
+              className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm"
+            >
+              <option value="">Choose a product…</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>{p.title}</option>
+              ))}
+            </select>
+          )}
+        </Field>
+      )}
+      {effectiveType === 'follow' && (
         <>
           <Field label="Platform">
             <div className="flex flex-wrap gap-2">
@@ -272,38 +362,106 @@ function ActionFields({ data, onChange }) {
 // block so "link vs mailing-list vs follow-a-platform" behaves and looks
 // identical everywhere a CTA button appears, not just on the standalone
 // button block.
-function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, showIcon }) {
+function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, buttonVariant, showIcon, labelKey = 'ctaLabel' }) {
+  // Called unconditionally, before the subscribe early-return below, so
+  // this respects the rules of hooks regardless of which action is active.
+  // useResolvedActionHref's 'link' case already checks both data.href and
+  // data.ctaHref, so the standalone button block (which uses `href`, not
+  // `ctaHref`) works here without any extra mapping — only the *label*
+  // field name differs between blocks, hence labelKey.
+  const { href, ready, missing } = useResolvedActionHref(data, funnelOwnerUid);
+  const label = data[labelKey];
+
   if (data.actionType === 'subscribe') {
     return (
       <SubscribeInlineForm
-        label={data.ctaLabel}
+        label={label}
         funnelOwnerUid={funnelOwnerUid}
         editable={editable}
       />
     );
   }
+
   const isFollow = data.actionType === 'follow';
+  const isExternal = isFollow || data.actionType === 'shop';
   const platform = isFollow ? FOLLOW_PLATFORMS[data.platform] : null;
-  const href = isFollow ? buildFollowLink(data.platform, data.handle) : (data.ctaHref || '#');
+  const disabled = !ready || missing;
+
   return (
     <Button
       asChild
+      variant={buttonVariant}
       className={buttonClassName}
       style={platform ? { backgroundColor: platform.color, color: '#fff' } : undefined}
     >
-      <a href={href} target={isFollow ? '_blank' : undefined} rel={isFollow ? 'noopener noreferrer' : undefined} className="inline-flex items-center gap-2">
+      <a
+        href={disabled ? undefined : href}
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
+        className={`inline-flex items-center gap-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+        title={missing ? (data.actionType === 'shop' ? "No shop set up yet" : "No product selected yet") : undefined}
+        onClick={(e) => { if (disabled) e.preventDefault(); }}
+      >
         <span
           contentEditable={editable}
           suppressContentEditableWarning={true}
-          onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
+          onBlur={(e) => onChange && onChange({ [labelKey]: e.target.textContent })}
           className="focus:outline-none"
         >
-          {data.ctaLabel}
+          {label}
         </span>
         {showIcon && <ArrowUpRight className="h-4 w-4" />}
       </a>
     </Button>
   );
+}
+
+// Makes any image (the standalone image block, hero's own image) clickable
+// with the same actions a button gets — Link / Follow / Shop / Product —
+// minus "Join mailing list" (an inline email form doesn't make sense in
+// place of an image). No action configured (the default) just renders the
+// image completely unchanged, no wrapping anchor at all.
+function ClickableImage({ data, funnelOwnerUid, children }) {
+  const { href, ready, missing } = useResolvedActionHref(data, funnelOwnerUid);
+
+  if (!data.actionType || data.actionType === 'none') {
+    return children;
+  }
+
+  const isFollow = data.actionType === 'follow';
+  const isExternal = isFollow || data.actionType === 'shop';
+  const disabled = !ready || missing;
+
+  return (
+    <a
+      href={disabled ? undefined : href}
+      target={isExternal ? '_blank' : undefined}
+      rel={isExternal ? 'noopener noreferrer' : undefined}
+      className={`block ${disabled ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+      title={missing ? (data.actionType === 'shop' ? "No shop set up yet" : data.actionType === 'product' ? "No product selected yet" : undefined) : undefined}
+      onClick={(e) => { if (disabled) e.preventDefault(); }}
+    >
+      {children}
+    </a>
+  );
+}
+
+// Lets one block have two independent click actions using the same
+// ActionFields/CtaAction/ClickableImage components — e.g. hero's CTA
+// button (actionType/platform/handle/productId) and hero's own image
+// (needs the exact same shape, but must not collide with the CTA's
+// fields). Remaps a prefix's fields to the plain names those components
+// expect, and remaps onChange patches back to the prefixed field names.
+function prefixedAction(data, onChange, prefix) {
+  const keys = ['actionType', 'platform', 'handle', 'productId', 'href', 'label', 'ctaLabel'];
+  const remapped = {};
+  keys.forEach((k) => { remapped[k] = data[`${prefix}${k[0].toUpperCase()}${k.slice(1)}`]; });
+  const remappedOnChange = (patch) => {
+    const real = {};
+    Object.entries(patch).forEach(([k, v]) => { real[`${prefix}${k[0].toUpperCase()}${k.slice(1)}`] = v; });
+    onChange(real);
+  };
+  return { data: remapped, onChange: remappedOnChange };
 }
 
 // ----- Block registry ----- //
@@ -401,13 +559,15 @@ const BLOCKS = {
 
             {/* Editable image pattern */}
             <div className="relative group">
-              {data.align !== "center" && (
-                <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" />
-              )}
+              <ClickableImage data={prefixedAction(data, onChange, 'image').data} funnelOwnerUid={funnelOwnerUid}>
+                {data.align !== "center" && (
+                  <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" />
+                )}
 
-              {data.align === "center" && (
-                <img src={data.image} alt="Hero" className="w-full mt-8 rounded-xl shadow-md" />
-              )}
+                {data.align === "center" && (
+                  <img src={data.image} alt="Hero" className="w-full mt-8 rounded-xl shadow-md" />
+                )}
+              </ClickableImage>
 
               {editable && (
                 <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
@@ -417,7 +577,7 @@ const BLOCKS = {
         </section>
       );
     },
-    inspector: ({ data, onChange }) => (
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
   <div className="space-y-4">
         <Field label="Hero Style">
           <div className="flex flex-col gap-2">
@@ -452,7 +612,7 @@ const BLOCKS = {
         <Field label="CTA Label">
           <Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} />
         </Field>
-        <ActionFields data={data} onChange={onChange} />
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
         {(!data.actionType || data.actionType === 'link') && (
           <Field label="CTA Link">
             <Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} />
@@ -465,6 +625,19 @@ const BLOCKS = {
             <Button variant={data.align === "left" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "left" })}>Left</Button>
           </div>
         </Field>
+        {!data.gradientOverlay && (
+          <>
+            <Separator />
+            <p className="text-xs font-medium text-gray-700">Image click behavior</p>
+            <ActionFields
+              data={prefixedAction(data, onChange, 'image').data}
+              onChange={prefixedAction(data, onChange, 'image').onChange}
+              funnelOwnerUid={funnelOwnerUid}
+              allowSubscribe={false}
+              allowNone
+            />
+          </>
+        )}
         {data.gradientOverlay ? (
           <>
             <Field label="Overlay color">
@@ -583,7 +756,7 @@ const BLOCKS = {
         </div>
       </section>
     ),
-    inspector: ({ data, onChange }) => (
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
         <ToggleField label="Show header" checked={data.showHeader} onCheckedChange={(v) => onChange({ showHeader: v })} />
         {data.showHeader && (
@@ -597,7 +770,7 @@ const BLOCKS = {
             <Field label="CTA label">
               <Input value={data.ctaLabel} onChange={(e) => onChange({ ctaLabel: e.target.value })} />
             </Field>
-            <ActionFields data={data} onChange={onChange} />
+            <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
             {(!data.actionType || data.actionType === 'link') && (
               <Field label="CTA link">
                 <Input value={data.ctaHref} onChange={(e) => onChange({ ctaHref: e.target.value })} />
@@ -698,19 +871,24 @@ const BLOCKS = {
     name: "Image",
     icon: ImageIcon,
     defaults: () => ({ url: "/images/products/lucasroom.jpg", radius: 16, shadow: true }),
-    render: ({ data, onChange, editable }) => (
+    render: ({ data, onChange, editable, funnelOwnerUid }) => (
       <div className="relative group">
-        <img src={data.url} alt="" className={`w-full ${data.shadow? 'shadow-md':''}`} style={{ borderRadius: data.radius }} />
+        <ClickableImage data={data} funnelOwnerUid={funnelOwnerUid}>
+          <img src={data.url} alt="" className={`w-full ${data.shadow? 'shadow-md':''}`} style={{ borderRadius: data.radius }} />
+        </ClickableImage>
         {editable && (
               <UploadImage onUploaded={(url) => onChange && onChange({ url })} />
         )}
       </div>
     ),
-    inspector: ({ data, onChange }) => (
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
         <ImageUrlField label="Image URL" value={data.url} onChange={(url) => onChange({ url })} />
         <Field label="Corner radius"><Slider value={[data.radius]} min={0} max={32} step={1} onValueChange={(v)=>onChange({ radius: v[0] })} /></Field>
         <ToggleField label="Shadow" checked={data.shadow} onCheckedChange={(v)=>onChange({ shadow: v })} />
+        <Separator />
+        <p className="text-xs font-medium text-gray-700">Click behavior</p>
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} allowSubscribe={false} allowNone />
       </div>
     )
   },
@@ -730,35 +908,24 @@ const BLOCKS = {
           />
         );
       }
-      const isFollow = data.actionType === 'follow';
-      const platform = isFollow ? FOLLOW_PLATFORMS[data.platform] : null;
-      const href = isFollow ? buildFollowLink(data.platform, data.handle) : data.href;
       return (
         <div className={`flex ${data.full? '':'justify-center'}`}>
-          <Button
-            asChild
-            className={data.full? 'w-full':''}
-            variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}
-            style={platform ? { backgroundColor: platform.color, color: '#fff' } : undefined}
-          >
-            <a href={href} target={isFollow ? '_blank' : undefined} rel={isFollow ? 'noopener noreferrer' : undefined}>
-              <span
-                contentEditable={editable}
-                suppressContentEditableWarning={true}
-                onBlur={(e) => onChange && onChange({ label: e.target.textContent })}
-                className="focus:outline-none"
-              >
-                {data.label}
-              </span>
-            </a>
-          </Button>
+          <CtaAction
+            data={data}
+            onChange={onChange}
+            editable={editable}
+            funnelOwnerUid={funnelOwnerUid}
+            labelKey="label"
+            buttonClassName={data.full ? 'w-full' : ''}
+            buttonVariant={data.style === 'ghost' ? 'ghost' : data.style === 'outline' ? 'outline' : 'default'}
+          />
         </div>
       );
     },
-    inspector: ({ data, onChange }) => (
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
         <Field label="Label"><Input value={data.label} onChange={e=>onChange({ label: e.target.value })} /></Field>
-        <ActionFields data={data} onChange={onChange} />
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
         {(!data.actionType || data.actionType === 'link') && (
           <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
         )}
@@ -942,12 +1109,12 @@ const BLOCKS = {
         </section>
       );
     },
-    inspector: ({ data, onChange }) => (
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
         <Field label="Headline"><Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} /></Field>
         <Field label="Subheadline"><Textarea value={data.subhead} onChange={e=>onChange({ subhead: e.target.value })} /></Field>
         <Field label="Button label"><Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} /></Field>
-        <ActionFields data={data} onChange={onChange} />
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
         {(!data.actionType || data.actionType === 'link') && (
           <Field label="Button link"><Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} /></Field>
         )}
@@ -1290,7 +1457,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                 <ScrollArea className="h-[calc(100vh-240px)] p-3">
                   {selectedId ? (
                     <div className="p-4">
-                      <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} />
+                      <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} funnelOwnerUid={currentUserId} />
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
@@ -1427,7 +1594,7 @@ function BLOCKRenderer({ block, editable = false, onChange, funnelOwnerUid }){
   );
 }
 
-function Inspector({ block, onChange }){
+function Inspector({ block, onChange, funnelOwnerUid }){
   if (!block) return null;
   const def = BLOCKS[block.type];
   return (
@@ -1436,7 +1603,7 @@ function Inspector({ block, onChange }){
         <h4 className="font-medium">{def.name}</h4>
         <Badge variant="secondary" className="uppercase">{block.type}</Badge>
       </div>
-      {def.inspector({ data: block.data, onChange })}
+      {def.inspector({ data: block.data, onChange, funnelOwnerUid })}
     </div>
   );
 }
