@@ -228,7 +228,7 @@ export function getWildlifeSchema() {
             body: "sans",
           },
           image:
-            "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1600&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1508817628294-5a453fa0b8fb?q=80&w=1600&auto=format&fit=crop",
         },
       },
 

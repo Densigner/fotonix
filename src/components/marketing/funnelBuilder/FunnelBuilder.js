@@ -132,6 +132,26 @@ const CTA_BG_COLORS = {
   'light': '#f8fafc',
 };
 
+// Same reasoning as CTA_BG_COLORS above — resolves a "color-shade/opacity"
+// string (e.g. "emerald-900/70", the shape the Wildlife/Women's
+// Empowerment templates already store) into a real rgba() value instead of
+// an interpolated Tailwind class that Tailwind's scanner would never
+// generate CSS for.
+const HERO_OVERLAY_HEX = {
+  'emerald-900': '#064e3b',
+  'rose-900': '#881337',
+  'indigo-900': '#312e81',
+  'slate-900': '#0f172a',
+  'amber-900': '#78350f',
+};
+function resolveOverlayColor(gradientColor) {
+  const [name, opacityStr] = (gradientColor || '').split('/');
+  const hex = HERO_OVERLAY_HEX[name] || HERO_OVERLAY_HEX['slate-900'];
+  const opacity = opacityStr ? Number(opacityStr) / 100 : 0.6;
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
 // ----- Block registry ----- //
 const BLOCKS = {
   hero: {
@@ -146,56 +166,112 @@ const BLOCKS = {
       align: "center",
       gradient: true,
     }),
-    render: ({ data, onChange, editable }) => (
-      <section className={`relative overflow-hidden rounded-2xl border border-gray-200 ${
-        data.gradient ? "bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10" : "bg-white"
-      } p-8 md:p-12`}>
-        <div className={`mx-auto ${data.align === "center" ? "text-center max-w-2xl" : "text-left grid md:grid-cols-2 gap-8 items-center"}`}>
-          <div>
-            <h1
-              contentEditable={editable}
-              suppressContentEditableWarning={true}
-              onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
-              className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
-            >
-              {data.headline}
-            </h1>
+    render: ({ data, onChange, editable }) => {
+      // Full-bleed background image with the headline/CTA overlaid on top —
+      // what the Wildlife/Women's Empowerment templates actually intend
+      // (they set gradientOverlay/gradientColor/textColor), as opposed to
+      // the default side-by-side/stacked layout below.
+      if (data.gradientOverlay) {
+        const overlayColor = resolveOverlayColor(data.gradientColor);
+        const textColor = data.textColor === 'dark' ? '#0f172a' : '#ffffff';
+        return (
+          <section
+            className={`relative overflow-hidden rounded-2xl min-h-[420px] flex flex-col justify-center ${
+              data.align === 'center' ? 'items-center text-center' : 'items-start text-left'
+            } p-8 md:p-16`}
+          >
+            {data.image && (
+              <img src={data.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            )}
+            <div className="absolute inset-0" style={{ backgroundColor: overlayColor }} />
 
-            <p
-              contentEditable={editable}
-              suppressContentEditableWarning={true}
-              onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
-              className="mt-3 text-gray-600 text-base md:text-lg focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
-            >
-              {data.subhead}
-            </p>
-            <div className={`mt-5 ${data.align === "center" ? "justify-center" : "justify-start"} flex gap-3`}>
-              <Button asChild>
-                <a href={data.ctaHref} className="inline-flex items-center gap-2">
-                  {data.ctaLabel}
-                  <ArrowUpRight className="h-4 w-4" />
-                </a>
-              </Button>
+            <div className="relative z-10 max-w-2xl" style={{ color: textColor }}>
+              <h1
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+                className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+              >
+                {data.headline}
+              </h1>
+              <p
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+                className="mt-3 text-base md:text-lg opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+              >
+                {data.subhead}
+              </p>
+              <div className={`mt-6 flex gap-3 ${data.align === 'center' ? 'justify-center' : 'justify-start'}`}>
+                <Button asChild className="bg-white text-gray-900 hover:bg-gray-100">
+                  <a href={data.ctaHref} className="inline-flex items-center gap-2">
+                    {data.ctaLabel}
+                    <ArrowUpRight className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
             </div>
-          </div>
-
-          {/* Editable image pattern */}
-          <div className="relative group">
-            {data.align !== "center" && (
-              <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" />
-            )}
-
-            {data.align === "center" && (
-              <img src={data.image} alt="Hero" className="w-full mt-8 rounded-xl shadow-md" />
-            )}
 
             {editable && (
-              <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+              <div className="absolute top-2 right-2 z-10">
+                <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+              </div>
             )}
+          </section>
+        );
+      }
+
+      return (
+        <section className={`relative overflow-hidden rounded-2xl border border-gray-200 ${
+          data.gradient ? "bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10" : "bg-white"
+        } p-8 md:p-12`}>
+          <div className={`mx-auto ${data.align === "center" ? "text-center max-w-2xl" : "text-left grid md:grid-cols-2 gap-8 items-center"}`}>
+            <div>
+              <h1
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+                className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
+              >
+                {data.headline}
+              </h1>
+
+              <p
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+                className="mt-3 text-gray-600 text-base md:text-lg focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+              >
+                {data.subhead}
+              </p>
+              <div className={`mt-5 ${data.align === "center" ? "justify-center" : "justify-start"} flex gap-3`}>
+                <Button asChild>
+                  <a href={data.ctaHref} className="inline-flex items-center gap-2">
+                    {data.ctaLabel}
+                    <ArrowUpRight className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {/* Editable image pattern */}
+            <div className="relative group">
+              {data.align !== "center" && (
+                <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" />
+              )}
+
+              {data.align === "center" && (
+                <img src={data.image} alt="Hero" className="w-full mt-8 rounded-xl shadow-md" />
+              )}
+
+              {editable && (
+                <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+              )}
+            </div>
           </div>
-        </div>
-      </section>
-    ),
+        </section>
+      );
+    },
     inspector: ({ data, onChange }) => (
   <div className="space-y-4">
         <Field label="Headline">
@@ -219,7 +295,37 @@ const BLOCKS = {
             <Button variant={data.align === "left" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "left" })}>Left</Button>
           </div>
         </Field>
-        <ToggleField label="Gradient background" checked={data.gradient} onCheckedChange={(v)=>onChange({ gradient: v })} />
+        <ToggleField
+          label="Text overlays image (full-bleed background)"
+          checked={!!data.gradientOverlay}
+          onCheckedChange={(v)=>onChange({ gradientOverlay: v, textColor: v ? (data.textColor || 'white') : data.textColor })}
+        />
+        {data.gradientOverlay ? (
+          <>
+            <Field label="Overlay color">
+              <div className="flex flex-wrap gap-2">
+                {Object.keys(HERO_OVERLAY_HEX).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    title={name}
+                    onClick={() => onChange({ gradientColor: `${name}/70` })}
+                    className={`h-8 w-8 rounded-full border-2 ${(data.gradientColor||'').startsWith(name) ? 'border-indigo-500' : 'border-gray-200'}`}
+                    style={{ backgroundColor: HERO_OVERLAY_HEX[name] }}
+                  />
+                ))}
+              </div>
+            </Field>
+            <Field label="Text color">
+              <div className="flex gap-2">
+                <Button size="sm" variant={data.textColor !== 'dark' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ textColor: 'white' })}>White</Button>
+                <Button size="sm" variant={data.textColor === 'dark' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ textColor: 'dark' })}>Dark</Button>
+              </div>
+            </Field>
+          </>
+        ) : (
+          <ToggleField label="Gradient background" checked={data.gradient} onCheckedChange={(v)=>onChange({ gradient: v })} />
+        )}
       </div>
     )
   },
