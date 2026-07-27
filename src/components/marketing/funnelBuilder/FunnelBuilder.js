@@ -557,23 +557,34 @@ const BLOCKS = {
               </div>
             </div>
 
-            {/* Editable image pattern */}
-            <div className="relative group">
+            {/* Side-by-side layout: image is a grid column here, so it's
+                naturally full-width within its own column already. */}
+            {data.align !== "center" && (
+              <div className="relative group">
+                <ClickableImage data={prefixedAction(data, onChange, 'image').data} funnelOwnerUid={funnelOwnerUid}>
+                  <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" style={{ maxWidth: `${data.imageWidthPct || 100}%`, margin: '0 auto' }} />
+                </ClickableImage>
+                {editable && (
+                  <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Center layout: image deliberately sits *outside* the text's
+              max-w-2xl wrapper above — that width cap exists for readable
+              text, not for the image, which looks better using the full
+              card width by default (see src/Bible/funnel-builder/gotchas.md). */}
+          {data.align === "center" && (
+            <div className="relative group mt-8">
               <ClickableImage data={prefixedAction(data, onChange, 'image').data} funnelOwnerUid={funnelOwnerUid}>
-                {data.align !== "center" && (
-                  <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" />
-                )}
-
-                {data.align === "center" && (
-                  <img src={data.image} alt="Hero" className="w-full mt-8 rounded-xl shadow-md" />
-                )}
+                <img src={data.image} alt="Hero" className="rounded-xl shadow-md" style={{ width: `${data.imageWidthPct || 100}%`, maxWidth: '100%', margin: '0 auto', display: 'block' }} />
               </ClickableImage>
-
               {editable && (
                 <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
               )}
             </div>
-          </div>
+          )}
         </section>
       );
     },
@@ -628,6 +639,9 @@ const BLOCKS = {
         {!data.gradientOverlay && (
           <>
             <Separator />
+            <Field label={`Image width (${data.imageWidthPct || 100}%)`}>
+              <Slider value={[data.imageWidthPct || 100]} min={30} max={100} step={5} onValueChange={(v)=>onChange({ imageWidthPct: v[0] })} />
+            </Field>
             <p className="text-xs font-medium text-gray-700">Image click behavior</p>
             <ActionFields
               data={prefixedAction(data, onChange, 'image').data}
@@ -872,9 +886,9 @@ const BLOCKS = {
     icon: ImageIcon,
     defaults: () => ({ url: "/images/products/lucasroom.jpg", radius: 16, shadow: true }),
     render: ({ data, onChange, editable, funnelOwnerUid }) => (
-      <div className="relative group">
+      <div className="relative group" style={{ textAlign: 'center' }}>
         <ClickableImage data={data} funnelOwnerUid={funnelOwnerUid}>
-          <img src={data.url} alt="" className={`w-full ${data.shadow? 'shadow-md':''}`} style={{ borderRadius: data.radius }} />
+          <img src={data.url} alt="" className={data.shadow? 'shadow-md':''} style={{ width: `${data.widthPct || 100}%`, maxWidth: '100%', borderRadius: data.radius, display: 'inline-block' }} />
         </ClickableImage>
         {editable && (
               <UploadImage onUploaded={(url) => onChange && onChange({ url })} />
@@ -884,6 +898,9 @@ const BLOCKS = {
     inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
         <ImageUrlField label="Image URL" value={data.url} onChange={(url) => onChange({ url })} />
+        <Field label={`Width (${data.widthPct || 100}%)`}>
+          <Slider value={[data.widthPct || 100]} min={20} max={100} step={5} onValueChange={(v)=>onChange({ widthPct: v[0] })} />
+        </Field>
         <Field label="Corner radius"><Slider value={[data.radius]} min={0} max={32} step={1} onValueChange={(v)=>onChange({ radius: v[0] })} /></Field>
         <ToggleField label="Shadow" checked={data.shadow} onCheckedChange={(v)=>onChange({ shadow: v })} />
         <Separator />
