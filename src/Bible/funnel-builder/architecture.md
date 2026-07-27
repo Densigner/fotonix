@@ -153,6 +153,25 @@ page (`editable: false`) submits for real.
 Image blocks upload to Firebase Storage, unchanged mechanism from before,
 just compressed first now.
 
+**CTA actions (2026-07-27)**: any block with a call-to-action button —
+`button`, `hero`, and `cta` — now offers three actions via a shared
+`ActionFields` inspector component and shared `CtaAction` renderer:
+
+1. **Link to a URL** — the original behavior.
+2. **Join mailing list** — described above.
+3. **Follow / Subscribe** — a platform picker (YouTube, Spotify, Apple
+   Podcasts, Instagram, TikTok, X, Facebook) plus a handle/URL field.
+   YouTube builds a real `?sub_confirmation=1` deep link
+   (`buildFollowLink`/`normalizeYouTubeLink` in `FunnelBuilder.js`) that
+   pops YouTube's native one-click-subscribe prompt — the same mechanism
+   already used for email campaigns in `SubscribeButtonBuilder.jsx`, just
+   reimplemented for this React block tree rather than shared code (that
+   version builds a raw HTML string for an email; this one renders a real
+   anchor). Other platforms just link to a profile URL with the platform's
+   brand color applied to the button. This is aimed squarely at this
+   builder's actual audience — YouTubers/podcasters growing a following,
+   not just sending traffic somewhere.
+
 **Persistence, now real**: accepts `funnelId`/`currentUserId`/`companySlug`
 props (passed from `App.js`, sourced from the dashboard). If `funnelId` is
 set, it fetches the real saved blocks on mount and debounce-autosaves

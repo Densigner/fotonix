@@ -399,3 +399,39 @@ having two near-identical forms where only one actually works is strictly
 worse than having one. The Funnels dashboard's "Create" button
 (`FunnelBuilderDash.js`) is now the only create-funnel entry point in the
 app.
+
+## CTA buttons gained real "Follow / Subscribe" actions for creators (2026-07-27)
+
+The affiliates this builder is actually for are YouTubers and podcasters —
+their goal with a button usually isn't "link somewhere," it's "grow my
+following on a specific platform." A working pattern for this already
+existed, just nowhere near the funnel builder: `src/components/email/
+MailBuilder/SubscribeButtonBuilder.jsx` builds a real YouTube subscribe
+button for email campaigns, using the channel's `?sub_confirmation=1` query
+param — a real YouTube feature that pops their native one-click-subscribe
+prompt directly, instead of just linking to the channel page.
+
+Added a third CTA action (alongside the existing Link and Join-mailing-list
+options) — **Follow / Subscribe** — to the `button` block, `hero`'s CTA,
+and the `cta` block. Picking it shows a platform picker (YouTube, Spotify,
+Apple Podcasts, Instagram, TikTok, X, Facebook) and a handle/URL field.
+YouTube reuses the exact `sub_confirmation` mechanism from
+`SubscribeButtonBuilder.jsx` (`normalizeYouTubeLink`/`buildFollowLink` in
+`FunnelBuilder.js` — same logic, re-implemented rather than imported,
+since the Mail Builder version is coupled to that editor's own HTML-string
+output, not a React block); every other platform just takes a profile
+URL, since none of them have an equivalent deep-link trick. Each platform
+also has its own brand color, applied to the rendered button so a
+"Subscribe on YouTube" button is recognizably red without the affiliate
+having to pick a color manually.
+
+**Built once, shared three ways** — `ActionFields` (the inspector's
+Action/Platform/Handle controls) and `CtaAction` (the actual rendered
+button/form) are both shared components, used by all three CTA-bearing
+blocks. A minor tradeoff of sharing across blocks that use different field
+names for their label (`button` uses `data.label`, `hero`/`cta` use
+`data.ctaLabel`): `ActionFields` writes both `label` and `ctaLabel` on any
+change that sets a default label, so each block just reads whichever one
+it actually uses — the other sits as a harmless unused key in that block's
+`data`. Cheaper than parameterizing field names through props for three
+call sites.
