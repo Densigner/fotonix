@@ -69,7 +69,15 @@ const Input = ({ value, onChange, placeholder, className, ...rest }) => (
 );
 const Label = ({ children, className }) => <label className={className || 'block text-xs font-semibold text-gray-600'}>{children}</label>;
 const Switch = ({ checked, onCheckedChange }) => (
-  <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange && onCheckedChange(e.target.checked)} />
+  <button
+    type="button"
+    role="switch"
+    aria-checked={!!checked}
+    onClick={() => onCheckedChange && onCheckedChange(!checked)}
+    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-indigo-600' : 'bg-gray-300'}`}
+  >
+    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-1'}`} />
+  </button>
 );
 const Tabs = ({ children }) => <div>{children}</div>;
 const TabsList = ({ children }) => <div className="flex gap-2">{children}</div>;
@@ -205,7 +213,14 @@ const BLOCKS = {
               <div className={`mt-6 flex gap-3 ${data.align === 'center' ? 'justify-center' : 'justify-start'}`}>
                 <Button asChild className="bg-white text-gray-900 hover:bg-gray-100">
                   <a href={data.ctaHref} className="inline-flex items-center gap-2">
-                    {data.ctaLabel}
+                    <span
+                      contentEditable={editable}
+                      suppressContentEditableWarning={true}
+                      onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
+                      className="focus:outline-none"
+                    >
+                      {data.ctaLabel}
+                    </span>
                     <ArrowUpRight className="h-4 w-4" />
                   </a>
                 </Button>
@@ -247,7 +262,14 @@ const BLOCKS = {
               <div className={`mt-5 ${data.align === "center" ? "justify-center" : "justify-start"} flex gap-3`}>
                 <Button asChild>
                   <a href={data.ctaHref} className="inline-flex items-center gap-2">
-                    {data.ctaLabel}
+                    <span
+                      contentEditable={editable}
+                      suppressContentEditableWarning={true}
+                      onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
+                      className="focus:outline-none"
+                    >
+                      {data.ctaLabel}
+                    </span>
                     <ArrowUpRight className="h-4 w-4" />
                   </a>
                 </Button>
@@ -274,6 +296,30 @@ const BLOCKS = {
     },
     inspector: ({ data, onChange }) => (
   <div className="space-y-4">
+        <Field label="Hero Style">
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => onChange({ gradientOverlay: false })}
+              className={`text-left rounded-lg border p-2.5 text-sm transition ${
+                !data.gradientOverlay ? 'border-indigo-500 ring-1 ring-indigo-200 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <div className="font-medium text-gray-900">Side-by-side</div>
+              <div className="text-xs text-gray-500 mt-0.5">Text on one side, image next to (or below) it</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ gradientOverlay: true, textColor: data.textColor || 'white' })}
+              className={`text-left rounded-lg border p-2.5 text-sm transition ${
+                data.gradientOverlay ? 'border-indigo-500 ring-1 ring-indigo-200 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <div className="font-medium text-gray-900">Full-bleed image, text overlaid</div>
+              <div className="text-xs text-gray-500 mt-0.5">Background image fills the section, text sits on top of it</div>
+            </button>
+          </div>
+        </Field>
         <Field label="Headline">
           <Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} />
         </Field>
@@ -295,11 +341,6 @@ const BLOCKS = {
             <Button variant={data.align === "left" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "left" })}>Left</Button>
           </div>
         </Field>
-        <ToggleField
-          label="Text overlays image (full-bleed background)"
-          checked={!!data.gradientOverlay}
-          onCheckedChange={(v)=>onChange({ gradientOverlay: v, textColor: v ? (data.textColor || 'white') : data.textColor })}
-        />
         {data.gradientOverlay ? (
           <>
             <Field label="Overlay color">
@@ -324,7 +365,7 @@ const BLOCKS = {
             </Field>
           </>
         ) : (
-          <ToggleField label="Gradient background" checked={data.gradient} onCheckedChange={(v)=>onChange({ gradient: v })} />
+          <ToggleField label="Subtle gradient tint behind text" checked={data.gradient} onCheckedChange={(v)=>onChange({ gradient: v })} />
         )}
       </div>
     )
@@ -345,16 +386,21 @@ const BLOCKS = {
       buttonHref: "#",
       placeholder: "Email",
       background:
-        "https://images.unsplash.com/photo-1600055701524-4040df79c3d3?q=80&w=1200&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=1200&auto=format&fit=crop",
       overlay: true,
       darkText: false,
       align: "left",
     }),
-    render: ({ data }) => (
+    render: ({ data, onChange, editable }) => (
       <section className="relative flex h-[85vh] min-h-[520px] w-full flex-col overflow-hidden rounded-2xl">
         {/* Background */}
         <img src={data.background} alt="Volunteer background" className="absolute inset-0 h-full w-full object-cover" />
         {data.overlay && <div className="absolute inset-0 bg-black/50" />}
+        {editable && (
+          <div className="absolute top-2 right-2 z-20">
+            <UploadImage onUploaded={(url) => onChange && onChange({ background: url })} />
+          </div>
+        )}
 
         {/* Header/Nav */}
         {data.showHeader && (
@@ -378,8 +424,22 @@ const BLOCKS = {
 
         {/* Hero Text */}
         <div className={`relative z-10 mx-auto flex flex-col items-${data.align} justify-center h-full max-w-3xl px-6 text-${data.align} ${data.darkText ? "text-gray-900" : "text-white"}`}>
-          <h1 className="text-4xl md:text-6xl font-bold leading-tight">{data.headline}</h1>
-          <p className="mt-3 text-base md:text-lg opacity-90">{data.subhead}</p>
+          <h1
+            contentEditable={editable}
+            suppressContentEditableWarning={true}
+            onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+            className="text-4xl md:text-6xl font-bold leading-tight focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+          >
+            {data.headline}
+          </h1>
+          <p
+            contentEditable={editable}
+            suppressContentEditableWarning={true}
+            onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+            className="mt-3 text-base md:text-lg opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+          >
+            {data.subhead}
+          </p>
 
           {/* Email + Button */}
           <form onSubmit={(e) => e.preventDefault()} className={`mt-6 flex max-w-md flex-col gap-3 ${data.align === "center" ? "mx-auto" : ""} sm:flex-row`}>
@@ -441,10 +501,14 @@ const BLOCKS = {
     name: "Heading",
     icon: Type,
     defaults: () => ({ text: "Powerful headline", size: 36, align: "center" }),
-    render: ({ data }) => (
-      <h2 className={`w-full font-semibold tracking-tight ${
-        data.align === "center" ? "text-center" : data.align === "right" ? "text-right" : "text-left"
-      }`} style={{ fontSize: `${data.size}px` }}>{data.text}</h2>
+    render: ({ data, onChange, editable }) => (
+      <h2
+        contentEditable={editable}
+        suppressContentEditableWarning={true}
+        onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
+        className={`w-full font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded ${
+          data.align === "center" ? "text-center" : data.align === "right" ? "text-right" : "text-left"
+        }`} style={{ fontSize: `${data.size}px` }}>{data.text}</h2>
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
@@ -464,8 +528,12 @@ const BLOCKS = {
     name: "Paragraph",
     icon: Rows3,
     defaults: () => ({ text: "Explain your offer in a concise, benefit‑driven way.", width: 700, align: "center" }),
-    render: ({ data }) => (
-      <p className={`text-gray-600 leading-7 ${
+    render: ({ data, onChange, editable }) => (
+      <p
+        contentEditable={editable}
+        suppressContentEditableWarning={true}
+        onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
+        className={`text-gray-600 leading-7 focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded ${
         data.align === "center" ? "mx-auto text-center" : data.align === "right" ? "ml-auto text-right" : "text-left"
       }`} style={{ maxWidth: data.width }}>{data.text}</p>
     ),
@@ -509,7 +577,7 @@ const BLOCKS = {
     name: "Button",
     icon: Link,
     defaults: () => ({ label: "Get started", href: "#", style: "default", full: false, actionType: "link" }),
-    render: ({ data, editable, funnelOwnerUid }) => (
+    render: ({ data, onChange, editable, funnelOwnerUid }) => (
       data.actionType === 'subscribe' ? (
         <SubscribeInlineForm
           label={data.label}
@@ -521,7 +589,16 @@ const BLOCKS = {
       ) : (
         <div className={`flex ${data.full? '':'justify-center'}`}>
           <Button asChild className={data.full? 'w-full':''} variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}>
-            <a href={data.href}>{data.label}</a>
+            <a href={data.href}>
+              <span
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ label: e.target.textContent })}
+                className="focus:outline-none"
+              >
+                {data.label}
+              </span>
+            </a>
           </Button>
         </div>
       )
@@ -555,9 +632,16 @@ const BLOCKS = {
     name: "Email Capture",
     icon: Mail,
     defaults: () => ({ headline: "Get early access", placeholder: "you@example.com", button: "Notify me", success: "Thanks! Check your inbox." }),
-    render: ({ data, editable, funnelOwnerUid }) => (
+    render: ({ data, onChange, editable, funnelOwnerUid }) => (
       <div className="mx-auto max-w-md w-full">
-        <h3 className="text-xl font-semibold tracking-tight text-center">{data.headline}</h3>
+        <h3
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+          className="text-xl font-semibold tracking-tight text-center focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+        >
+          {data.headline}
+        </h3>
         <div className="mt-3">
           <SubscribeInlineForm
             label={data.button}
@@ -591,14 +675,47 @@ const BLOCKS = {
         { id: uuidv4(), title: "Integrated", desc: "Connect payments, email, analytics." },
       ],
     }),
-    render: ({ data }) => (
+    render: ({ data, onChange, editable }) => (
       <div className="w-full">
-        <h3 className="text-xl font-semibold tracking-tight text-center">{data.title}</h3>
+        <h3
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ title: e.target.textContent })}
+          className="text-xl font-semibold tracking-tight text-center focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+        >
+          {data.title}
+        </h3>
         <div className="grid md:grid-cols-3 gap-4 mt-4">
           {data.items.map((it, i)=> (
             <Card key={it.id} className="h-full">
-              <CardHeader className="pb-2"><CardTitle className="text-base">{it.title}</CardTitle></CardHeader>
-              <CardContent className="text-sm text-gray-600">{it.desc}</CardContent>
+              <CardHeader className="pb-2">
+                <CardTitle
+                  contentEditable={editable}
+                  suppressContentEditableWarning={true}
+                  onBlur={(e) => {
+                    if (!onChange) return;
+                    const items = [...data.items];
+                    items[i] = { ...it, title: e.target.textContent };
+                    onChange({ items });
+                  }}
+                  className="text-base focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+                >
+                  {it.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => {
+                  if (!onChange) return;
+                  const items = [...data.items];
+                  items[i] = { ...it, desc: e.target.textContent };
+                  onChange({ items });
+                }}
+                className="text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+              >
+                {it.desc}
+              </CardContent>
             </Card>
           ))}
         </div>
@@ -643,7 +760,7 @@ const BLOCKS = {
       background: { color: "indigo-600" },
       align: "center",
     }),
-    render: ({ data }) => {
+    render: ({ data, onChange, editable }) => {
       const isLight = data.theme === 'light' && !data.background?.color;
       const bgColor = isLight ? CTA_BG_COLORS.light : (CTA_BG_COLORS[data.background?.color] || CTA_BG_COLORS['indigo-600']);
       const textColor = data.textColor === 'dark' || isLight ? '#0f172a' : '#ffffff';
@@ -653,11 +770,36 @@ const BLOCKS = {
           className={`rounded-2xl flex flex-col ${alignCls} ${data.padding || 'py-16'} px-8`}
           style={{ backgroundColor: bgColor, color: textColor }}
         >
-          <h2 className="text-3xl md:text-4xl font-bold">{data.headline}</h2>
-          {data.subhead && <p className="mt-3 max-w-xl opacity-90">{data.subhead}</p>}
+          <h2
+            contentEditable={editable}
+            suppressContentEditableWarning={true}
+            onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+            className="text-3xl md:text-4xl font-bold focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+          >
+            {data.headline}
+          </h2>
+          {(data.subhead || editable) && (
+            <p
+              contentEditable={editable}
+              suppressContentEditableWarning={true}
+              onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+              className="mt-3 max-w-xl opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+            >
+              {data.subhead}
+            </p>
+          )}
           <div className="mt-6">
             <Button asChild className="bg-white text-gray-900 hover:bg-gray-100">
-              <a href={data.ctaHref || '#'}>{data.ctaLabel}</a>
+              <a href={data.ctaHref || '#'}>
+                <span
+                  contentEditable={editable}
+                  suppressContentEditableWarning={true}
+                  onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
+                  className="focus:outline-none"
+                >
+                  {data.ctaLabel}
+                </span>
+              </a>
             </Button>
           </div>
         </section>
@@ -712,8 +854,8 @@ const Field = ({ label, children }) => (
   </div>
 );
 const ToggleField = ({ label, checked, onCheckedChange }) => (
-  <div className="flex items-center justify-between py-1">
-    <Label className="text-xs uppercase tracking-wider text-gray-600">{label}</Label>
+  <div className="flex items-center justify-between gap-3 py-1">
+    <Label className="text-sm text-gray-700">{label}</Label>
     <Switch checked={checked} onCheckedChange={onCheckedChange} />
   </div>
 );

@@ -115,7 +115,7 @@ export function getSchema() {
           placeholder: "Email",
           // Use your local asset path or a hosted URL:
           // e.g. "/templates/volunhero.png" or a CDN/Unsplash image
-          background: "/templates/volunhero.png",
+          background: "https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=1600&auto=format&fit=crop",
           overlay: true,
           darkText: false,
           align: "center",

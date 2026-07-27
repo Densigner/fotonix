@@ -41,7 +41,7 @@ export function getStarterBlocks(templateId) {
             subhead: 'Trusted, results-driven advice for individuals and businesses.',
             ctaLabel: 'Book Consultation',
             ctaHref: '#consult',
-            image: 'https://images.unsplash.com/photo-1523246126-450c01b3a643?q=80&w=1600&auto=format&fit=crop',
+            image: 'https://images.unsplash.com/photo-1562564055-71e051d33c19?q=80&w=1600&auto=format&fit=crop',
             align: 'left',
             gradient: true,
           },
@@ -126,7 +126,7 @@ export function getVolunteerSchema() {
           buttonHref: "",
           placeholder: "",
           // Background image (use public path or remote URL)
-          background: "/templates/volunhero.png",
+          background: "https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=1600&auto=format&fit=crop",
           overlay: true,
           darkText: false,
           align: "center",
@@ -329,7 +329,7 @@ export function getWomenSchema() {
           gradientColor: "rose-900/70",
           textColor: "white",
           image:
-            "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3c?q=80&w=1600&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1495837174058-628aafc7d610?q=80&w=1600&auto=format&fit=crop",
         },
       },
 

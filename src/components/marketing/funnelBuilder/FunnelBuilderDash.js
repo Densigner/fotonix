@@ -153,6 +153,13 @@ function CreateFunnelModal({ open, onClose, onCreate, existingCompanySlug, creat
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
+          <p className="text-xs text-neutral-500 bg-neutral-50 rounded-lg px-3 py-2">
+            This creates the funnel and opens the editor — it starts as a draft
+            that only you can see. Nobody can visit the URL above until you
+            click <span className="font-medium">Publish</span> in the editor's
+            top-right corner.
+          </p>
+
           <div className="mt-2 flex justify-end gap-2">
             <button
               className="rounded-lg border border-neutral-200 px-4 py-2 text-sm hover:bg-neutral-50"

@@ -44,6 +44,7 @@ const webhook = require('./routes/webhooks/webhook');
 
 // Auth routes
 const customAuth = require('./routes/auth/custom-auth');
+const users = require('./routes/auth/users');
 
 // OpenAI Image Proxy (AI image generation endpoint)
 const openaiImageProxy = require('./openaiImageProxy');
@@ -98,6 +99,8 @@ app.use('/api/leads', leads);
 app.use('/api/chatbot', chatbot);
 // mount funnels API (Funnel Builder persistence)
 app.use('/api/funnels', funnels);
+// mount users API (Firebase -> Postgres user sync)
+app.use('/api/users', users);
 // mount email API (SMTP sending, inbox management)
 app.use('/api/email', emails);
 // mount contacts API (list, CSV import, segments)

@@ -6,7 +6,7 @@ export default function WomanEmpowermentPage() {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3c?q=80&w=1600&auto=format&fit=crop"
+          src="https://images.unsplash.com/photo-1495837174058-628aafc7d610?q=80&w=1600&auto=format&fit=crop"
           alt="Women Empowerment"
           className="absolute inset-0 h-full w-full object-cover"
         />
@@ -83,7 +83,7 @@ export function getSchema() {
           subhead: "Creating equal opportunities and leadership for women.",
           ctaLabel: "Join the Movement",
           image:
-            "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3c?q=80&w=1600&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1495837174058-628aafc7d610?q=80&w=1600&auto=format&fit=crop",
           gradient: true,
           align: "center",
         },
