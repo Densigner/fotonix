@@ -118,6 +118,20 @@ const Badge = ({ children }) => <span className="inline-block bg-gray-200 px-2 p
  * - Minimal runtime dependencies; Tailwind styles
  *****************************************/
 
+// Resolved as inline styles rather than interpolated Tailwind classes
+// (`bg-${color}`) — Tailwind's build-time scanner only picks up class names
+// that appear literally in source, so a runtime-constructed class name here
+// would silently render with no background at all outside of whichever
+// exact strings happen to already appear elsewhere in the codebase.
+const CTA_BG_COLORS = {
+  'indigo-600': '#4f46e5',
+  'emerald-800': '#065f46',
+  'rose-600': '#e11d48',
+  'slate-900': '#0f172a',
+  'amber-600': '#d97706',
+  'light': '#f8fafc',
+};
+
 // ----- Block registry ----- //
 const BLOCKS = {
   hero: {
@@ -508,6 +522,70 @@ const BLOCKS = {
             </div>
           ))}
         </div>
+      </div>
+    )
+  },
+  cta: {
+    name: "Call to Action",
+    icon: ArrowUpRight,
+    defaults: () => ({
+      headline: "Ready to get started?",
+      subhead: "Join hundreds of happy customers today.",
+      ctaLabel: "Get Started",
+      ctaHref: "#",
+      theme: "dark",
+      background: { color: "indigo-600" },
+      align: "center",
+    }),
+    render: ({ data }) => {
+      const isLight = data.theme === 'light' && !data.background?.color;
+      const bgColor = isLight ? CTA_BG_COLORS.light : (CTA_BG_COLORS[data.background?.color] || CTA_BG_COLORS['indigo-600']);
+      const textColor = data.textColor === 'dark' || isLight ? '#0f172a' : '#ffffff';
+      const alignCls = data.align === 'left' ? 'items-start text-left' : data.align === 'right' ? 'items-end text-right' : 'items-center text-center';
+      return (
+        <section
+          className={`rounded-2xl flex flex-col ${alignCls} ${data.padding || 'py-16'} px-8`}
+          style={{ backgroundColor: bgColor, color: textColor }}
+        >
+          <h2 className="text-3xl md:text-4xl font-bold">{data.headline}</h2>
+          {data.subhead && <p className="mt-3 max-w-xl opacity-90">{data.subhead}</p>}
+          <div className="mt-6">
+            <Button asChild className="bg-white text-gray-900 hover:bg-gray-100">
+              <a href={data.ctaHref || '#'}>{data.ctaLabel}</a>
+            </Button>
+          </div>
+        </section>
+      );
+    },
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Headline"><Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} /></Field>
+        <Field label="Subheadline"><Textarea value={data.subhead} onChange={e=>onChange({ subhead: e.target.value })} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Button label"><Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} /></Field>
+          <Field label="Button link"><Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} /></Field>
+        </div>
+        <Field label="Background color">
+          <div className="flex flex-wrap gap-2">
+            {Object.keys(CTA_BG_COLORS).map((key) => (
+              <button
+                key={key}
+                type="button"
+                title={key}
+                onClick={() => onChange({ background: { color: key }, theme: key === 'light' ? 'light' : 'dark' })}
+                className={`h-8 w-8 rounded-full border-2 ${data.background?.color === key ? 'border-indigo-500' : 'border-gray-200'}`}
+                style={{ backgroundColor: CTA_BG_COLORS[key] }}
+              />
+            ))}
+          </div>
+        </Field>
+        <Field label="Alignment">
+          <div className="flex gap-2">
+            {['left','center','right'].map(al=> (
+              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className="text-black" onClick={()=>onChange({ align: al })}>{al}</Button>
+            ))}
+          </div>
+        </Field>
       </div>
     )
   },
