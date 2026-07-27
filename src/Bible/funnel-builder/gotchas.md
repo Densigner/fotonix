@@ -197,3 +197,41 @@ result doesn't match its own descriptive comment.
 Also swapped Wildlife's hero image from a generic Unsplash mountain photo
 to a real tiger photo (`photo-1508817628294-5a453fa0b8fb`) — fits "Protecting
 Nature's Giants" specifically rather than generic nature stock.
+
+## Clicking a CTA/button block in the editor actually navigated the browser (fixed 2026-07-27)
+
+Reported live, right after the overlay fix above: clicking the hero's
+"Donate Now" button in the editor — trying to select it to edit its
+label/link — actually navigated the browser to `#donate` instead. Root
+cause: blocks render **real `<a href>` elements** (hero's CTA, the plain
+`button` block in link mode, the new `cta` block) so that they work
+normally as actual links on the *public* funnel page. `BLOCKRenderer`
+(the editor's canvas wrapper) had no guard against that — clicking one
+selects the block (via `SortableItem`'s separate `onMouseDown` handler)
+*and* the browser still followed the link, since nothing told it not to.
+
+Fixed with a single capture-phase click handler on `BLOCKRenderer`'s
+wrapper: `onClickCapture={(e) => { if (editable && e.target.closest('a'))
+e.preventDefault(); }}`. Two things worth knowing about this fix
+specifically:
+
+- **It's centralized, not per-block.** Rather than patching every
+  individual anchor inside `hero`/`button`/`cta`'s `render()` functions
+  (and remembering to do the same for every future block that renders a
+  link), one guard at the wrapper catches all of them — capture-phase
+  handlers run before the anchor's own native navigation, so
+  `preventDefault()` here reliably stops it regardless of how deep the
+  `<a>` is nested inside the block's markup.
+- **It's scoped to `<a>` elements specifically, not the whole block** —
+  `e.target.closest('a')` — because a blanket `preventDefault()` on every
+  click would *also* suppress a `<button type="submit">`'s default action
+  (triggering its form's `submit` event), which is exactly the mechanism
+  the "Join mailing list" button/Email Capture block rely on to show
+  their editor-preview success state (see the mailing-list entry above —
+  `SubscribeInlineForm`'s `handleSubmit` only runs *because* the browser's
+  default submit action fires). A naive fix here would have silently
+  broken that feature while fixing this one.
+
+This only affects `BLOCKRenderer` (the editor's canvas). `FunnelViewer.js`
+(the public page) calls each block's `render()` directly, not through
+`BLOCKRenderer` — links behave completely normally there, as they should.
