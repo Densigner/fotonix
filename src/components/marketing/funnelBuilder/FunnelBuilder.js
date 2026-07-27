@@ -503,11 +503,11 @@ const BLOCKS = {
       links: ["Home", "About", "Opportunities", "How to Volunteer", "Contact"],
       ctaLabel: "Start Now",
       ctaHref: "#",
+      actionType: "link",
       headline: "Volunteer in your Community",
       subhead:
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Autem dolore, alias, numquam enim ab voluptate id quam.",
       buttonLabel: "Contact Us",
-      buttonHref: "#",
       placeholder: "Email",
       background:
         "https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=1200&auto=format&fit=crop",
@@ -515,7 +515,7 @@ const BLOCKS = {
       darkText: false,
       align: "left",
     }),
-    render: ({ data, onChange, editable }) => (
+    render: ({ data, onChange, editable, funnelOwnerUid }) => (
       <section className="relative flex h-[85vh] min-h-[520px] w-full flex-col overflow-hidden rounded-2xl">
         {/* Background */}
         <img src={data.background} alt="Volunteer background" className="absolute inset-0 h-full w-full object-cover" />
@@ -540,9 +540,7 @@ const BLOCKS = {
             </div>
 
             {/* CTA */}
-            <Button asChild className="bg-red-600 hover:bg-red-700 text-white text-sm px-5 py-2 rounded-md">
-              <a href={data.ctaHref}>{data.ctaLabel}</a>
-            </Button>
+            <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-red-600 hover:bg-red-700 text-white text-sm px-5 py-2 rounded-md" />
           </nav>
         )}
 
@@ -565,11 +563,23 @@ const BLOCKS = {
             {data.subhead}
           </p>
 
-          {/* Email + Button */}
-          <form onSubmit={(e) => e.preventDefault()} className={`mt-6 flex max-w-md flex-col gap-3 ${data.align === "center" ? "mx-auto" : ""} sm:flex-row`}>
-            <Input placeholder={data.placeholder} className="flex-1 bg-white/90 text-black placeholder-gray-500" />
-            <Button className="bg-indigo-600 hover:bg-indigo-700">{data.buttonLabel}</Button>
-          </form>
+          {/* Real mailing-list signup — was a non-functional email input +
+              button before (the button had no onClick/submit at all and
+              its `buttonHref` field was never read anywhere in render).
+              Optional: leave "Signup button label" blank in the inspector
+              to hide this row entirely, e.g. when a funnel already has a
+              dedicated Email Capture block elsewhere on the page. */}
+          {data.buttonLabel && (
+            <div className={`mt-6 max-w-md ${data.align === "center" ? "mx-auto w-full" : ""}`}>
+              <SubscribeInlineForm
+                label={data.buttonLabel}
+                placeholder={data.placeholder}
+                full
+                funnelOwnerUid={funnelOwnerUid}
+                editable={editable}
+              />
+            </div>
+          )}
         </div>
       </section>
     ),
@@ -587,9 +597,12 @@ const BLOCKS = {
             <Field label="CTA label">
               <Input value={data.ctaLabel} onChange={(e) => onChange({ ctaLabel: e.target.value })} />
             </Field>
-            <Field label="CTA link">
-              <Input value={data.ctaHref} onChange={(e) => onChange({ ctaHref: e.target.value })} />
-            </Field>
+            <ActionFields data={data} onChange={onChange} />
+            {(!data.actionType || data.actionType === 'link') && (
+              <Field label="CTA link">
+                <Input value={data.ctaHref} onChange={(e) => onChange({ ctaHref: e.target.value })} />
+              </Field>
+            )}
           </>
         )}
         <Separator />
@@ -599,15 +612,19 @@ const BLOCKS = {
         <Field label="Subheadline">
           <Textarea value={data.subhead} onChange={(e) => onChange({ subhead: e.target.value })} />
         </Field>
-        <Field label="Email placeholder">
-          <Input value={data.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />
+        <p className="text-xs text-gray-500">
+          The row below the headline is a real mailing-list signup. Leave the
+          button label blank to hide it — useful if you're using a separate
+          Email Capture block elsewhere on this page instead.
+        </p>
+        <Field label="Signup button label">
+          <Input value={data.buttonLabel} onChange={(e) => onChange({ buttonLabel: e.target.value })} placeholder="e.g. Join Now (blank = hidden)" />
         </Field>
-        <Field label="Button label">
-          <Input value={data.buttonLabel} onChange={(e) => onChange({ buttonLabel: e.target.value })} />
-        </Field>
-        <Field label="Button link">
-          <Input value={data.buttonHref} onChange={(e) => onChange({ buttonHref: e.target.value })} />
-        </Field>
+        {data.buttonLabel && (
+          <Field label="Email placeholder">
+            <Input value={data.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />
+          </Field>
+        )}
         <ImageUrlField label="Background image" value={data.background} onChange={(background) => onChange({ background })} />
         <ToggleField label="Overlay" checked={data.overlay} onCheckedChange={(v) => onChange({ overlay: v })} />
         <ToggleField label="Dark text" checked={data.darkText} onCheckedChange={(v) => onChange({ darkText: v })} />
