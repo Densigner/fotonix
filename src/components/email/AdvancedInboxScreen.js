@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { storage } from '../../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { API_URL } from '../../config/environment';
 
 /**
@@ -423,19 +423,13 @@ export default function AdvancedInboxScreen() {
 
   // Load business emails for compose functionality (UPDATED for normalized schema)
   useEffect(() => {
-    const loadBusinessEmails = async () => {
+    const loadBusinessEmails = async (uid) => {
       try {
-        const user = getAuth().currentUser;
-        if (!user) {
-          console.debug('No authenticated user - skipping business email load');
-          return;
-        }
-
         // Mailing eligibility check removed - all users can send emails
         setMailingEligible(true);
 
         // Fetch business emails (now returns flat array with real IDs!)
-        const emailRes = await fetch(`${API_BASE}/api/member/business-emails/${user.uid}`);
+        const emailRes = await fetch(`${API_BASE}/api/member/business-emails/${uid}`);
         if (!emailRes.ok) {
           console.error(`❌ Failed to fetch business emails: ${emailRes.status} ${emailRes.statusText}`);
           return;
@@ -515,7 +509,19 @@ export default function AdvancedInboxScreen() {
       }
     };
 
-    loadBusinessEmails();
+    // Firebase's session restore is async — on a fresh load, getAuth().currentUser
+    // can still be null the instant this component mounts, and this effect never
+    // re-ran to retry (empty deps), so business emails silently never loaded for
+    // the rest of the session. Subscribe instead so it fires as soon as auth
+    // state actually resolves (immediately if already available).
+    const unsubscribe = onAuthStateChanged(getAuth(), (user) => {
+      if (user) {
+        loadBusinessEmails(user.uid);
+      } else {
+        setBusinessEmails([]);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Initial + whenever dependencies change
