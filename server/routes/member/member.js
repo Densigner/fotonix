@@ -1157,9 +1157,79 @@ router.post('/business-email/create-standard', async (req, res) => {
     
   } catch (error) {
     console.error('Create standard emails error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to create standard business emails',
-      detail: error.message 
+      detail: error.message
+    });
+  }
+});
+
+// Create a single, real (send + receive) address for a new affiliate:
+// support+<affiliateCode>@fotonix.co.uk. Rides the existing support@ mailbox
+// via Postfix/Dovecot's '+' recipient_delimiter (confirmed set on both sides
+// on the VPS) — no per-affiliate mailbox provisioning needed. Inbound mail
+// to this address lands in support@'s real Maildir and gets attributed back
+// to this row by mail-poller.js/receive-webhook.js matching the literal
+// to-address, same as every other business_emails row.
+router.post('/business-email/create-affiliate', async (req, res) => {
+  try {
+    const { memberUid, affiliateCode } = req.body;
+
+    if (!memberUid || !affiliateCode) {
+      return res.status(400).json({
+        error: 'Member UID and affiliate code are required'
+      });
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(affiliateCode)) {
+      return res.status(400).json({
+        error: 'Invalid affiliate code. Use letters, numbers, hyphens, and underscores only.'
+      });
+    }
+
+    // Idempotent: if this member already has an address, return it instead
+    // of erroring on the UNIQUE(email_address) constraint (e.g. a retried
+    // signup request).
+    const existing = await query(
+      'SELECT id, email_address, email_type, display_name, description FROM business_emails WHERE member_uid = $1 LIMIT 1',
+      [memberUid]
+    );
+    if (existing.rows.length > 0) {
+      return res.json({
+        success: true,
+        message: 'Affiliate email already exists',
+        email: existing.rows[0]
+      });
+    }
+
+    const emailAddress = `support+${affiliateCode.toLowerCase()}@fotonix.co.uk`;
+
+    const result = await query(`
+      INSERT INTO business_emails
+      (member_uid, business_name, email_address, email_type, display_name, description, is_active, is_verified, daily_send_limit, created_at, updated_at)
+      VALUES ($1, $2, $3, 'main', $4, $5, true, true, 500, NOW(), NOW())
+      RETURNING id, email_address, email_type, display_name, description
+    `, [
+      memberUid,
+      affiliateCode,
+      emailAddress,
+      `${affiliateCode} (Affiliate)`,
+      'Affiliate contact address'
+    ]);
+
+    console.log(`✅ Created affiliate email ${emailAddress} for ${affiliateCode}`);
+
+    res.json({
+      success: true,
+      message: 'Affiliate email created successfully',
+      email: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Create affiliate email error:', error);
+    res.status(500).json({
+      error: 'Failed to create affiliate email',
+      detail: error.message
     });
   }
 });

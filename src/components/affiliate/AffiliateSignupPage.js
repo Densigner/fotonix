@@ -62,6 +62,23 @@ export default function AffiliateSignupPage({ onSubmit }) {
         code,
       });
 
+      // Give this affiliate a real send+receive address (support+<code>@fotonix.co.uk)
+      try {
+        const emailResponse = await fetch(`${API_URL}/api/member/business-email/create-affiliate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ memberUid: uid, affiliateCode: code }),
+        });
+        if (emailResponse.ok) {
+          console.log('✅ Affiliate email address created');
+        } else {
+          console.warn('⚠️ Failed to create affiliate email address, but signup succeeded');
+        }
+      } catch (emailErr) {
+        console.warn('Affiliate email setup failed:', emailErr);
+      }
+
       // Send custom verification email via VPS with userType 'affiliate'
       try {
         const verificationResponse = await fetch(`${API_URL}/api/auth/send-custom-verification`, {
