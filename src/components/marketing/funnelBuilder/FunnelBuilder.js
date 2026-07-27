@@ -1208,7 +1208,23 @@ function BLOCKRenderer({ block, editable = false, onChange, funnelOwnerUid }){
   if (!def) return <div className="text-red-500">Unknown block: {block.type}</div>;
   return (
     <AnimatePresence mode="popLayout">
-      <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        // Blocks render real <a href> CTAs/links so the public funnel page
+        // works normally — but that means clicking one here in the editor
+        // to select/edit it would also really navigate the browser away.
+        // Swallowing the click at capture time (before the anchor's native
+        // navigation runs) stops that. Scoped to actual <a> elements only
+        // (not the whole block) — a blanket preventDefault here would also
+        // suppress a submit <button>'s default action (triggering its
+        // form's submit event), which is exactly what the "Join mailing
+        // list" button/Email Capture block need in order to show their
+        // editor-preview success state at all.
+        onClickCapture={(e) => { if (editable && e.target.closest('a')) e.preventDefault(); }}
+      >
         {def.render({ data: block.data, onChange, editable, funnelOwnerUid })}
       </motion.div>
     </AnimatePresence>
