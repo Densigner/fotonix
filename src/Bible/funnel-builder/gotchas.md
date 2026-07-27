@@ -154,3 +154,46 @@ background at all — and falls back to a light/dark default when
 starter schema, that type has to already exist in `FunnelBuilder.js`'s
 `BLOCKS` registry** — nothing checks this at write time, it only surfaces
 as "Unknown block" the first time someone actually picks that template.
+
+## The hero block silently ignored its own overlay fields (fixed 2026-07-27)
+
+Reported live: editing the Wildlife Conservation template's hero, the
+image rendered as a plain box stacked *below* the headline/CTA, not as a
+full-bleed background with the text overlaid on top of it — despite the
+template clearly being designed for the latter (see the comment right
+above the block in `templateRegistry.js`: "HERO (emerald overlay, center
+CTA)").
+
+Root cause: `getWildlifeSchema()`/`getWomenSchema()`'s hero blocks set
+`gradientOverlay: true`, `gradientColor: "emerald-900/70"` (or
+`"rose-900/70"`), and `textColor: "white"` — but the `hero` block's
+`render()` function in `FunnelBuilder.js` never read any of those three
+fields at all. It only ever knew about `headline`, `subhead`, `ctaLabel`,
+`ctaHref`, `image`, `align`, and a separate, unrelated `gradient` boolean
+(a subtle background tint behind the whole card, not an image overlay).
+The data was being saved and loaded correctly the whole time — it just had
+nowhere to go once it got to render.
+
+Fixed by giving `hero`'s `render()` a real branch for
+`data.gradientOverlay`: a full-bleed absolutely-positioned image, a
+semi-transparent color layer on top (resolved from `gradientColor` via a
+small hex/opacity lookup — `HERO_OVERLAY_HEX` — rather than an interpolated
+Tailwind class like `` `bg-${color}` ``, which Tailwind's build-time
+scanner would never generate CSS for since it only picks up literal class
+strings already present in source), and the headline/subhead/CTA rendered
+on top in `textColor`. The inspector got a matching toggle ("Text overlays
+image") plus color swatches, so this is now editable from either template
+starters or a block added from scratch — not just something baked into
+template data with no UI to control it.
+
+**Same underlying lesson as the missing `cta` block above**: a template's
+starter schema can set fields a block's `render()` doesn't use, and nothing
+flags this at write time — the data round-trips through save/load
+perfectly, so it doesn't look broken until you actually look at the
+rendered result. Worth grep-ing `templateRegistry.js`'s `data: {...}` shapes
+against the actual block's `render()` destructuring if a template's visual
+result doesn't match its own descriptive comment.
+
+Also swapped Wildlife's hero image from a generic Unsplash mountain photo
+to a real tiger photo (`photo-1508817628294-5a453fa0b8fb`) — fits "Protecting
+Nature's Giants" specifically rather than generic nature stock.
