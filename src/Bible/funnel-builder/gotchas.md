@@ -435,3 +435,35 @@ change that sets a default label, so each block just reads whichever one
 it actually uses — the other sits as a harmless unused key in that block's
 `data`. Cheaper than parameterizing field names through props for three
 call sites.
+
+### `volunteerHero` was missed entirely in the above — and had its own separate fake-button bug
+
+Reported directly: "check out Volunteer Hero block, its button is still
+wrong, its not a drop down." Correct — the CTA/hero/button rollout above
+only touched `button`, `hero`, and `cta`; `volunteerHero`'s own nav CTA
+was never wired to `ActionFields`/`CtaAction` at all, still just a plain
+`ctaLabel`/`ctaHref` link with no action choice. Fixed the same way as the
+others.
+
+While fixing it, found a second, independent bug in the same block: the
+email input + button sitting right below the headline **had never
+actually done anything** — the button had no `onClick`/submit handler at
+all, and its `buttonHref` field was defined in `defaults()` and editable
+in the Inspector but never once read inside `render()`. Purely decorative,
+the whole time. Replaced it with the same real `SubscribeInlineForm` used
+everywhere else — but made it **conditional on the button label being
+non-empty**, not always-on: the actual Volunteer template
+(`getVolunteerSchema()` in `templateRegistry.js`) deliberately blanks
+`buttonLabel`/`placeholder` to keep this row hidden, since that template
+already has a separate, real `emailCapture` block further down the page —
+making the row always render would have put two signup forms on one
+funnel. `buttonHref` itself is now fully removed (dead field, nothing
+reads it) rather than left as inert leftover data.
+
+Also noted, not fixed (dead code, doesn't affect the live app):
+`VolunteerTemplate.jsx` — the *preview* component for this template, not
+the schema actually used — has its own internal `getSchema()` function
+with a *different*, non-blanked `buttonLabel`. It's never called;
+`getStarterBlocks('volunteer')` only ever calls `templateRegistry.js`'s
+`getVolunteerSchema()` (confirmed via the `case 'volunteer':` switch).
+Harmless as long as nothing ever wires that dead function up for real.
