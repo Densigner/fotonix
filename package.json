@@ -51,9 +51,11 @@
     "zod": "^4.1.12"
   },
   "scripts": {
+    "prestart": "node scripts/build-tailwind.js",
     "start": "cross-env PORT=3001 FAST_REFRESH=false craco start",
     "start:server": "cross-env NODE_ENV=development node src/server.js",
     "start:redirect": "node server/redirect-dev.js",
+    "prebuild": "node scripts/build-tailwind.js",
     "build": "craco build",
     "migrate": "node ./scripts/runMigration.js",
     "test": "craco test",

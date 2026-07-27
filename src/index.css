@@ -1,8 +1,7 @@
-/* stylelint-disable at-rule-no-unknown */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-/* stylelint-enable at-rule-no-unknown */
+/* Pre-compiled Tailwind output — see src/tailwind-source.css and
+   scripts/build-tailwind.js for why this isn't `@import "tailwindcss";`
+   directly here. */
+@import './tailwind-generated.css';
 
 /* Optional: page baseline so header looks right immediately */
 :root { color-scheme: light; }
