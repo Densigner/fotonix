@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import MessageBody from './MessageBody';
+import { API_URL } from '../../config/environment';
 
 // Minimal UI primitives fallback if project doesn't have shadcn/ui
 const Button = ({ children, variant, className = '', disabled, ...p }) => {
@@ -121,7 +122,7 @@ export default function DeluxeEmailClient({ tenantSlug = 'fotonix-prod' }) {
       if (statusFilter) params.set('status', statusFilter);
       if (search) params.set('q', search);
       params.set('limit', '25');
-      const data = await fetchJson(`/api/email/messages?${params.toString()}`);
+      const data = await fetchJson(`${API_URL}/api/email/messages?${params.toString()}`);
       setMessages(Array.isArray(data) ? data : []);
       if (!selectedId && Array.isArray(data) && data.length) setSelectedId(data[0].id);
     } catch (e) {
@@ -141,7 +142,7 @@ export default function DeluxeEmailClient({ tenantSlug = 'fotonix-prod' }) {
       setDetail(null); setDetailError(null);
       try {
         const params = new URLSearchParams({ tenant: tenantSlug });
-        const data = await fetchJson(`/api/email/messages/${selectedId}?${params.toString()}`);
+        const data = await fetchJson(`${API_URL}/api/email/messages/${selectedId}?${params.toString()}`);
         setDetail(data);
       } catch (e) {
         setDetailError(e?.message ?? 'Failed to load message');
@@ -191,7 +192,7 @@ export default function DeluxeEmailClient({ tenantSlug = 'fotonix-prod' }) {
     setSending(true);
     try {
   const body = { tenant_slug: tenantSlug, from: 'noreply@fotonix.co.uk', to: compose.to.trim(), subject: (compose.subject && compose.subject.trim()) || '(no subject)', text: compose.text || undefined, html: compose.html || undefined };
-      const res = await fetch('/api/email/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(`${API_URL}/api/email/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const payload = await res.json();
       const optimistic = { id: payload.id, to_address: compose.to, subject: compose.subject || '(no subject)', status: 'queued', created_at: new Date().toISOString(), sent_at: null };

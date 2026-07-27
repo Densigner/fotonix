@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ref as dbRef, onValue, query, orderByChild, update } from 'firebase/database';
 import { db } from '../../firebase';
+import { API_URL } from '../../config/environment';
 import { 
   Package, 
   Download, 
@@ -183,7 +184,7 @@ const MadeOrders = () => {
       };
 
       // Call server endpoint to send shipping notification email
-      const response = await fetch('/api/email/shipping-notification', {
+      const response = await fetch(`${API_URL}/api/email/shipping-notification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(emailData)

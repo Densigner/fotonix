@@ -1,0 +1,218 @@
+# Gotchas — the debugging story
+
+The affiliate program looked essentially complete before this session — a
+full dashboard, click charts, a commissions table, a signup flow. **Almost
+none of it actually worked.** It's worth reading this roughly in order,
+because the debugging path itself explains how the pieces connect, and the
+final bug (found last, after fixing everything else) is a good reminder that
+"looks done" and "is done" are very different things.
+
+## The starting state: a complete-looking UI wired to nothing
+
+- The dashboard's "My Products" button called `/api/products`, a JSON-file
+  endpoint that had nothing to do with the actual products system (which
+  lives in Firebase). Fixed to read Firebase RTDB `products/{uid}` directly.
+- `AffiliateDashboard` was given a **hardcoded** `affiliateCode="ALEX10"`
+  prop — every affiliate saw the same fake code and the same fake stats,
+  regardless of who was logged in. Fixed to `auth.userProfile?.affiliateCode`.
+- A sibling component (`AffiliateDashboardclick`) was passed the Firebase
+  UID as if it were the affiliate code — same bug, different component.
+- Login routing had a typo-class bug: successful login set the page to
+  `'member'`, but the actual page constant was `'member-dashboard'` — so
+  login silently did nothing visible.
+- `affiliates.js`'s `DATA_DIR` pointed at `routes/data/` instead of `data/`
+  — one directory level wrong — so every stats/settings read/write silently
+  hit an empty or wrong location. All dashboard numbers showed zero,
+  indistinguishable from "no clicks yet."
+- `writeJSON` was called in the settings-save route but **never defined** in
+  that file — saving settings threw immediately.
+- The click timeseries (the little bar chart) was initialized but never
+  incremented in a loop — always showed zero regardless of real click count.
+
+None of the above produced a visible error anywhere — every one of them
+degraded to "shows zero" or "silently does nothing," which is
+indistinguishable from "just hasn't been used yet" unless you go looking.
+
+## Then: click capture itself was dead code
+
+The actual `useAffiliateRef` hook wasn't even wired into `App.js` — it
+existed as a file but nothing imported/called it, so `?ref=` was never read
+at all regardless of anything else. Fixed by importing and calling it in
+`AppContent()`.
+
+Also found and fixed: a React 18 StrictMode double-invoke bug — the
+session-storage "already tracked this ref" guard was being set *inside* the
+`.then()` of the fetch, so StrictMode's intentional double-render in dev
+could fire the beacon twice before the guard took effect. Fixed by setting
+the guard synchronously before the fetch, not after.
+
+## Checkout wiring
+
+- PayPal SDK failed to load in production ("Retry PayPal SDK" loop) because
+  `REACT_APP_PAYPAL_CLIENT_ID` was missing from `.env.production` — CRA
+  bakes `REACT_APP_*` vars in at build time, so the SDK script loaded with
+  `client-id=undefined` and PayPal rejected it outright.
+- PayPal webhook signature verification always failed — the code used
+  `Authorization: Basic <client_id:secret>` against
+  `/v1/notifications/verify-webhook-signature`, but that endpoint requires a
+  Bearer OAuth token (Basic auth is only valid for the token-exchange
+  endpoint itself). Fixed by doing a proper `POST /v1/oauth2/token` first.
+- Separately, even after that fix, verification *still* failed — because
+  `server/index.js` loads env vars from `/var/www/.env`, not
+  `/var/www/fotonix-api/.env` (see `path.resolve(__dirname, '../.env')`),
+  and the webhook ID had only been updated in the wrong file. Always check
+  which `.env` is actually being loaded before assuming an env var change
+  took effect.
+- `PayPalButton.js`'s fetch calls were missing `credentials: 'include'` —
+  without it, the `aff_click` cookie never crossed from `fotonix.co.uk` to
+  `api.fotonix.co.uk` (different subdomains = cross-origin, cookies aren't
+  sent by default even though CORS itself was configured correctly
+  server-side).
+
+## The big one: clicks still weren't recording, after everything above was fixed
+
+Three real test purchases in a row still showed `clickId: 'no_aff'`, with
+**zero** matching rows in `clicks.json` for any of them — meaning
+`/api/clicks/create` was never even being *called*, not failing after being
+called. Every earlier fix (credentials, cookies, webhook auth) was real and
+necessary, but none of them were the actual blocker for this specific
+symptom. The investigation initially (reasonably) suspected the test
+purchaser's browser — ad blockers, Safari ITP, or the referral link being
+mangled by a messaging app on share.
+
+**The real cause**: `useAffiliateRef.js` posted to a **relative** path,
+`fetch('/api/clicks/create', ...)`. On `fotonix.co.uk` (the static frontend
+host), there's no reverse proxy for `/api/*` — that relative path resolved
+to `fotonix.co.uk/api/clicks/create`, which doesn't exist there, so the
+static host's SPA fallback served `index.html` with an ordinary `200 OK`.
+The fetch "succeeded" (no network error, nothing to `.catch()`), the
+response body was just useless HTML that nothing checked, and the real API
+at `api.fotonix.co.uk` never received the request at all. Fixed by using
+the full `API_URL` from `src/config/environment.js` instead of a relative
+path.
+
+**This exact same bug pattern** (bare `/api/...` relative fetch, works fine
+in local dev because CRA's `package.json` `"proxy"` field masks it, silently
+broken in production) turned out to affect ~40 other call sites across the
+codebase, not just this one — see the general note about it in
+`../emails/gotchas.md` item 8. If you're adding a new `fetch()` call
+anywhere in the frontend, always use `API_URL`, never a bare `/api/...`
+string, and don't trust that it working in `npm start` means anything about
+production.
+
+## Known, currently-unfixed gaps
+
+- **`AffiliateMasterDashboard.jsx`** calls `/api/affiliates/stats` and
+  `/api/affiliates/attributions` with no `code` query param — both routes
+  require it and will 400. This component's underlying data-fetching design
+  doesn't match what the backend actually expects (looks like it wants an
+  "all affiliates, admin view" endpoint that doesn't exist — the real
+  `/stats` is always scoped to one affiliate's code). Not fixed yet;
+  flagged during a routes audit but out of scope at the time.
+- **The Postgres `affiliates` table** referenced by `member.js`'s `/stats`
+  doesn't exist — see `database.md`'s "Postgres" section. Defensively
+  handled (returns zero instead of 500) but not actually fixed/rebuilt.
+
+## The manual affiliate-creation system was removed, not fixed
+
+A whole parallel feature — members manually creating and managing their own
+affiliate accounts, backed by that missing Postgres table — was deleted this
+session rather than repaired: the UI (`AffiliateCreator.jsx`,
+`AffiliateManager.jsx`), the "Manage Affiliates" dashboard button, and the
+`POST/PATCH/DELETE /api/member/affiliates` routes are all gone. Reasoning:
+the table never existed in production, so nothing created through that UI
+was ever actually persisted — it was pure UI theater, same failure pattern
+as the Star/Archive/Delete bugs described in `../emails/gotchas.md`. The
+read-only search endpoint (`/api/member/affiliates/search`, backed by the
+flat-file `member_affiliates.json`) was left alone since another live
+feature (`LinkCreator.jsx`) depends on it, even though it's currently always
+empty for the same underlying reason.
+
+## The "Links" dashboard was pure filler and was removed (2026-07-25)
+
+`AffiliateLinkDashboard.js` existed as two near-identical copies
+(`src/links/` and `src/components/affiliate/`, only the former was ever
+imported) and was reachable from the affiliate dashboard's "Links" button.
+Both fetched `/api/links?user=...`, `/api/links/:slug/stats`, and linked to
+`/l/:slug` — **none of these routes exist in the production backend**
+(`server/index.js`). The fetch always failed and silently fell back to
+`Math.random()` mock data (fake slugs like `promo-100`, fake click counts) —
+indistinguishable from real data unless you read the code. Removed both
+files, the lazy import, the `affiliate-links` page case, and the dashboard
+button in this session; no functionality was lost since it never worked.
+
+This surfaced a **third, previously-undocumented, entirely dead codebase**:
+`src/server.js` (2000+ lines, started only via `npm run start:server`, never
+part of the deployed `fotonix-api` PM2 process) implements its own
+`/l/:slug` redirect and its own Postgres tables (`tracked_links`,
+`link_clicks`) — completely separate from the three real data stores in
+`database.md`. Don't confuse code found there with what's actually live.
+
+**The real, working referral mechanism remains simple**: appending
+`?ref=CODE` to *any* page URL on `fotonix.co.uk` is the whole thing — see
+`architecture.md` step 1. No slug, no "create a link" step, no dashboard
+needed for the basic case.
+
+One real feature is still an orphaned dead end, not yet fixed: `LinkCreator.jsx`
+(used from `MembersDashboard.jsx` with `userType="member"`) genuinely writes
+to `member_links.json` via the real `POST /api/member/links` route — but
+since there's no `/l/:slug` handler in production, a link created this way
+has nowhere to resolve to if visited. If custom per-affiliate/per-product
+tracked links are wanted, that redirect route needs to be built (reading
+`member_links.json`, not the dead `tracked_links` Postgres table) — it does
+not currently exist anywhere in the deployed system.
+
+## Main dashboard graphs were half-real (fixed 2026-07-25)
+
+Auditing `AffiliateDashboard.js` (the main per-affiliate dashboard, not the
+deleted Links one) after the above: the "Clicks (last 30 days)" line chart
+and the KPI tiles were genuinely wired to live data — this file was written
+more carefully than the deleted `AffiliateLinkDashboard.js` and explicitly
+avoided fabricating data on fetch failure (shows an empty state instead).
+Two real bugs found and fixed anyway:
+
+- **"Commission by Day" bar chart used a hardcoded 10% rate.** A local
+  `toCommissionSeries()` helper recomputed `commissionCents` as
+  `revenue * 0.1` client-side, ignoring the fact that real commission rates
+  vary (link-custom or product-specific, per `architecture.md`'s rate
+  resolution order) and that the *correct* per-order `commissionCents` was
+  already being fetched via `/api/affiliates/attributions` and used
+  correctly elsewhere on the same page (KPI tiles, Commissions table). Fixed
+  by having `/api/affiliates/stats`'s timeseries aggregation
+  (`server/routes/affiliate/affiliates.js`) sum each attribution's real
+  `commissionCents` per day server-side, and pointing the chart at that
+  field directly instead of re-deriving it. Any affiliate not on exactly the
+  default 10% rate was seeing a chart that silently disagreed with their own
+  commissions table.
+- **"Visitors" KPI tile always showed 0.** It read `stats.unique_visitors`,
+  a field `/api/affiliates/stats` never returns — there is no unique-visitor
+  concept anywhere in the real pipeline (`clicks.json` has no visitor/session
+  id, just one row per click event, see `database.md`). Removed the tile
+  rather than fabricate the concept; building real unique-visitor tracking
+  would need a visitor-id cookie and dedup logic that doesn't exist yet.
+
+Also removed: `genMockTimeseries`, `genMockRows`, `safeGet` — three unused
+helper functions left over in `AffiliateDashboard.js` from an earlier
+mock-data version, never called from the live render path.
+
+## The affiliate storefront's commission-tracking bug moved to store-builder/gotchas.md
+
+A separate affiliate self-serve page (`/@handle`, via
+`AffiliateShopBuilderPage.js`) had a commission-tracking bug found and
+fixed 2026-07-26 — full writeup lives in `../store-builder/gotchas.md`
+(grouped with the codebase's other page-builder systems rather than
+nested under affiliates specifically). Short version: the page itself was
+real and worked, but never tracked a click or linked to a working product
+page, so it generated zero commission until fixed.
+
+## Self-signup codes were improved, not just left alone
+
+Original codes were fully random (`AFF` + 6 random base36 chars, e.g.
+`AFF813A73`) — secure and collision-resistant, but unpronounceable, which
+matters if an affiliate wants to say their referral link out loud (e.g. in a
+YouTube video). Changed to a short code derived from the signup email's
+local-part + a random 2-digit suffix (e.g. `JOSH42`), with a real uniqueness
+check against existing codes in Firebase RTDB (retries on collision, up to
+25 times, with a timestamp-based guaranteed-unique fallback if that
+somehow still collides). See `architecture.md`'s "Self-signup" section for
+the exact mechanism.

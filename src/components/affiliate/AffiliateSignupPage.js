@@ -4,6 +4,34 @@ import { useAuth } from "../../contexts/AuthContext";
 import { API_URL } from "../../config/environment";
 import firebase from 'firebase/compat/app';
 
+// Short, speakable base derived from the signup email (e.g. "josh@x.com" -> "JOSH"),
+// so codes read out naturally in a video ("fotonix.co.uk slash JOSH42") instead of
+// a random string like "AFF813A73".
+function slugFromEmail(email) {
+  const local = (email.split('@')[0] || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return local.slice(0, 8) || 'AFF';
+}
+
+// Runs after signup() so the RTDB read is authenticated. Retries with a new
+// random suffix if the candidate is already taken; falls back to using the
+// candidate as-is if the uniqueness check itself can't run (e.g. rules deny
+// the read) rather than blocking signup entirely.
+async function generateUniqueAffiliateCode(realtime, email) {
+  const base = slugFromEmail(email);
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const suffix = String(Math.floor(Math.random() * 100)).padStart(2, '0');
+    const candidate = `${base}${suffix}`;
+    try {
+      const snap = await realtime.ref('affiliates').orderByChild('code').equalTo(candidate).once('value');
+      if (!snap.exists()) return candidate;
+    } catch (e) {
+      return candidate;
+    }
+  }
+  // Extremely unlikely fallback: append a timestamp fragment to guarantee uniqueness.
+  return `${base}${Date.now().toString(36).toUpperCase().slice(-4)}`;
+}
+
 export default function AffiliateSignupPage({ onSubmit }) {
   const { signup } = useAuth();
   const [form, setForm] = useState({ email: "", password: "" });
@@ -18,15 +46,15 @@ export default function AffiliateSignupPage({ onSubmit }) {
     if (!form.email || !form.password) return setError('Please provide email and password');
     setSubmitting(true);
     try {
-  // generate a short affiliate code
-  const code = `AFF${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-
-      // pass affiliateCode into user profile write that signup performs
-      const res = await signup(form.email, form.password, { affiliateCode: code });
+      const res = await signup(form.email, form.password, {});
       const uid = res.user.uid;
 
-      // write affiliate record in realtime DB (canonical affiliate list)
+      // Generate the code post-signup (authenticated) so we can check it against
+      // existing codes in Realtime DB and avoid collisions.
       const realtime = firebase.database();
+      const code = await generateUniqueAffiliateCode(realtime, form.email);
+
+      // write affiliate record in realtime DB (canonical affiliate list)
       await realtime.ref(`affiliates/${uid}`).set({
         email: form.email,
         joinedAt: firebase.database.ServerValue.TIMESTAMP,

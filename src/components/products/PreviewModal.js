@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { API_URL } from '../../config/environment';
 
 export default function PreviewModal({ open, isOpen, onClose, imageDataUrl, includeAnimatedOverlay = true }) {
   // support both `open` and `isOpen` prop names for callers
@@ -90,7 +91,7 @@ export default function PreviewModal({ open, isOpen, onClose, imageDataUrl, incl
       // perform upload and update popup to include publicUrl when available
       // set uploading state after popup is initiated to avoid blocking
       setTweetUploading(true);
-      const resp = await fetch('/api/upload-preview', {
+      const resp = await fetch(`${API_URL}/api/upload-preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageDataUrl }),
@@ -156,7 +157,7 @@ export default function PreviewModal({ open, isOpen, onClose, imageDataUrl, incl
       }
       // call server-side submit helper which uploads and posts to reddit (server must be configured with Reddit app creds)
       try {
-        const r = await fetch('/api/submit-to-reddit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageDataUrl, title: decodeURIComponent(title), sr: subreddit }) });
+        const r = await fetch(`${API_URL}/api/submit-to-reddit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageDataUrl, title: decodeURIComponent(title), sr: subreddit }) });
         const jr = await r.json();
         if (r.ok && jr && jr.reddit && jr.reddit.postUrl) {
           const postUrl = jr.reddit.postUrl;
@@ -220,7 +221,7 @@ export default function PreviewModal({ open, isOpen, onClose, imageDataUrl, incl
       } catch (e) { console.warn('anchor fallback failed', e); alert('Popup blocked. Please allow popups for this site and try again.'); return; }
     }
     try {
-      const resp = await fetch('/api/upload-preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageDataUrl }) });
+      const resp = await fetch(`${API_URL}/api/upload-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageDataUrl }) });
       if (!resp.ok) throw new Error('Upload failed: ' + resp.status);
       const j = await resp.json();
       const productUrl = j && j.productUrl;
@@ -255,7 +256,7 @@ export default function PreviewModal({ open, isOpen, onClose, imageDataUrl, incl
     }
 
     try {
-      const resp = await fetch('/api/upload-preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageDataUrl }) });
+      const resp = await fetch(`${API_URL}/api/upload-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageDataUrl }) });
       if (!resp.ok) throw new Error('Upload failed: ' + resp.status);
       const j = await resp.json();
       const imageUrl = j && j.imageUrl;

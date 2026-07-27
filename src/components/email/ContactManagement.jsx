@@ -15,6 +15,7 @@ import {
   CheckCircle,
   X
 } from 'lucide-react';
+import { API_URL } from '../../config/environment';
 
 // Contact Management Interface Component
 export default function ContactManagement({ memberUid, isDarkMode = true }) {
@@ -53,7 +54,7 @@ export default function ContactManagement({ memberUid, isDarkMode = true }) {
         segment: selectedSegment
       });
 
-      const response = await fetch(`/api/contacts?${params}`, {
+      const response = await fetch(`${API_URL}/api/contacts?${params}`, {
         headers: {
           'x-member-uid': memberUid
         }
@@ -89,7 +90,7 @@ export default function ContactManagement({ memberUid, isDarkMode = true }) {
   // Fetch segments
   const fetchSegments = useCallback(async () => {
     try {
-      const response = await fetch('/api/contacts/segments', {
+      const response = await fetch(`${API_URL}/api/contacts/segments`, {
         headers: {
           'x-member-uid': memberUid
         }
@@ -126,7 +127,7 @@ export default function ContactManagement({ memberUid, isDarkMode = true }) {
   // Add new contact
   const handleAddContact = async (contactData) => {
     try {
-      const response = await fetch('/api/contacts', {
+      const response = await fetch(`${API_URL}/api/contacts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -158,7 +159,7 @@ export default function ContactManagement({ memberUid, isDarkMode = true }) {
     try {
       setImportProgress('Uploading...');
       
-      const response = await fetch('/api/contacts/import-csv', {
+      const response = await fetch(`${API_URL}/api/contacts/import-csv`, {
         method: 'POST',
         headers: {
           'x-member-uid': memberUid
@@ -190,7 +191,7 @@ export default function ContactManagement({ memberUid, isDarkMode = true }) {
     }
 
     try {
-      const response = await fetch(`/api/contacts/${contactId}`, {
+      const response = await fetch(`${API_URL}/api/contacts/${contactId}`, {
         method: 'DELETE',
         headers: {
           'x-member-uid': memberUid
@@ -230,7 +231,7 @@ export default function ContactManagement({ memberUid, isDarkMode = true }) {
 
     const promises = Array.from(selectedContacts).map(contactId => {
       const contact = contacts.find(c => c.id === contactId);
-      return fetch(`/api/contacts/${contactId}`, {
+      return fetch(`${API_URL}/api/contacts/${contactId}`, {
         method: 'DELETE',
         headers: { 'x-member-uid': memberUid }
       });

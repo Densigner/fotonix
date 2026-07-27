@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AffiliateMasterDashboard from './AffiliateMasterDashboard';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Clipboard, Check, ExternalLink, TrendingUp, MousePointerClick, BadgeCheck, Filter, Store, Package, Mail, DollarSign } from "lucide-react";
 import {
   LineChart,
@@ -22,7 +22,6 @@ export function buildReferralLink(programUrl, affiliateCode) {
 }
 
 export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUrl = "", apiBase = "", onCreateProduct }) {
-  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,29 +36,30 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
     (async function fetchData() {
       setLoading(true);
       try {
-        // Fetch analytics from the DB-backed route
-        const res = await fetch(`${apiBase || ''}/api/affiliate/stats?user=${encodeURIComponent(affiliateCode)}`);
-        if (!res.ok) throw new Error('Failed to load stats');
-        const body = await res.json();
+        const headers = { 'x-affiliate-code': affiliateCode };
 
-        // Map the backend shape to the UI shape used here
-        const summary = body.summary || {};
-        const daily = Array.isArray(body.daily) ? body.daily : [];
+        // Fetch analytics from the live route (server/routes/affiliate/affiliates.js,
+        // mounted at /api/affiliates). It already returns the shape this dashboard
+        // uses directly: { clicks, conversions, pendingCommissionCents,
+        // approvedCommissionCents, currency, timeseries }
+        const statsRes = await fetch(`${apiBase || ''}/api/affiliates/stats?code=${encodeURIComponent(affiliateCode)}`, { headers });
+        if (!statsRes.ok) throw new Error('Failed to load stats');
+        const body = await statsRes.json();
 
-        const mapped = {
-          clicks: summary.total_clicks || 0,
-          conversions: summary.conversions || 0,
-          pendingCommissionCents: 0,
-          approvedCommissionCents: 0,
-          currency: "GBP",
-          // timeseries expects [{date, clicks}] — map daily -> timeseries
-          timeseries: daily.map(d => ({ date: d.date, clicks: d.clicks || 0 }))
-        };
+        // Fetch per-order attributions (Commissions table) from the same live route
+        const attrsRes = await fetch(`${apiBase || ''}/api/affiliates/attributions?code=${encodeURIComponent(affiliateCode)}`, { headers });
+        const attrs = attrsRes.ok ? await attrsRes.json() : [];
 
         if (alive) {
-          setStats(mapped);
-          // We don't yet have per-order attributions in this endpoint; clear rows.
-          setRows([]);
+          setStats({
+            clicks: body.clicks || 0,
+            conversions: body.conversions || 0,
+            pendingCommissionCents: body.pendingCommissionCents || 0,
+            approvedCommissionCents: body.approvedCommissionCents || 0,
+            currency: body.currency || "GBP",
+            timeseries: Array.isArray(body.timeseries) ? body.timeseries : [],
+          });
+          setRows(Array.isArray(attrs) ? attrs : []);
         }
       } catch (e) {
         if (alive) {
@@ -128,18 +128,11 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
             Add Product
           </button>
           <button
-            onClick={() => navigate('/mailbuilder')}
+            onClick={() => window.location.hash = 'mail-campaign'}
             className="inline-flex items-center gap-2 rounded-xl bg-green-600 hover:bg-green-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition"
           >
             <Mail className="h-4 w-4" />
             Mail Campaign
-          </button>
-          <button
-            onClick={() => navigate('/email-automation')}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition"
-          >
-            <Mail className="h-4 w-4" />
-            Email Automation
           </button>
           <button
             onClick={() => window.location.hash = 'tools/short-review'}
@@ -155,13 +148,6 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
             View Clicks
           </button>
           <button
-            onClick={() => window.location.hash = 'affiliate-links'}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600/90 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:shadow-md"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Links
-          </button>
-          <button
             onClick={() => setShowMaster(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:shadow-md"
           >
@@ -175,11 +161,17 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
             <TrendingUp className="h-4 w-4" />
             Funnel Builder
           </button>
+          <button
+            onClick={() => window.location.hash = 'affiliate-mailing-list'}
+            className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:shadow-md"
+          >
+            <Mail className="h-4 w-4" />
+            Your Mailing List
+          </button>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KPI icon={<MousePointerClick className="h-5 w-5" />} label="Clicks" value={stats?.clicks ?? 0} loading={loading} />
-          <KPI icon={<BadgeCheck className="h-5 w-5" />} label="Visitors" value={stats?.unique_visitors ?? 0} loading={loading} />
           <KPI icon={<BadgeCheck className="h-5 w-5" />} label="Pending Commission" value={fmt(stats?.pendingCommissionCents ?? 0)} loading={loading} />
           <KPI icon={<TrendingUp className="h-5 w-5" />} label="Approved Commission" value={fmt(stats?.approvedCommissionCents ?? 0)} loading={loading} />
         </div>
@@ -202,7 +194,7 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
           <Card title="Commission by Day" subtitle="Approved + Pending">
             <div className="h-64 w-full">
               <ResponsiveContainer>
-                <BarChart data={toCommissionSeries((stats && stats.timeseries) || [])} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <BarChart data={(stats && stats.timeseries) || []} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
@@ -330,47 +322,3 @@ function ReferralLinkBox({ link, copied, setCopied }) {
   );
 }
 
-async function safeGet(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  return res.json();
-}
-
-function genMockTimeseries(days) {
-  const out = [];
-  const today = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const clicks = Math.floor(20 + Math.random() * 80);
-    const conversions = Math.floor(clicks * (0.05 + Math.random() * 0.1));
-    const revenue = conversions * (50 + Math.random() * 150);
-    out.push({ date: d.toLocaleDateString(), clicks, conversions, revenue: Math.round(revenue) });
-  }
-  return out;
-}
-
-function toCommissionSeries(ts) {
-  return ts.map((d) => ({ date: d.date, commissionCents: Math.round(d.revenue * 100 * 0.1) }));
-}
-
-function genMockRows(n) {
-  const rows = [];
-  const today = new Date();
-  for (let i = 0; i < n; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const amount = Math.round(5000 + Math.random() * 30000);
-    const status = ['pending', 'approved', 'void'][Math.floor(Math.random() * 3)];
-    rows.push({
-      id: `att-${i}`,
-      orderNumber: `ORD-${1000 + i}`,
-      date: d.toISOString(),
-      amountCents: amount,
-      commissionCents: Math.round(amount * 0.1),
-      status,
-      notes: status === 'void' ? 'Refunded' : undefined,
-    });
-  }
-  return rows;
-}

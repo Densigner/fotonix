@@ -132,11 +132,22 @@ router.get('/stats', async (req, res) => {
 
     console.log('Member UID:', memberUid);
 
-    // Get member's affiliates from PostgreSQL
-    const affiliatesResult = await query(
-      'SELECT affiliate_code FROM affiliates WHERE member_uid = $1',
-      [memberUid]
-    );
+    // Get member's affiliates from PostgreSQL. The `affiliates` table only ever
+    // belonged to the manual affiliate-creation feature (removed) — it was never
+    // actually created, so treat "no such table" the same as "no affiliates yet".
+    let affiliatesResult;
+    try {
+      affiliatesResult = await query(
+        'SELECT affiliate_code FROM affiliates WHERE member_uid = $1',
+        [memberUid]
+      );
+    } catch (e) {
+      if (e.code === '42P01') {
+        affiliatesResult = { rows: [] };
+      } else {
+        throw e;
+      }
+    }
     const memberAffiliateCodes = affiliatesResult.rows.map(row => row.affiliate_code);
     
     console.log('Member affiliates:', affiliatesResult.rows.length);
@@ -845,49 +856,6 @@ router.post('/links', (req, res) => {
 // MEMBER AFFILIATE MANAGEMENT ENDPOINTS
 // ============================================================================
 
-// GET /api/member/affiliates - Get all affiliates for this member (PostgreSQL version)
-router.get('/affiliates', async (req, res) => {
-  try {
-    const memberUid = getMemberUid(req);
-    if (!memberUid) return res.status(401).json({ error: 'Unauthorized' });
-
-    // Get affiliates with their stats from PostgreSQL
-    const affiliatesQuery = `
-      SELECT 
-        a.*,
-        COUNT(attr.attribution_id) as total_sales,
-        COALESCE(SUM(CASE WHEN attr.status = 'approved' THEN attr.commission_cents ELSE 0 END), 0) as total_earnings_cents,
-        MAX(attr.created_at) as last_sale
-      FROM affiliates a
-      LEFT JOIN attributions attr ON attr.affiliate_id = a.affiliate_code
-      WHERE a.member_uid = $1
-      GROUP BY a.id, a.affiliate_code, a.member_uid, a.contact_name, a.email, a.paypal_email, a.paypal_username, a.notes, a.created_at, a.updated_at
-      ORDER BY a.created_at DESC
-    `;
-    
-    const result = await query(affiliatesQuery, [memberUid]);
-    
-    const affiliatesWithStats = result.rows.map(affiliate => ({
-      affiliateCode: affiliate.affiliate_code,
-      contactName: affiliate.contact_name,
-      email: affiliate.email,
-      paypalEmail: affiliate.paypal_email,
-      paypalUsername: affiliate.paypal_username,
-      notes: affiliate.notes,
-      createdAt: affiliate.created_at,
-      updatedAt: affiliate.updated_at,
-      totalEarnings: (parseInt(affiliate.total_earnings_cents) || 0) / 100,
-      totalSales: parseInt(affiliate.total_sales) || 0,
-      lastSale: affiliate.last_sale ? new Date(affiliate.last_sale).toISOString() : null
-    }));
-
-    res.json(affiliatesWithStats);
-  } catch (e) {
-    console.error('GET /api/member/affiliates error', e);
-    res.status(500).json({ error: 'Failed to load affiliates' });
-  }
-});
-
 // GET /api/member/affiliates/search - Search member's affiliates
 router.get('/affiliates/search', (req, res) => {
   try {
@@ -915,194 +883,6 @@ router.get('/affiliates/search', (req, res) => {
   } catch (e) {
     console.error('GET /api/member/affiliates/search error', e);
     res.status(500).json({ error: 'Search failed' });
-  }
-});
-
-// POST /api/member/affiliates - Create new affiliate (PostgreSQL version)
-router.post('/affiliates', async (req, res) => {
-  try {
-    const memberUid = getMemberUid(req);
-    if (!memberUid) return res.status(401).json({ error: 'Unauthorized' });
-
-    const {
-      affiliateCode,
-      displayName,
-      email,
-      paypalEmail,
-      paypalMe,
-      notes
-    } = req.body;
-
-    // Validation
-    if (!affiliateCode || !displayName || !email) {
-      return res.status(400).json({ error: 'Missing required fields: affiliateCode, displayName, email' });
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
-    }
-
-    if (paypalEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(paypalEmail)) {
-      return res.status(400).json({ error: 'Invalid PayPal email format' });
-    }
-
-    if (!paypalEmail && !paypalMe) {
-      return res.status(400).json({ error: 'Either PayPal email or PayPal.me username is required' });
-    }
-
-    // Check if affiliate code already exists for this member
-    const existingCheck = await query(
-      'SELECT affiliate_code FROM affiliates WHERE member_uid = $1 AND affiliate_code = $2',
-      [memberUid, affiliateCode]
-    );
-
-    if (existingCheck.rows.length > 0) {
-      return res.status(400).json({ error: 'Affiliate code already exists' });
-    }
-
-    // Check for duplicate email within member's affiliates
-    const emailCheck = await query(
-      'SELECT affiliate_code FROM affiliates WHERE member_uid = $1 AND email = $2',
-      [memberUid, email.toLowerCase()]
-    );
-
-    if (emailCheck.rows.length > 0) {
-      return res.status(400).json({ error: 'An affiliate with this email already exists in your network' });
-    }
-
-    // Create new affiliate in PostgreSQL
-    const insertResult = await query(`
-      INSERT INTO affiliates (affiliate_code, member_uid, contact_name, email, paypal_email, paypal_username, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `, [
-      affiliateCode,
-      memberUid,
-      displayName.trim(),
-      email.trim().toLowerCase(),
-      paypalEmail ? paypalEmail.trim().toLowerCase() : null,
-      paypalMe ? paypalMe.trim() : null,
-      notes ? notes.trim() : ''
-    ]);
-
-    const newAffiliate = {
-      affiliateCode: insertResult.rows[0].affiliate_code,
-      contactName: insertResult.rows[0].contact_name,
-      email: insertResult.rows[0].email,
-      paypalEmail: insertResult.rows[0].paypal_email,
-      paypalUsername: insertResult.rows[0].paypal_username,
-      notes: insertResult.rows[0].notes,
-      createdAt: insertResult.rows[0].created_at,
-      totalEarnings: 0,
-      totalSales: 0,
-      lastSale: null
-    };
-
-    res.status(201).json(newAffiliate);
-  } catch (e) {
-    console.error('POST /api/member/affiliates error', e);
-    res.status(500).json({ error: 'Failed to create affiliate' });
-  }
-});
-
-// PATCH /api/member/affiliates/:id - Update affiliate
-router.patch('/affiliates/:id', (req, res) => {
-  try {
-    const memberUid = getMemberUid(req);
-    if (!memberUid) return res.status(401).json({ error: 'Unauthorized' });
-
-    const affiliateId = req.params.id;
-    const updates = req.body;
-
-    // Read member affiliates
-    const allMemberAffiliates = readJSON('member_affiliates.json', {});
-    const memberAffiliates = allMemberAffiliates[memberUid] || [];
-
-    // Find affiliate
-    const affiliateIndex = memberAffiliates.findIndex(aff => aff.id === affiliateId);
-    if (affiliateIndex === -1) {
-      return res.status(404).json({ error: 'Affiliate not found' });
-    }
-
-    // Validate updates
-    if (updates.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(updates.email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
-    }
-
-    if (updates.paypalEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(updates.paypalEmail)) {
-      return res.status(400).json({ error: 'Invalid PayPal email format' });
-    }
-
-    if (updates.defaultCommissionRate !== undefined) {
-      const rate = Number(updates.defaultCommissionRate);
-      if (isNaN(rate) || rate < 0 || rate > 1) {
-        return res.status(400).json({ error: 'Commission rate must be between 0 and 1' });
-      }
-    }
-
-    // Apply updates
-    const updatedAffiliate = {
-      ...memberAffiliates[affiliateIndex],
-      ...updates,
-      updatedAt: new Date().toISOString()
-    };
-
-    // Update in array
-    memberAffiliates[affiliateIndex] = updatedAffiliate;
-    allMemberAffiliates[memberUid] = memberAffiliates;
-
-    // Save to file
-    writeJSON('member_affiliates.json', allMemberAffiliates);
-
-    res.json(updatedAffiliate);
-  } catch (e) {
-    console.error('PATCH /api/member/affiliates/:id error', e);
-    res.status(500).json({ error: 'Failed to update affiliate' });
-  }
-});
-
-// DELETE /api/member/affiliates/:id - Delete affiliate
-router.delete('/affiliates/:id', (req, res) => {
-  try {
-    const memberUid = getMemberUid(req);
-    if (!memberUid) return res.status(401).json({ error: 'Unauthorized' });
-
-    const affiliateId = req.params.id;
-
-    // Read member affiliates
-    const allMemberAffiliates = readJSON('member_affiliates.json', {});
-    const memberAffiliates = allMemberAffiliates[memberUid] || [];
-
-    // Find affiliate
-    const affiliateIndex = memberAffiliates.findIndex(aff => aff.id === affiliateId);
-    if (affiliateIndex === -1) {
-      return res.status(404).json({ error: 'Affiliate not found' });
-    }
-
-    // Check if affiliate has any active links
-    const memberLinks = readJSON('member_links.json', {});
-    const userLinks = memberLinks[memberUid] || [];
-    const hasActiveLinks = userLinks.some(link => 
-      link.affiliateId === memberAffiliates[affiliateIndex].affiliateCode
-    );
-
-    if (hasActiveLinks) {
-      return res.status(400).json({ 
-        error: 'Cannot delete affiliate with active links. Please remove or reassign links first.' 
-      });
-    }
-
-    // Remove affiliate
-    memberAffiliates.splice(affiliateIndex, 1);
-    allMemberAffiliates[memberUid] = memberAffiliates;
-
-    // Save to file
-    writeJSON('member_affiliates.json', allMemberAffiliates);
-
-    res.json({ success: true, message: 'Affiliate deleted successfully' });
-  } catch (e) {
-    console.error('DELETE /api/member/affiliates/:id error', e);
-    res.status(500).json({ error: 'Failed to delete affiliate' });
   }
 });
 

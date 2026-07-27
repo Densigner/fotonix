@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_URL } from '../../../config/environment';
 
 function downloadJson(obj, filename) {
   const data = JSON.stringify(obj, null, 2);
@@ -22,7 +23,7 @@ export default function TemplateLibrary({ tid = 'default', onEditTemplate }) {
   async function fetchList() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/tenants/${tid}/templates`);
+      const res = await fetch(`${API_URL}/api/tenants/${tid}/templates`);
       const j = await res.json();
       if (j && j.templates) setTemplates(j.templates);
     } catch (err) {
@@ -32,7 +33,7 @@ export default function TemplateLibrary({ tid = 'default', onEditTemplate }) {
 
   async function handleDelete(id) {
     if (!window.confirm('Delete template?')) return;
-    const res = await fetch(`/api/tenants/${tid}/templates/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${API_URL}/api/tenants/${tid}/templates/${id}`, { method: 'DELETE' });
     if (res.ok) fetchList();
   }
 
@@ -48,7 +49,7 @@ export default function TemplateLibrary({ tid = 'default', onEditTemplate }) {
       const obj = JSON.parse(text);
       if (!obj.blocks) return alert('Invalid template JSON');
       // Optionally validate asset urls here
-      const res = await fetch(`/api/tenants/${tid}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: obj.name || 'Imported Template', blocks: obj.blocks, assets: obj.assets || [] }) });
+      const res = await fetch(`${API_URL}/api/tenants/${tid}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: obj.name || 'Imported Template', blocks: obj.blocks, assets: obj.assets || [] }) });
       if (res.ok) { fetchList(); alert('Import successful'); }
     } catch (err) { alert('Invalid JSON: ' + err.message); }
   }
@@ -73,7 +74,7 @@ export default function TemplateLibrary({ tid = 'default', onEditTemplate }) {
               <button className="px-2 py-1 bg-yellow-600 text-white rounded" onClick={async () => {
                 // duplicate by posting a copy
                 const clone = { name: t.name + ' (copy)', blocks: t.blocks, assets: t.assets || [] };
-                const res = await fetch(`/api/tenants/${tid}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clone) });
+                const res = await fetch(`${API_URL}/api/tenants/${tid}/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(clone) });
                 if (res.ok) fetchList();
               }}>Duplicate</button>
               <button className="px-2 py-1 bg-red-600 text-white rounded" onClick={() => handleDelete(t.id)}>Delete</button>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Plus, Search, Link as LinkIcon, CheckCircle2 } from "lucide-react";
+import { API_URL } from "../../config/environment";
 
 /**
  * MemberAffiliateLinker
@@ -38,8 +39,8 @@ export default function MemberAffiliateLinker() {
     let mounted = true;
     (async () => {
       const [prod, lks] = await Promise.all([
-        fetch("/api/member/products").then(r => r.json()),
-        fetch("/api/member/links").then(r => r.json()),
+        fetch(`${API_URL}/api/member/products`).then(r => r.json()),
+        fetch(`${API_URL}/api/member/links`).then(r => r.json()),
       ]);
       if (!mounted) return;
       setProducts(prod);
@@ -51,7 +52,7 @@ export default function MemberAffiliateLinker() {
   useEffect(() => {
     const t = setTimeout(async () => {
       if (!q.trim()) { setResults([]); return; }
-      const r = await fetch(`/api/affiliates/search?q=${encodeURIComponent(q)}`).then(res => res.json());
+      const r = await fetch(`${API_URL}/api/member/affiliates/search?q=${encodeURIComponent(q)}`).then(res => res.json());
       setResults(r);
     }, 250);
     return () => clearTimeout(t);
@@ -85,7 +86,7 @@ export default function MemberAffiliateLinker() {
 
     try {
       setSaving(true);
-      const res = await fetch("/api/member/links", {
+      const res = await fetch(`${API_URL}/api/member/links`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,20 +1,22 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
+
+const LED_COUNT = 20;
 
 export default function CreatePattern({ initial, onChange, className = "" }) {
   const [vars, setVars] = useState(() => {
-    if (initial?.vars && Array.isArray(initial.vars) && initial.vars.length === 25) {
+    if (initial?.vars && Array.isArray(initial.vars) && initial.vars.length === LED_COUNT) {
       return initial.vars.map(v => (v ? 1 : 0));
     }
-    return Array.from({ length: 25 }, () => 0);
+    return Array.from({ length: LED_COUNT }, () => 0);
   });
   const [brightness, setBrightness] = useState(initial?.brightness ?? 80);
   const [speed, setSpeed] = useState(initial?.speed ?? 1.0);
   const [title, setTitle] = useState(initial?.title ?? "");
   const [colors, setColors] = useState(() => {
-    if (initial?.colors && Array.isArray(initial.colors) && initial.colors.length === 25) {
+    if (initial?.colors && Array.isArray(initial.colors) && initial.colors.length === LED_COUNT) {
       return initial.colors.map(c => c || '#ffffff');
     }
-    return Array.from({ length: 25 }, () => '#ffffff');
+    return Array.from({ length: LED_COUNT }, () => '#ffffff');
   });
   const [pickerIndex, setPickerIndex] = useState(null);
   const colorInputRef = useRef(null);
@@ -25,8 +27,6 @@ export default function CreatePattern({ initial, onChange, className = "" }) {
     onChange?.({ vars, colors, title, brightness, speed, style: styleName });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(vars), JSON.stringify(colors), brightness, speed, title]);
-
-  const snake = useMemo(() => buildSnakeIndices(5, 5), []);
 
   function activateAndPick(idx) {
     setVars(prev => {
@@ -50,7 +50,7 @@ export default function CreatePattern({ initial, onChange, className = "" }) {
   }
 
   function clearAll() {
-    setVars(Array.from({ length: 25 }, () => 0));
+    setVars(Array.from({ length: LED_COUNT }, () => 0));
   }
 
   function invertAll() {
@@ -76,33 +76,28 @@ export default function CreatePattern({ initial, onChange, className = "" }) {
           />
         </div>
       </div>
-      {/* 5×5 Snake Grid */}
-      <div className="grid gap-2">
-        {Array.from({ length: 5 }).map((_, row) => (
-          <div key={row} className="grid grid-cols-5 gap-2">
-            {Array.from({ length: 5 }).map((__, col) => {
-              const linearIndex = row * 5 + col;
-              const idx = snake[linearIndex];
-              const active = vars[idx] === 1;
-              return (
-                <button
-                  key={col}
-                  type="button"
-                  onClick={() => activateAndPick(idx)}
-                  className={`h-12 rounded-md border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-500
-                    ${active
-                      ? `border-transparent text-white shadow` // background by inline color
-                      : "border-gray-300 bg-white text-gray-700 hover:border-violet-300"}`}
-                  aria-pressed={active}
-                >
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: active ? colors[idx] : undefined, borderRadius: 6 }}>
-                    {/* active cells show color, inactive cells show empty */}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ))}
+      {/* 20-LED Strip */}
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {Array.from({ length: LED_COUNT }).map((_, idx) => {
+          const active = vars[idx] === 1;
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => activateAndPick(idx)}
+              className={`h-12 w-12 flex-shrink-0 rounded-md border text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-500
+                ${active
+                  ? `border-transparent text-white shadow` // background by inline color
+                  : "border-gray-300 bg-white text-gray-700 hover:border-violet-300"}`}
+              aria-pressed={active}
+              aria-label={`LED ${idx + 1}`}
+            >
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: active ? colors[idx] : undefined, borderRadius: 6 }}>
+                {/* active cells show color, inactive cells show empty */}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {/* Persistent color picker area (always visible above sliders) */}
@@ -216,15 +211,4 @@ function Button({ children, onClick, variant = "primary" }) {
       {children}
     </button>
   );
-}
-
-function buildSnakeIndices(rows, cols) {
-  const indices = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const linear = r * cols + (r % 2 === 0 ? c : cols - 1 - c);
-      indices.push(linear);
-    }
-  }
-  return indices;
 }

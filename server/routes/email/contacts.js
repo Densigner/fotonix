@@ -5,8 +5,9 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
 
-// Import database connection
-const { query } = require('../../db');
+// Import database connection (real Postgres client — NOT server/db.js, which is
+// the flat-JSON-file store used for clicks/orders and has no query() export)
+const { query } = require('../../../src/db/client');
 
 // Configure multer for CSV uploads
 const upload = multer({ 
@@ -57,7 +58,11 @@ async function syncPBNCustomers(tenantId) {
       'pbn_signup',
       uev.created_at,
       NOW()
-    FROM user_email_verification uev
+    FROM (
+      SELECT DISTINCT ON (email) *
+      FROM user_email_verification
+      ORDER BY email, created_at DESC
+    ) uev
     ON CONFLICT (tenant_id, email) DO UPDATE SET
       engagement_score = EXCLUDED.engagement_score,
       first_name       = CASE WHEN contacts.first_name = '' THEN EXCLUDED.first_name ELSE contacts.first_name END,
@@ -88,12 +93,16 @@ async function syncConversionLeads(tenantId) {
         'captured_data', cl.captured_data
       ) as custom_fields,
       cl.created_at
-    FROM conversion_leads cl
+    FROM (
+      SELECT DISTINCT ON (email) *
+      FROM conversion_leads
+      WHERE email IS NOT NULL AND email != ''
+      ORDER BY email, created_at DESC
+    ) cl
     WHERE cl.email NOT IN (
       SELECT email FROM contacts WHERE tenant_id = $1
     )
-    AND cl.email IS NOT NULL
-    AND cl.email != ''
+    ON CONFLICT (tenant_id, email) DO NOTHING
   `;
   
   const result = await query(syncQuery, [tenantId]);
@@ -234,6 +243,49 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/contacts/mine - contacts attributed to the requesting member
+// (e.g. an affiliate's own funnel signups) — unlike GET /, this is scoped
+// down to member_uid, not the whole tenant. See src/Bible/emails/gotchas.md
+// for the same-header-trust caveat this shares with every other route here.
+router.get('/mine', async (req, res) => {
+  try {
+    const memberUid = req.headers['x-member-uid'];
+    if (!memberUid) {
+      return res.status(401).json({ error: 'Member UID required' });
+    }
+
+    const tenantId = await getTenantId(memberUid);
+
+    const page   = parseInt(req.query.page)  || 1;
+    const limit  = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+
+    const contacts = await query(
+      `SELECT id, email, first_name, last_name, display_name, is_vip,
+              engagement_score, custom_fields, source, created_at, updated_at
+       FROM contacts
+       WHERE tenant_id = $1 AND member_uid = $2
+       ORDER BY created_at DESC
+       LIMIT $3 OFFSET $4`,
+      [tenantId, memberUid, limit, offset]
+    );
+
+    const countResult = await query(
+      `SELECT COUNT(*) FROM contacts WHERE tenant_id = $1 AND member_uid = $2`,
+      [tenantId, memberUid]
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+
+    res.json({
+      contacts: contacts.rows,
+      pagination: { page, limit, total: totalCount, pages: Math.ceil(totalCount / limit) },
+    });
+  } catch (error) {
+    console.error('Error fetching my contacts:', error);
+    res.status(500).json({ error: 'Failed to fetch contacts' });
+  }
+});
+
 // POST /api/contacts - Add new contact
 router.post('/', async (req, res) => {
   try {
@@ -242,8 +294,8 @@ router.post('/', async (req, res) => {
       return res.status(401).json({ error: 'Member UID required' });
     }
 
-    const { email, firstName, lastName, isVip = false } = req.body;
-    
+    const { email, firstName, lastName, isVip = false, source } = req.body;
+
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
@@ -257,17 +309,19 @@ router.post('/', async (req, res) => {
     const tenantId = await getTenantId(memberUid);
 
     const insertQuery = `
-      INSERT INTO contacts (tenant_id, email, first_name, last_name, is_vip, engagement_score)
-      VALUES ($1, $2, $3, $4, $5, 0.5)
+      INSERT INTO contacts (tenant_id, member_uid, email, first_name, last_name, is_vip, source, engagement_score)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 0.5)
       RETURNING *
     `;
 
     const result = await query(insertQuery, [
       tenantId,
+      memberUid,
       email.toLowerCase().trim(),
       firstName || '',
       lastName || '',
-      isVip
+      isVip,
+      source || 'manual'
     ]);
 
     res.json(result.rows[0]);

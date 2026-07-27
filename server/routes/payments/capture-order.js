@@ -162,11 +162,97 @@ async function sendOwnerNotification(orderData) {
   }
 }
 
+/**
+ * Send order confirmation email to the buyer (customer-facing, Fotonix-branded)
+ */
+async function sendBuyerConfirmation(orderData) {
+  try {
+    if (!SMTP_CONFIG.auth.user || !SMTP_CONFIG.auth.pass) {
+      console.warn('⚠️  SMTP not configured - skipping buyer confirmation email');
+      return;
+    }
+
+    const { buyerEmail, productTitle, amount, currency, orderId, paypalOrderId } = orderData;
+
+    if (!buyerEmail) {
+      console.warn('⚠️  No buyer email on capture result - skipping confirmation');
+      return;
+    }
+
+    const transporter = nodemailer.createTransport(SMTP_CONFIG);
+
+    const appUrl = process.env.APP_URL || 'https://fotonix.co.uk';
+    const signupUrl = `${appUrl}/?email=${encodeURIComponent(buyerEmail)}#signup`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #7c3aed;">Thanks for your order!</h1>
+
+        <div style="background: #f3f4f6; border-radius: 12px; padding: 20px; margin: 20px 0;">
+          <h2 style="margin-top: 0; color: #1f2937;">${productTitle || 'Your Product'}</h2>
+          <p style="font-size: 24px; font-weight: bold; color: #059669; margin: 10px 0;">
+            ${currency || '£'}${typeof amount === 'number' ? amount.toFixed(2) : amount}
+          </p>
+          <p style="color: #6b7280; margin: 0;">Order ID: ${orderId || paypalOrderId || 'N/A'}</p>
+        </div>
+
+        <p style="color: #1f2937;">We've received your payment and your design. We'll be in touch if we need anything else before we start production.</p>
+
+        <div style="background: linear-gradient(135deg, #7c3aed, #db2777); border-radius: 14px; padding: 24px; margin: 28px 0; text-align: center;">
+          <h3 style="color: #ffffff; margin: 0 0 6px 0; font-size: 19px;">Create your free Fotonix account</h3>
+          <p style="color: rgba(255,255,255,0.9); margin: 0 0 18px 0; font-size: 14px;">Takes 30 seconds — we've already filled in your email.</p>
+          <a href="${signupUrl}"
+             style="display: inline-block; background: white; color: #7c3aed; padding: 13px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">
+            Create My Free Account
+          </a>
+        </div>
+
+        <div style="margin: 24px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 10px 0; vertical-align: top; width: 28px; color: #7c3aed; font-size: 18px;">✓</td>
+              <td style="padding: 10px 0; color: #1f2937; font-size: 14px;"><strong>Track every future order</strong> — see production status live and get notified the moment it ships.</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; vertical-align: top; color: #7c3aed; font-size: 18px;">✓</td>
+              <td style="padding: 10px 0; color: #1f2937; font-size: 14px;"><strong>Every future design, saved automatically</strong> — sign in before you design and it's there whenever you want to re-order or tweak it.</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; vertical-align: top; color: #7c3aed; font-size: 18px;">✓</td>
+              <td style="padding: 10px 0; color: #1f2937; font-size: 14px;"><strong>All your patterns in one place</strong> — every custom design you create is saved to your account, ready to reuse.</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; vertical-align: top; color: #7c3aed; font-size: 18px;">✓</td>
+              <td style="padding: 10px 0; color: #1f2937; font-size: 14px;"><strong>Earn money referring friends</strong> — join our affiliate program and get paid a commission on every sale you send our way.</td>
+            </tr>
+          </table>
+        </div>
+
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 30px;">
+          Questions? Just reply to this email.
+        </p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"Fotonix" <${SMTP_CONFIG.auth.user}>`,
+      to: buyerEmail,
+      subject: `Your Fotonix order confirmation - ${productTitle || 'Your Product'}`,
+      html
+    });
+
+    console.log(`✅ Buyer confirmation email sent to ${buyerEmail}`);
+  } catch (error) {
+    console.error('❌ Failed to send buyer confirmation email:', error.message);
+    // Don't throw - email failure shouldn't fail the order capture
+  }
+}
+
 router.post('/api/paypal/capture-order', async (req, res) => {
   try {
-    const { orderId, productId, ownerId: providedOwnerId } = req.body || {};
+    const { orderId, productId, ownerId: providedOwnerId, productName } = req.body || {};
     if (!orderId) return res.status(400).json({ error: 'orderId required' });
-    
+
     const client = getClient();
     const OrdersCaptureRequest = require('@paypal/checkout-server-sdk').orders.OrdersCaptureRequest;
     const request = new OrdersCaptureRequest(orderId);
@@ -213,7 +299,29 @@ router.post('/api/paypal/capture-order', async (req, res) => {
         console.error('Error in owner notification:', notifyErr.message);
       }
     })();
-    
+
+    // Send confirmation to the buyer (non-blocking) — independent of owner/productId,
+    // since PayPal always returns a payer email on a completed capture
+    (async () => {
+      try {
+        const captureData = result.purchase_units?.[0]?.payments?.captures?.[0];
+        const amount = captureData?.amount?.value || result.purchase_units?.[0]?.amount?.value;
+        const currency = captureData?.amount?.currency_code || result.purchase_units?.[0]?.amount?.currency_code || 'GBP';
+        const buyerEmail = result.payer?.email_address;
+
+        await sendBuyerConfirmation({
+          buyerEmail,
+          productTitle: productName || 'Fotonix Product',
+          amount: parseFloat(amount),
+          currency: currency === 'GBP' ? '£' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency,
+          orderId,
+          paypalOrderId: orderId
+        });
+      } catch (confirmErr) {
+        console.error('Error in buyer confirmation:', confirmErr.message);
+      }
+    })();
+
     res.json(result);
   } catch (e) {
     console.error('capture-order error', e);

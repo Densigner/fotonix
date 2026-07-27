@@ -13,7 +13,7 @@ export default function LawFirmLanding() {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <img
-          src="https://images.unsplash.com/photo-1555371363-3b0d6d0f0a78?q=80&w=1600&auto=format&fit=crop"
+          src="https://images.unsplash.com/photo-1505664194779-8beaceb93744?q=80&w=1600&auto=format&fit=crop"
           alt="Law library"
           className="absolute inset-0 h-full w-full object-cover"
         />

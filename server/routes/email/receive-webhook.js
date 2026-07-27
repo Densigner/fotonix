@@ -5,6 +5,7 @@
 
 const express = require('express');
 const { Client } = require('pg');
+const { uploadAttachments } = require('../../email-attachments');
 const router = express.Router();
 
 // PostgreSQL helper
@@ -54,7 +55,8 @@ router.post('/', async (req, res) => {
       subject,
       html,
       text,
-      headers = {}
+      headers = {},
+      attachments: rawAttachments
     } = req.body;
 
     // Validate webhook secret for security
@@ -64,9 +66,19 @@ router.post('/', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    // Attachments are the same for every recipient on this one incoming email.
+    let attachmentMeta = [];
+    try {
+      const safeKey = String(headers['message-id'] || Date.now()).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const uploaded = await uploadAttachments(rawAttachments, `inbound-${safeKey}`);
+      attachmentMeta = uploaded.map(({ filename, contentType, size, url }) => ({ filename, contentType, size, url }));
+    } catch (attachErr) {
+      console.error('⚠️  Attachment upload failed, saving message without them:', attachErr.message);
+    }
+
     // Extract recipient addresses (may be array)
     const recipients = Array.isArray(to) ? to : [to];
-    
+
     // Process each recipient (in case of multiple To: addresses)
     for (const recipientAddress of recipients) {
       // Find which business email this was sent to
@@ -89,7 +101,7 @@ router.post('/', async (req, res) => {
 
       // Insert into email_messages table
       const result = await query(`
-        INSERT INTO email_messages 
+        INSERT INTO email_messages
         (
           tenant_id,
           business_email_id,
@@ -106,12 +118,12 @@ router.post('/', async (req, res) => {
           received_at,
           is_read,
           created_at,
-          updated_at
+          attachments
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'inbound', 'received', $8, $9, $10, NOW(), false, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'inbound', 'received', $8, $9, $10, NOW(), false, NOW(), $11)
         RETURNING id
       `, [
-        'default', // tenant_id
+        1, // tenant_id — single-tenant platform, integer column (was the string 'default', which always failed)
         businessEmailId,
         from,
         recipientAddress,
@@ -120,7 +132,8 @@ router.post('/', async (req, res) => {
         text || '',
         headers['message-id'] || null,
         headers['in-reply-to'] || null,
-        JSON.stringify(headers['references'] || [])
+        JSON.stringify(headers['references'] || []),
+        JSON.stringify(attachmentMeta)
       ]);
 
       const messageId = result.rows[0].id;

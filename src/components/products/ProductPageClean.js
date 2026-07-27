@@ -5,6 +5,18 @@ import PreviewModal from './PreviewModal';
 import PayPalSDKLoader from '../payments/PayPalSDKLoader';
 import PayPalButton from '../payments/PayPalButton';
 import { API_URL } from '../../config/environment';
+import { useAuth } from '../../contexts/AuthContext';
+
+const STANDARD_MIRROR_BASE_PRICE = 29.99;
+
+function dataUrlToBlob(dataUrl) {
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
 
 // Inline fallback header so the file compiles even if ./Header is missing.
 // Replace <AppHeader /> with your own Header component later if desired.
@@ -370,6 +382,13 @@ function ensureFont(family) {
 }
 
 export default function ProductPage() {
+  const { currentUser, userProfile } = useAuth();
+  const isAffiliate = !!userProfile?.affiliateCode;
+  const [designTitle, setDesignTitle] = useState("");
+  const [savingDesign, setSavingDesign] = useState(false);
+  const [saveDesignStatus, setSaveDesignStatus] = useState(null); // { ok, msg }
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [orderStatus, setOrderStatus] = useState(null); // { ok, msg }
   const canvasRef = useRef(null);
   const fabricCanvasRef = useRef(null);
   const aiHelpBtnRef = useRef(null);
@@ -606,6 +625,126 @@ export default function ProductPage() {
       throw e;
     }
   }
+
+  // Save the current design (structured Fabric JSON + thumbnail) so it can be
+  // picked later from the affiliate product-creation dropdown
+  const saveDesign = async () => {
+    const c = fabricCanvasRef.current;
+    if (!c) return;
+    if (!currentUser) {
+      setSaveDesignStatus({ ok: false, msg: 'Please log in to save your design.' });
+      return;
+    }
+    if (!isAffiliate) {
+      setSaveDesignStatus({ ok: false, msg: 'Saving designs is available to affiliate accounts.' });
+      return;
+    }
+    if (!designTitle.trim()) {
+      setSaveDesignStatus({ ok: false, msg: 'Give your design a name first.' });
+      return;
+    }
+
+    setSavingDesign(true);
+    setSaveDesignStatus(null);
+    try {
+      const canvasJSON = c.toJSON();
+      const dataUrl = await captureSnapshot({ maxWidth: 2000 });
+
+      const designId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const uid = currentUser.uid;
+
+      const stm = await import("firebase/storage");
+      const { getStorage, ref: stRef, uploadBytes, getDownloadURL } = stm;
+      const storage = getStorage();
+      const thumbRef = stRef(storage, `designs/${uid}/${designId}.png`);
+      await uploadBytes(thumbRef, dataUrlToBlob(dataUrl));
+      const thumbnailUrl = await getDownloadURL(thumbRef);
+
+      const dbm = await import("firebase/database");
+      const { getDatabase, ref: dbRef, set } = dbm;
+      const db = getDatabase();
+      await set(dbRef(db, `designs/${uid}/${designId}`), {
+        id: designId,
+        title: designTitle.trim(),
+        type: 'standard-mirror',
+        basePrice: STANDARD_MIRROR_BASE_PRICE,
+        thumbnailUrl,
+        canvasJSON: JSON.stringify(canvasJSON),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      setSaveDesignStatus({ ok: true, msg: 'Design saved! You can now pick it when creating a product.' });
+    } catch (e) {
+      console.error('Failed to save design:', e);
+      setSaveDesignStatus({ ok: false, msg: e?.message || "Couldn't save your design." });
+    } finally {
+      setSavingDesign(false);
+    }
+  };
+
+  // Persist the paid order for fulfillment: uploads the actual design the
+  // customer built (not just a payment amount) so there's something to
+  // manufacture and ship. Runs on successful PayPal capture, works for
+  // logged-in AND guest buyers.
+  const handleOrderPaid = async (captureDetails) => {
+    const c = fabricCanvasRef.current;
+    setSubmittingOrder(true);
+    setOrderStatus(null);
+    try {
+      const orderId = captureDetails?.id || `order_${Date.now()}`;
+      const buyerEmail = captureDetails?.payer?.email_address || null;
+      const buyerName = [captureDetails?.payer?.name?.given_name, captureDetails?.payer?.name?.surname]
+        .filter(Boolean).join(' ') || null;
+
+      let designImageUrl = null;
+      if (c) {
+        const dataUrl = await captureSnapshot({ maxWidth: 2000 });
+        const stm = await import("firebase/storage");
+        const { getStorage, ref: stRef, uploadBytes, getDownloadURL } = stm;
+        const storage = getStorage();
+        const imgRef = stRef(storage, `madeOrders/${orderId}/design.png`);
+        await uploadBytes(imgRef, dataUrlToBlob(dataUrl));
+        designImageUrl = await getDownloadURL(imgRef);
+      }
+
+      const orderRecord = {
+        orderId,
+        productName: 'Fotonix Standard Mirror',
+        price: STANDARD_MIRROR_BASE_PRICE,
+        currency: 'GBP',
+        designImageUrl,
+        buyerEmail,
+        buyerName,
+        status: 'paid',
+        fulfilled: false,
+        createdAt: Date.now(),
+      };
+
+      const dbm = await import("firebase/database");
+      const { getDatabase, ref: dbRef, set } = dbm;
+      const db = getDatabase();
+
+      // Global fulfillment record (works for guest checkout, no login required)
+      await set(dbRef(db, `madeOrders/${orderId}`), orderRecord);
+
+      // Also mirror into the buyer's own order history if they're logged in
+      if (currentUser) {
+        try {
+          await set(dbRef(db, `users/${currentUser.uid}/stencilOrders/${orderId}`), orderRecord);
+        } catch (e) {
+          console.warn('Failed to mirror order into user history:', e);
+        }
+      }
+
+      setOrderStatus({ ok: true, msg: 'Order placed! Check your email for confirmation.' });
+    } catch (e) {
+      console.error('Failed to save order for fulfillment:', e);
+      setOrderStatus({ ok: false, msg: "Payment succeeded, but we couldn't save your design. Please contact support with your PayPal order ID." });
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
 
   // border feature removed
 
@@ -1111,6 +1250,33 @@ export default function ProductPage() {
                   </button>
                 </div>
 
+                {/* Save Design — affiliates only; normal customers just create & buy below */}
+                {isAffiliate && (
+                  <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-4">
+                    <h3 className="text-sm font-semibold text-slate-100 mb-2">Save Your Design</h3>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={designTitle}
+                        onChange={(e) => setDesignTitle(e.target.value.slice(0, 80))}
+                        placeholder="Name this design…"
+                        className="w-full rounded-md bg-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 ring-1 ring-white/10 focus:outline-none"
+                      />
+                      <button
+                        onClick={saveDesign}
+                        disabled={savingDesign}
+                        className="w-full px-4 py-2 rounded-lg font-medium shadow text-white bg-slate-700 hover:bg-slate-600 disabled:opacity-50"
+                      >
+                        {savingDesign ? 'Saving…' : 'Save Design'}
+                      </button>
+                      {saveDesignStatus && (
+                        <p className={`text-xs ${saveDesignStatus.ok ? 'text-emerald-400' : 'text-red-400'}`}>{saveDesignStatus.msg}</p>
+                      )}
+                      <p className="text-xs text-slate-400">Saved designs can be picked later when creating a product to sell.</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Purchase Options (PayPal cards) - moved under the canvas */}
                 <div className="mt-6">
                   <div className="max-w-full">
@@ -1132,8 +1298,14 @@ export default function ProductPage() {
                           <div className="mt-2 text-xl font-bold">£29.99</div>
                         </div>
                         <div className="mt-4 block w-full" style={{ display: 'block', minWidth: 200 }}>
-                          <PayPalButton amount="29.99" productName="Fotonix Standard Mirror" onSuccess={(d) => console.log('Paid', d)} />
+                          <PayPalButton amount="29.99" productName="Fotonix Standard Mirror" onSuccess={handleOrderPaid} />
                         </div>
+                        {submittingOrder && (
+                          <p className="mt-2 text-sm text-slate-300">Saving your order…</p>
+                        )}
+                        {orderStatus && (
+                          <p className={`mt-2 text-sm ${orderStatus.ok ? 'text-emerald-400' : 'text-red-400'}`}>{orderStatus.msg}</p>
+                        )}
                         <div className="mt-6">
                           <ReviewsFaqSwitch />
                         </div>

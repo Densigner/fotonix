@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { API_URL } from "../../config/environment";
 
 export default function AcrylicComposerWithMask() {
   const baseCanvasRef = useRef(null);   // shows merged preview
@@ -258,7 +259,7 @@ export default function AcrylicComposerWithMask() {
     form.append('mask', maskBlob, 'mask.png');
     form.append('prompt', prompt);
 
-    const res = await fetch('/api/ai-blend', { method: 'POST', body: form });
+    const res = await fetch(`${API_URL}/api/ai-blend`, { method: 'POST', body: form });
     const data = await res.json();
     if (data?.result_b64) {
       setResultUrl(`data:image/png;base64,${data.result_b64}`);

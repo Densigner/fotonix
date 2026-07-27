@@ -164,11 +164,18 @@ function PayPalButtonRenderer({ amount, productName, productId, ownerId, onSucce
       const Buttons = window.paypal.Buttons({
         style: { layout: 'vertical' },
         createOrder: (data, actions) => {
-          // Create order on server so aff_click custom_id is attached server-side
+          // Create order on server so aff_click custom_id is attached server-side.
+          // Also send the ref explicitly from localStorage — this is a fallback
+          // in case the earlier click-tracking beacon (fired on page load) was
+          // blocked or never landed; the server backfills a click record from
+          // this if no aff_click cookie is present.
+          let ref = null;
+          try { ref = localStorage.getItem('fotonix_aff_ref'); } catch (e) {}
           return fetch(`${API_URL}/api/paypal/create-order`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: [{ name: productName || 'Product', unitAmount: amount, quantity: 1 }], currency: 'GBP' })
+            credentials: 'include',
+            body: JSON.stringify({ items: [{ name: productName || 'Product', unitAmount: amount, quantity: 1 }], currency: 'GBP', ref })
           }).then(r => r.json()).then(j => j.id);
         },
         onApprove: async (data, actions) => {
@@ -177,10 +184,12 @@ function PayPalButtonRenderer({ amount, productName, productId, ownerId, onSucce
             const response = await fetch(`${API_URL}/api/paypal/capture-order`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
+              credentials: 'include',
+              body: JSON.stringify({
                 orderId: data.orderID,
                 productId: productId || null,
-                ownerId: ownerId || null
+                ownerId: ownerId || null,
+                productName: productName || null
               })
             });
             

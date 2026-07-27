@@ -8,7 +8,6 @@ const bodyParser = require('body-parser');
 // Payment routes
 const createOrder = require('./routes/payments/create-order');
 const captureOrder = require('./routes/payments/capture-order');
-const subscriptions = require('./routes/payments/subscriptions');
 const stencilOrder = require('./routes/payments/stencil-order');
 const pbnOrder = require('./routes/payments/pbn-order');
 
@@ -34,15 +33,18 @@ const emails = require('./routes/email/emails');
 const emailWebhook = require('./routes/email/receive-webhook');
 const emailTracking = require('./routes/email/tracking');
 const shippingNotification = require('./routes/email/shipping-notification');
+const contacts = require('./routes/email/contacts');
 
 // Marketing routes
 const chatbot = require('./routes/marketing/chatbot');
+const funnels = require('./routes/marketing/funnels');
 
 // Webhook routes
 const webhook = require('./routes/webhooks/webhook');
 
 // Auth routes
 const customAuth = require('./routes/auth/custom-auth');
+const users = require('./routes/auth/users');
 
 // OpenAI Image Proxy (AI image generation endpoint)
 const openaiImageProxy = require('./openaiImageProxy');
@@ -70,7 +72,7 @@ app.use('/api/email/receive-webhook', express.json(), emailWebhook);
 app.use('/api/email/track', emailTracking);
 
 // Use json for normal routes (mounted after webhook)
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 // mount create + capture routes
 app.use(createOrder);
@@ -91,14 +93,18 @@ app.use(products);
 app.use('/api/stores', stores);
 // mount member API (dashboard, links, payments)
 app.use('/api/member', member);
-// mount subscriptions API (billing, trials, PayPal)
-app.use('/api/subscriptions', subscriptions);
 // mount leads API (email capture, conversion tracking)
 app.use('/api/leads', leads);
 // mount chatbot API (AI conversations, qualified leads)
 app.use('/api/chatbot', chatbot);
+// mount funnels API (Funnel Builder persistence)
+app.use('/api/funnels', funnels);
+// mount users API (Firebase -> Postgres user sync)
+app.use('/api/users', users);
 // mount email API (SMTP sending, inbox management)
 app.use('/api/email', emails);
+// mount contacts API (list, CSV import, segments)
+app.use('/api/contacts', contacts);
 // mount shipping notification API
 app.use('/api/email/shipping-notification', shippingNotification);
 // mount custom auth API (VPS email verification)
@@ -146,6 +152,15 @@ app.get('/api/download-proxy', async (req, res) => {
     console.error('Download proxy error:', error);
     res.status(500).json({ error: 'Download failed', message: error.message });
   }
+});
+
+// JSON error handler — ensures body-parser parse failures and route errors
+// always return JSON (never HTML), so clients can parse the response.
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || 'Internal server error';
+  console.error(`[${req.method} ${req.path}] ${status} – ${message}`);
+  res.status(status).json({ error: message, status });
 });
 
 app.listen(PORT, () => console.log('Server listening on', PORT));

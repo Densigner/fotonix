@@ -47,14 +47,9 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { getStarterBlocks } from './templateRegistry';
 // Firebase storage helper (upload images to the project storage bucket)
-import { storage } from '../../../firebase';
+import { storage, db } from '../../../firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-
-// local funnel icons (used in the create-funnel modal)
-import funnelAudienceIcon from './funnel-icon_audience.svg';
-import funnelSellIcon from './funnel-icon_sell_canopy.svg';
-import funnelCustomIcon from './funnel-icon_custom.svg';
-import funnelWebinarIcon from './funnel-icon_webinar.png';
+import { API_URL } from '../../../config/environment';
 
 // shadcn/ui (use relative paths to avoid alias resolution issues in CRA)
 import { Button } from "../../shared/ui/button";
@@ -68,7 +63,15 @@ const Input = ({ value, onChange, placeholder, className, ...rest }) => (
 );
 const Label = ({ children, className }) => <label className={className || 'block text-xs font-semibold text-gray-600'}>{children}</label>;
 const Switch = ({ checked, onCheckedChange }) => (
-  <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange && onCheckedChange(e.target.checked)} />
+  <button
+    type="button"
+    role="switch"
+    aria-checked={!!checked}
+    onClick={() => onCheckedChange && onCheckedChange(!checked)}
+    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-indigo-600' : 'bg-gray-300'}`}
+  >
+    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-1'}`} />
+  </button>
 );
 const Tabs = ({ children }) => <div>{children}</div>;
 const TabsList = ({ children }) => <div className="flex gap-2">{children}</div>;
@@ -117,6 +120,350 @@ const Badge = ({ children }) => <span className="inline-block bg-gray-200 px-2 p
  * - Minimal runtime dependencies; Tailwind styles
  *****************************************/
 
+// Resolved as inline styles rather than interpolated Tailwind classes
+// (`bg-${color}`) — Tailwind's build-time scanner only picks up class names
+// that appear literally in source, so a runtime-constructed class name here
+// would silently render with no background at all outside of whichever
+// exact strings happen to already appear elsewhere in the codebase.
+const CTA_BG_COLORS = {
+  'indigo-600': '#4f46e5',
+  'emerald-800': '#065f46',
+  'rose-600': '#e11d48',
+  'slate-900': '#0f172a',
+  'amber-600': '#d97706',
+  'light': '#f8fafc',
+};
+
+// Same reasoning as CTA_BG_COLORS above — resolves a "color-shade/opacity"
+// string (e.g. "emerald-900/70", the shape the Wildlife/Women's
+// Empowerment templates already store) into a real rgba() value instead of
+// an interpolated Tailwind class that Tailwind's scanner would never
+// generate CSS for.
+const HERO_OVERLAY_HEX = {
+  'emerald-900': '#064e3b',
+  'rose-900': '#881337',
+  'indigo-900': '#312e81',
+  'slate-900': '#0f172a',
+  'amber-900': '#78350f',
+};
+function resolveOverlayColor(gradientColor) {
+  const [name, opacityStr] = (gradientColor || '').split('/');
+  const hex = HERO_OVERLAY_HEX[name] || HERO_OVERLAY_HEX['slate-900'];
+  const opacity = opacityStr ? Number(opacityStr) / 100 : 0.6;
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+// "Follow / Subscribe" platform presets for CTA buttons — built for the
+// creators (YouTubers, podcasters) this builder is actually for, who want
+// a button that grows their following on a specific platform, not just a
+// generic link. YouTube reuses the exact same `sub_confirmation=1` +
+// UTM deep-link mechanism already built for email campaigns
+// (src/components/email/MailBuilder/SubscribeButtonBuilder.jsx) — clicking
+// it opens YouTube's native one-click subscribe prompt instead of just
+// landing on the channel page. Other platforms don't have an equivalent
+// deep link, so they just take a profile URL.
+const FOLLOW_PLATFORMS = {
+  youtube: { label: 'YouTube', color: '#FF0000', defaultLabel: '▶ Subscribe on YouTube', placeholder: '@yourhandle or full channel URL', isHandle: true },
+  spotify: { label: 'Spotify', color: '#1DB954', defaultLabel: 'Listen on Spotify', placeholder: 'https://open.spotify.com/show/...' },
+  applepodcasts: { label: 'Apple Podcasts', color: '#A855F7', defaultLabel: 'Listen on Apple Podcasts', placeholder: 'https://podcasts.apple.com/...' },
+  instagram: { label: 'Instagram', color: '#E1306C', defaultLabel: 'Follow on Instagram', placeholder: 'https://instagram.com/yourhandle' },
+  tiktok: { label: 'TikTok', color: '#000000', defaultLabel: 'Follow on TikTok', placeholder: 'https://tiktok.com/@yourhandle' },
+  twitter: { label: 'Twitter / X', color: '#1DA1F2', defaultLabel: 'Follow on X', placeholder: 'https://x.com/yourhandle' },
+  facebook: { label: 'Facebook', color: '#1877F2', defaultLabel: 'Follow on Facebook', placeholder: 'https://facebook.com/yourpage' },
+};
+
+function normalizeYouTubeLink(input) {
+  let s = (input || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('@')) s = s.slice(1);
+  if (/^UC[\w-]{20,}$/.test(s)) return `https://www.youtube.com/channel/${s}`;
+  return `https://www.youtube.com/@${s}`;
+}
+
+function buildFollowLink(platform, handle) {
+  if (!handle) return '#';
+  if (platform === 'youtube') {
+    const base = normalizeYouTubeLink(handle);
+    try {
+      const u = new URL(base);
+      u.searchParams.set('sub_confirmation', '1');
+      return u.toString();
+    } catch (e) {
+      return base + (base.includes('?') ? '&' : '?') + 'sub_confirmation=1';
+    }
+  }
+  return /^https?:\/\//i.test(handle) ? handle : `https://${handle}`;
+}
+
+// Resolves the actual href for whatever CTA action is configured. "shop"
+// needs a live Firebase lookup (the affiliate's storefront handle isn't
+// known until we look it up), so this is a hook, not a plain function —
+// used inside CtaAction and the clickable-image wrapper, both real
+// components, so hooks here are safe regardless of how the parent block's
+// render is written.
+function useResolvedActionHref(data, funnelOwnerUid) {
+  const [shopHref, setShopHref] = useState(undefined); // undefined = still loading, null = no shop set up
+
+  useEffect(() => {
+    if (data.actionType !== 'shop' || !funnelOwnerUid) return;
+    let cancelled = false;
+    setShopHref(undefined);
+    db.ref(`storefronts/${funnelOwnerUid}/handle`).once('value')
+      .then((snap) => {
+        if (cancelled) return;
+        const handle = snap.exists() ? snap.val() : null;
+        setShopHref(handle ? `${window.location.origin}/@${handle}` : null);
+      })
+      .catch(() => { if (!cancelled) setShopHref(null); });
+    return () => { cancelled = true; };
+  }, [data.actionType, funnelOwnerUid]);
+
+  switch (data.actionType) {
+    case 'follow':
+      return { href: buildFollowLink(data.platform, data.handle), ready: true };
+    case 'shop':
+      return { href: shopHref || '#', ready: shopHref !== undefined, missing: shopHref === null };
+    case 'product':
+      return {
+        href: data.productId ? `${window.location.origin}/product/${funnelOwnerUid}/${data.productId}` : '#',
+        ready: true,
+        missing: !data.productId,
+      };
+    case 'subscribe':
+      return { href: '#', ready: true };
+    default:
+      return { href: data.href || data.ctaHref || '#', ready: true };
+  }
+}
+
+// Shared inspector fragment for any block with a CTA — the Action choice
+// (link / join mailing list / follow-a-platform / go to shop / go to a
+// specific product) plus whichever fields that choice needs. Reused by
+// the standalone `button` block, `hero`'s CTA, and the `cta` block, so all
+// three offer the same options instead of three independently-maintained
+// copies.
+function ActionFields({ data, onChange, funnelOwnerUid, allowSubscribe = true, allowNone = false }) {
+  const [products, setProducts] = useState(null); // null = not loaded yet
+  const effectiveType = data.actionType || (allowNone ? 'none' : 'link');
+
+  useEffect(() => {
+    if (effectiveType !== 'product' || !funnelOwnerUid || products !== null) return;
+    db.ref(`products/${funnelOwnerUid}`).once('value').then((snap) => {
+      const val = snap.val() || {};
+      setProducts(Object.entries(val).map(([id, p]) => ({ id, title: p.title || '(untitled product)' })));
+    }).catch(() => setProducts([]));
+  }, [effectiveType, funnelOwnerUid, products]);
+
+  return (
+    <>
+      <Field label="Action">
+        <div className="flex flex-wrap gap-2">
+          {allowNone && (
+            <Button size="sm" variant={effectiveType === 'none' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'none' })}>No click action</Button>
+          )}
+          <Button size="sm" variant={effectiveType === 'link' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
+          {allowSubscribe && (
+            <Button size="sm" variant={effectiveType === 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
+          )}
+          <Button
+            size="sm"
+            variant={effectiveType === 'follow' ? 'default':'outline'}
+            className="text-black"
+            onClick={() => {
+              const platform = data.platform || 'youtube';
+              const patch = { actionType: 'follow', platform };
+              if (!data.platform) {
+                // first time picking "follow" — seed a sensible default label
+                patch.label = FOLLOW_PLATFORMS[platform].defaultLabel;
+                patch.ctaLabel = FOLLOW_PLATFORMS[platform].defaultLabel;
+              }
+              onChange(patch);
+            }}
+          >
+            Follow / Subscribe
+          </Button>
+          <Button size="sm" variant={effectiveType === 'shop' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'shop' })}>Go to my Shop</Button>
+          <Button size="sm" variant={effectiveType === 'product' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'product' })}>Go to a Product</Button>
+        </div>
+      </Field>
+      {effectiveType === 'shop' && (
+        <p className="text-xs text-gray-500">
+          Sends visitors to your storefront (the page you built in Shop
+          Builder). If you haven't set one up yet, this link won't work
+          until you do.
+        </p>
+      )}
+      {effectiveType === 'product' && (
+        <Field label="Product">
+          {products === null ? (
+            <p className="text-xs text-gray-500">Loading your products…</p>
+          ) : products.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              You don't have any products yet — add one from your affiliate
+              dashboard first.
+            </p>
+          ) : (
+            <select
+              value={data.productId || ''}
+              onChange={(e) => onChange({ productId: e.target.value })}
+              className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm"
+            >
+              <option value="">Choose a product…</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>{p.title}</option>
+              ))}
+            </select>
+          )}
+        </Field>
+      )}
+      {effectiveType === 'follow' && (
+        <>
+          <Field label="Platform">
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(FOLLOW_PLATFORMS).map(([id, p]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onChange({ platform: id, label: p.defaultLabel, ctaLabel: p.defaultLabel })}
+                  className="text-xs px-3 py-1.5 rounded-full border transition"
+                  style={{
+                    backgroundColor: data.platform === id ? p.color : '#fff',
+                    color: data.platform === id ? '#fff' : '#111827',
+                    borderColor: data.platform === id ? p.color : '#e5e7eb',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label={FOLLOW_PLATFORMS[data.platform]?.isHandle ? 'Channel handle or URL' : `${FOLLOW_PLATFORMS[data.platform]?.label || 'Profile'} URL`}>
+            <Input
+              value={data.handle || ''}
+              onChange={(e) => onChange({ handle: e.target.value })}
+              placeholder={FOLLOW_PLATFORMS[data.platform]?.placeholder || 'https://...'}
+            />
+          </Field>
+          {data.platform === 'youtube' && (
+            <p className="text-xs text-gray-500">
+              Opens YouTube's one-click subscribe prompt directly, instead of just linking to your channel page.
+            </p>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// Shared CTA renderer — the actual button/form markup for whichever action
+// ActionFields above chose. Reused by hero (both layouts) and the cta
+// block so "link vs mailing-list vs follow-a-platform" behaves and looks
+// identical everywhere a CTA button appears, not just on the standalone
+// button block.
+function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, buttonVariant, showIcon, labelKey = 'ctaLabel' }) {
+  // Called unconditionally, before the subscribe early-return below, so
+  // this respects the rules of hooks regardless of which action is active.
+  // useResolvedActionHref's 'link' case already checks both data.href and
+  // data.ctaHref, so the standalone button block (which uses `href`, not
+  // `ctaHref`) works here without any extra mapping — only the *label*
+  // field name differs between blocks, hence labelKey.
+  const { href, ready, missing } = useResolvedActionHref(data, funnelOwnerUid);
+  const label = data[labelKey];
+
+  if (data.actionType === 'subscribe') {
+    return (
+      <SubscribeInlineForm
+        label={label}
+        funnelOwnerUid={funnelOwnerUid}
+        editable={editable}
+      />
+    );
+  }
+
+  const isFollow = data.actionType === 'follow';
+  const isExternal = isFollow || data.actionType === 'shop';
+  const platform = isFollow ? FOLLOW_PLATFORMS[data.platform] : null;
+  const disabled = !ready || missing;
+
+  return (
+    <Button
+      asChild
+      variant={buttonVariant}
+      className={buttonClassName}
+      style={platform ? { backgroundColor: platform.color, color: '#fff' } : undefined}
+    >
+      <a
+        href={disabled ? undefined : href}
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
+        className={`inline-flex items-center gap-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+        title={missing ? (data.actionType === 'shop' ? "No shop set up yet" : "No product selected yet") : undefined}
+        onClick={(e) => { if (disabled) e.preventDefault(); }}
+      >
+        <span
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ [labelKey]: e.target.textContent })}
+          className="focus:outline-none"
+        >
+          {label}
+        </span>
+        {showIcon && <ArrowUpRight className="h-4 w-4" />}
+      </a>
+    </Button>
+  );
+}
+
+// Makes any image (the standalone image block, hero's own image) clickable
+// with the same actions a button gets — Link / Follow / Shop / Product —
+// minus "Join mailing list" (an inline email form doesn't make sense in
+// place of an image). No action configured (the default) just renders the
+// image completely unchanged, no wrapping anchor at all.
+function ClickableImage({ data, funnelOwnerUid, children }) {
+  const { href, ready, missing } = useResolvedActionHref(data, funnelOwnerUid);
+
+  if (!data.actionType || data.actionType === 'none') {
+    return children;
+  }
+
+  const isFollow = data.actionType === 'follow';
+  const isExternal = isFollow || data.actionType === 'shop';
+  const disabled = !ready || missing;
+
+  return (
+    <a
+      href={disabled ? undefined : href}
+      target={isExternal ? '_blank' : undefined}
+      rel={isExternal ? 'noopener noreferrer' : undefined}
+      className={`block ${disabled ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+      title={missing ? (data.actionType === 'shop' ? "No shop set up yet" : data.actionType === 'product' ? "No product selected yet" : undefined) : undefined}
+      onClick={(e) => { if (disabled) e.preventDefault(); }}
+    >
+      {children}
+    </a>
+  );
+}
+
+// Lets one block have two independent click actions using the same
+// ActionFields/CtaAction/ClickableImage components — e.g. hero's CTA
+// button (actionType/platform/handle/productId) and hero's own image
+// (needs the exact same shape, but must not collide with the CTA's
+// fields). Remaps a prefix's fields to the plain names those components
+// expect, and remaps onChange patches back to the prefixed field names.
+function prefixedAction(data, onChange, prefix) {
+  const keys = ['actionType', 'platform', 'handle', 'productId', 'href', 'label', 'ctaLabel'];
+  const remapped = {};
+  keys.forEach((k) => { remapped[k] = data[`${prefix}${k[0].toUpperCase()}${k.slice(1)}`]; });
+  const remappedOnChange = (patch) => {
+    const real = {};
+    Object.entries(patch).forEach(([k, v]) => { real[`${prefix}${k[0].toUpperCase()}${k.slice(1)}`] = v; });
+    onChange(real);
+  };
+  return { data: remapped, onChange: remappedOnChange };
+}
+
 // ----- Block registry ----- //
 const BLOCKS = {
   hero: {
@@ -127,86 +474,210 @@ const BLOCKS = {
       subhead: "A blazing‑fast funnel built with our drag‑and‑drop editor.",
       ctaLabel: "Get Started",
       ctaHref: "#",
-      image: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=1200&auto=format&fit=crop",
+      actionType: "link",
+      image: "/images/AmeliaBedroom.png",
       align: "center",
       gradient: true,
     }),
-    render: ({ data, onChange, editable }) => (
-      <section className={`relative overflow-hidden rounded-2xl border border-gray-200 ${
-        data.gradient ? "bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10" : "bg-white"
-      } p-8 md:p-12`}>
-        <div className={`mx-auto ${data.align === "center" ? "text-center max-w-2xl" : "text-left grid md:grid-cols-2 gap-8 items-center"}`}>
-          <div>
-            <h1
-              contentEditable={editable}
-              suppressContentEditableWarning={true}
-              onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
-              className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
-            >
-              {data.headline}
-            </h1>
+    render: ({ data, onChange, editable, funnelOwnerUid }) => {
+      // Full-bleed background image with the headline/CTA overlaid on top —
+      // what the Wildlife/Women's Empowerment templates actually intend
+      // (they set gradientOverlay/gradientColor/textColor), as opposed to
+      // the default side-by-side/stacked layout below.
+      if (data.gradientOverlay) {
+        const overlayColor = resolveOverlayColor(data.gradientColor);
+        const textColor = data.textColor === 'dark' ? '#0f172a' : '#ffffff';
+        return (
+          <section
+            className={`relative overflow-hidden rounded-2xl min-h-[420px] flex flex-col justify-center ${
+              data.align === 'center' ? 'items-center text-center' : 'items-start text-left'
+            } p-8 md:p-16`}
+          >
+            {data.image && (
+              <img src={data.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            )}
+            <div className="absolute inset-0" style={{ backgroundColor: overlayColor }} />
 
-            <p
-              contentEditable={editable}
-              suppressContentEditableWarning={true}
-              onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
-              className="mt-3 text-gray-600 text-base md:text-lg focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
-            >
-              {data.subhead}
-            </p>
-            <div className={`mt-5 ${data.align === "center" ? "justify-center" : "justify-start"} flex gap-3`}>
-              <Button asChild>
-                <a href={data.ctaHref} className="inline-flex items-center gap-2">
-                  {data.ctaLabel}
-                  <ArrowUpRight className="h-4 w-4" />
-                </a>
-              </Button>
+            <div className="relative z-10 max-w-2xl" style={{ color: textColor }}>
+              <h1
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+                className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+              >
+                {data.headline}
+              </h1>
+              <p
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+                className="mt-3 text-base md:text-lg opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+              >
+                {data.subhead}
+              </p>
+              <div className={`mt-6 flex gap-3 ${data.align === 'center' ? 'justify-center' : 'justify-start'}`}>
+                <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-white text-gray-900 hover:bg-gray-100" showIcon />
+              </div>
             </div>
-          </div>
-
-          {/* Editable image pattern */}
-          <div className="relative group">
-            {data.align !== "center" && (
-              <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" />
-            )}
-
-            {data.align === "center" && (
-              <img src={data.image} alt="Hero" className="w-full mt-8 rounded-xl shadow-md" />
-            )}
 
             {editable && (
-              <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+              <div className="absolute top-2 right-2 z-10">
+                <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+              </div>
+            )}
+          </section>
+        );
+      }
+
+      return (
+        <section className={`relative overflow-hidden rounded-2xl border border-gray-200 ${
+          data.gradient ? "bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10" : "bg-white"
+        } p-8 md:p-12`}>
+          <div className={`mx-auto ${data.align === "center" ? "text-center max-w-2xl" : "text-left grid md:grid-cols-2 gap-8 items-center"}`}>
+            <div>
+              <h1
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+                className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
+              >
+                {data.headline}
+              </h1>
+
+              <p
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+                className="mt-3 text-gray-600 text-base md:text-lg focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+              >
+                {data.subhead}
+              </p>
+              <div className={`mt-5 ${data.align === "center" ? "justify-center" : "justify-start"} flex gap-3`}>
+                <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} showIcon />
+              </div>
+            </div>
+
+            {/* Side-by-side layout: image is a grid column here, so it's
+                naturally full-width within its own column already. */}
+            {data.align !== "center" && (
+              <div className="relative group">
+                <ClickableImage data={prefixedAction(data, onChange, 'image').data} funnelOwnerUid={funnelOwnerUid}>
+                  <img src={data.image} alt="Hero" className="w-full rounded-xl shadow-md" style={{ maxWidth: `${data.imageWidthPct || 100}%`, margin: '0 auto' }} />
+                </ClickableImage>
+                {editable && (
+                  <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+                )}
+              </div>
             )}
           </div>
-        </div>
-      </section>
-    ),
-    inspector: ({ data, onChange }) => (
+
+          {/* Center layout: image deliberately sits *outside* the text's
+              max-w-2xl wrapper above — that width cap exists for readable
+              text, not for the image, which looks better using the full
+              card width by default (see src/Bible/funnel-builder/gotchas.md). */}
+          {data.align === "center" && (
+            <div className="relative group mt-8">
+              <ClickableImage data={prefixedAction(data, onChange, 'image').data} funnelOwnerUid={funnelOwnerUid}>
+                <img src={data.image} alt="Hero" className="rounded-xl shadow-md" style={{ width: `${data.imageWidthPct || 100}%`, maxWidth: '100%', margin: '0 auto', display: 'block' }} />
+              </ClickableImage>
+              {editable && (
+                <UploadImage onUploaded={(url) => onChange && onChange({ image: url })} />
+              )}
+            </div>
+          )}
+        </section>
+      );
+    },
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
   <div className="space-y-4">
+        <Field label="Hero Style">
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => onChange({ gradientOverlay: false })}
+              className={`text-left rounded-lg border p-2.5 text-sm transition ${
+                !data.gradientOverlay ? 'border-indigo-500 ring-1 ring-indigo-200 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <div className="font-medium text-gray-900">Side-by-side</div>
+              <div className="text-xs text-gray-500 mt-0.5">Text on one side, image next to (or below) it</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ gradientOverlay: true, textColor: data.textColor || 'white' })}
+              className={`text-left rounded-lg border p-2.5 text-sm transition ${
+                data.gradientOverlay ? 'border-indigo-500 ring-1 ring-indigo-200 bg-indigo-50' : 'border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <div className="font-medium text-gray-900">Full-bleed image, text overlaid</div>
+              <div className="text-xs text-gray-500 mt-0.5">Background image fills the section, text sits on top of it</div>
+            </button>
+          </div>
+        </Field>
         <Field label="Headline">
           <Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} />
         </Field>
         <Field label="Sub‑headline">
           <Textarea value={data.subhead} onChange={e=>onChange({ subhead: e.target.value })} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="CTA Label">
-            <Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} />
-          </Field>
+        <Field label="CTA Label">
+          <Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} />
+        </Field>
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
+        {(!data.actionType || data.actionType === 'link') && (
           <Field label="CTA Link">
             <Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} />
           </Field>
-        </div>
-        <Field label="Image URL">
-          <Input value={data.image} onChange={e=>onChange({ image: e.target.value })} />
-        </Field>
+        )}
+        <ImageUrlField label="Image URL" value={data.image} onChange={(image) => onChange({ image })} />
         <Field label="Alignment">
           <div className="flex items-center gap-2">
             <Button variant={data.align === "center" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "center" })}>Center</Button>
             <Button variant={data.align === "left" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "left" })}>Left</Button>
           </div>
         </Field>
-        <ToggleField label="Gradient background" checked={data.gradient} onCheckedChange={(v)=>onChange({ gradient: v })} />
+        {!data.gradientOverlay && (
+          <>
+            <Separator />
+            <Field label={`Image width (${data.imageWidthPct || 100}%)`}>
+              <Slider value={[data.imageWidthPct || 100]} min={30} max={100} step={5} onValueChange={(v)=>onChange({ imageWidthPct: v[0] })} />
+            </Field>
+            <p className="text-xs font-medium text-gray-700">Image click behavior</p>
+            <ActionFields
+              data={prefixedAction(data, onChange, 'image').data}
+              onChange={prefixedAction(data, onChange, 'image').onChange}
+              funnelOwnerUid={funnelOwnerUid}
+              allowSubscribe={false}
+              allowNone
+            />
+          </>
+        )}
+        {data.gradientOverlay ? (
+          <>
+            <Field label="Overlay color">
+              <div className="flex flex-wrap gap-2">
+                {Object.keys(HERO_OVERLAY_HEX).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    title={name}
+                    onClick={() => onChange({ gradientColor: `${name}/70` })}
+                    className={`h-8 w-8 rounded-full border-2 ${(data.gradientColor||'').startsWith(name) ? 'border-indigo-500' : 'border-gray-200'}`}
+                    style={{ backgroundColor: HERO_OVERLAY_HEX[name] }}
+                  />
+                ))}
+              </div>
+            </Field>
+            <Field label="Text color">
+              <div className="flex gap-2">
+                <Button size="sm" variant={data.textColor !== 'dark' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ textColor: 'white' })}>White</Button>
+                <Button size="sm" variant={data.textColor === 'dark' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ textColor: 'dark' })}>Dark</Button>
+              </div>
+            </Field>
+          </>
+        ) : (
+          <ToggleField label="Subtle gradient tint behind text" checked={data.gradient} onCheckedChange={(v)=>onChange({ gradient: v })} />
+        )}
       </div>
     )
   },
@@ -219,23 +690,28 @@ const BLOCKS = {
       links: ["Home", "About", "Opportunities", "How to Volunteer", "Contact"],
       ctaLabel: "Start Now",
       ctaHref: "#",
+      actionType: "link",
       headline: "Volunteer in your Community",
       subhead:
         "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Autem dolore, alias, numquam enim ab voluptate id quam.",
       buttonLabel: "Contact Us",
-      buttonHref: "#",
       placeholder: "Email",
       background:
-        "https://images.unsplash.com/photo-1600055701524-4040df79c3d3?q=80&w=1200&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=1200&auto=format&fit=crop",
       overlay: true,
       darkText: false,
       align: "left",
     }),
-    render: ({ data }) => (
+    render: ({ data, onChange, editable, funnelOwnerUid }) => (
       <section className="relative flex h-[85vh] min-h-[520px] w-full flex-col overflow-hidden rounded-2xl">
         {/* Background */}
         <img src={data.background} alt="Volunteer background" className="absolute inset-0 h-full w-full object-cover" />
         {data.overlay && <div className="absolute inset-0 bg-black/50" />}
+        {editable && (
+          <div className="absolute top-2 right-2 z-20">
+            <UploadImage onUploaded={(url) => onChange && onChange({ background: url })} />
+          </div>
+        )}
 
         {/* Header/Nav */}
         {data.showHeader && (
@@ -251,26 +727,50 @@ const BLOCKS = {
             </div>
 
             {/* CTA */}
-            <Button asChild className="bg-red-600 hover:bg-red-700 text-white text-sm px-5 py-2 rounded-md">
-              <a href={data.ctaHref}>{data.ctaLabel}</a>
-            </Button>
+            <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-red-600 hover:bg-red-700 text-white text-sm px-5 py-2 rounded-md" />
           </nav>
         )}
 
         {/* Hero Text */}
         <div className={`relative z-10 mx-auto flex flex-col items-${data.align} justify-center h-full max-w-3xl px-6 text-${data.align} ${data.darkText ? "text-gray-900" : "text-white"}`}>
-          <h1 className="text-4xl md:text-6xl font-bold leading-tight">{data.headline}</h1>
-          <p className="mt-3 text-base md:text-lg opacity-90">{data.subhead}</p>
+          <h1
+            contentEditable={editable}
+            suppressContentEditableWarning={true}
+            onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+            className="text-4xl md:text-6xl font-bold leading-tight focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+          >
+            {data.headline}
+          </h1>
+          <p
+            contentEditable={editable}
+            suppressContentEditableWarning={true}
+            onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+            className="mt-3 text-base md:text-lg opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+          >
+            {data.subhead}
+          </p>
 
-          {/* Email + Button */}
-          <form onSubmit={(e) => e.preventDefault()} className={`mt-6 flex max-w-md flex-col gap-3 ${data.align === "center" ? "mx-auto" : ""} sm:flex-row`}>
-            <Input placeholder={data.placeholder} className="flex-1 bg-white/90 text-black placeholder-gray-500" />
-            <Button className="bg-indigo-600 hover:bg-indigo-700">{data.buttonLabel}</Button>
-          </form>
+          {/* Real mailing-list signup — was a non-functional email input +
+              button before (the button had no onClick/submit at all and
+              its `buttonHref` field was never read anywhere in render).
+              Optional: leave "Signup button label" blank in the inspector
+              to hide this row entirely, e.g. when a funnel already has a
+              dedicated Email Capture block elsewhere on the page. */}
+          {data.buttonLabel && (
+            <div className={`mt-6 max-w-md ${data.align === "center" ? "mx-auto w-full" : ""}`}>
+              <SubscribeInlineForm
+                label={data.buttonLabel}
+                placeholder={data.placeholder}
+                full
+                funnelOwnerUid={funnelOwnerUid}
+                editable={editable}
+              />
+            </div>
+          )}
         </div>
       </section>
     ),
-    inspector: ({ data, onChange }) => (
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
         <ToggleField label="Show header" checked={data.showHeader} onCheckedChange={(v) => onChange({ showHeader: v })} />
         {data.showHeader && (
@@ -284,9 +784,12 @@ const BLOCKS = {
             <Field label="CTA label">
               <Input value={data.ctaLabel} onChange={(e) => onChange({ ctaLabel: e.target.value })} />
             </Field>
-            <Field label="CTA link">
-              <Input value={data.ctaHref} onChange={(e) => onChange({ ctaHref: e.target.value })} />
-            </Field>
+            <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
+            {(!data.actionType || data.actionType === 'link') && (
+              <Field label="CTA link">
+                <Input value={data.ctaHref} onChange={(e) => onChange({ ctaHref: e.target.value })} />
+              </Field>
+            )}
           </>
         )}
         <Separator />
@@ -296,18 +799,20 @@ const BLOCKS = {
         <Field label="Subheadline">
           <Textarea value={data.subhead} onChange={(e) => onChange({ subhead: e.target.value })} />
         </Field>
-        <Field label="Email placeholder">
-          <Input value={data.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />
+        <p className="text-xs text-gray-500">
+          The row below the headline is a real mailing-list signup. Leave the
+          button label blank to hide it — useful if you're using a separate
+          Email Capture block elsewhere on this page instead.
+        </p>
+        <Field label="Signup button label">
+          <Input value={data.buttonLabel} onChange={(e) => onChange({ buttonLabel: e.target.value })} placeholder="e.g. Join Now (blank = hidden)" />
         </Field>
-        <Field label="Button label">
-          <Input value={data.buttonLabel} onChange={(e) => onChange({ buttonLabel: e.target.value })} />
-        </Field>
-        <Field label="Button link">
-          <Input value={data.buttonHref} onChange={(e) => onChange({ buttonHref: e.target.value })} />
-        </Field>
-        <Field label="Background image">
-          <Input value={data.background} onChange={(e) => onChange({ background: e.target.value })} />
-        </Field>
+        {data.buttonLabel && (
+          <Field label="Email placeholder">
+            <Input value={data.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />
+          </Field>
+        )}
+        <ImageUrlField label="Background image" value={data.background} onChange={(background) => onChange({ background })} />
         <ToggleField label="Overlay" checked={data.overlay} onCheckedChange={(v) => onChange({ overlay: v })} />
         <ToggleField label="Dark text" checked={data.darkText} onCheckedChange={(v) => onChange({ darkText: v })} />
         <Field label="Alignment">
@@ -324,10 +829,14 @@ const BLOCKS = {
     name: "Heading",
     icon: Type,
     defaults: () => ({ text: "Powerful headline", size: 36, align: "center" }),
-    render: ({ data }) => (
-      <h2 className={`w-full font-semibold tracking-tight ${
-        data.align === "center" ? "text-center" : data.align === "right" ? "text-right" : "text-left"
-      }`} style={{ fontSize: `${data.size}px` }}>{data.text}</h2>
+    render: ({ data, onChange, editable }) => (
+      <h2
+        contentEditable={editable}
+        suppressContentEditableWarning={true}
+        onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
+        className={`w-full font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded ${
+          data.align === "center" ? "text-center" : data.align === "right" ? "text-right" : "text-left"
+        }`} style={{ fontSize: `${data.size}px` }}>{data.text}</h2>
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
@@ -347,8 +856,12 @@ const BLOCKS = {
     name: "Paragraph",
     icon: Rows3,
     defaults: () => ({ text: "Explain your offer in a concise, benefit‑driven way.", width: 700, align: "center" }),
-    render: ({ data }) => (
-      <p className={`text-gray-600 leading-7 ${
+    render: ({ data, onChange, editable }) => (
+      <p
+        contentEditable={editable}
+        suppressContentEditableWarning={true}
+        onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
+        className={`text-gray-600 leading-7 focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded ${
         data.align === "center" ? "mx-auto text-center" : data.align === "right" ? "ml-auto text-right" : "text-left"
       }`} style={{ maxWidth: data.width }}>{data.text}</p>
     ),
@@ -371,38 +884,71 @@ const BLOCKS = {
   image: {
     name: "Image",
     icon: ImageIcon,
-    defaults: () => ({ url: "https://images.unsplash.com/photo-1518779578993-ec3579fee39f?q=80&w=1200&auto=format&fit=crop", radius: 16, shadow: true }),
-    render: ({ data, onChange, editable }) => (
-      <div className="relative group">
-        <img src={data.url} alt="" className={`w-full ${data.shadow? 'shadow-md':''}`} style={{ borderRadius: data.radius }} />
+    defaults: () => ({ url: "/images/products/lucasroom.jpg", radius: 16, shadow: true }),
+    render: ({ data, onChange, editable, funnelOwnerUid }) => (
+      <div className="relative group" style={{ textAlign: 'center' }}>
+        <ClickableImage data={data} funnelOwnerUid={funnelOwnerUid}>
+          <img src={data.url} alt="" className={data.shadow? 'shadow-md':''} style={{ width: `${data.widthPct || 100}%`, maxWidth: '100%', borderRadius: data.radius, display: 'inline-block' }} />
+        </ClickableImage>
         {editable && (
               <UploadImage onUploaded={(url) => onChange && onChange({ url })} />
         )}
       </div>
     ),
-    inspector: ({ data, onChange }) => (
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
-        <Field label="Image URL"><Input value={data.url} onChange={e=>onChange({ url: e.target.value })} /></Field>
+        <ImageUrlField label="Image URL" value={data.url} onChange={(url) => onChange({ url })} />
+        <Field label={`Width (${data.widthPct || 100}%)`}>
+          <Slider value={[data.widthPct || 100]} min={20} max={100} step={5} onValueChange={(v)=>onChange({ widthPct: v[0] })} />
+        </Field>
         <Field label="Corner radius"><Slider value={[data.radius]} min={0} max={32} step={1} onValueChange={(v)=>onChange({ radius: v[0] })} /></Field>
         <ToggleField label="Shadow" checked={data.shadow} onCheckedChange={(v)=>onChange({ shadow: v })} />
+        <Separator />
+        <p className="text-xs font-medium text-gray-700">Click behavior</p>
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} allowSubscribe={false} allowNone />
       </div>
     )
   },
   button: {
     name: "Button",
     icon: Link,
-    defaults: () => ({ label: "Get started", href: "#", style: "default", full: false }),
-    render: ({ data }) => (
-      <div className={`flex ${data.full? '':'justify-center'}`}>
-        <Button asChild className={data.full? 'w-full':''} variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}>
-          <a href={data.href}>{data.label}</a>
-        </Button>
-      </div>
-    ),
-    inspector: ({ data, onChange }) => (
+    defaults: () => ({ label: "Get started", href: "#", style: "default", full: false, actionType: "link" }),
+    render: ({ data, onChange, editable, funnelOwnerUid }) => {
+      if (data.actionType === 'subscribe') {
+        return (
+          <SubscribeInlineForm
+            label={data.label}
+            full={data.full}
+            style={data.style}
+            funnelOwnerUid={funnelOwnerUid}
+            editable={editable}
+          />
+        );
+      }
+      return (
+        <div className={`flex ${data.full? '':'justify-center'}`}>
+          <CtaAction
+            data={data}
+            onChange={onChange}
+            editable={editable}
+            funnelOwnerUid={funnelOwnerUid}
+            labelKey="label"
+            buttonClassName={data.full ? 'w-full' : ''}
+            buttonVariant={data.style === 'ghost' ? 'ghost' : data.style === 'outline' ? 'outline' : 'default'}
+          />
+        </div>
+      );
+    },
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
       <div className="space-y-4">
         <Field label="Label"><Input value={data.label} onChange={e=>onChange({ label: e.target.value })} /></Field>
-        <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
+        {(!data.actionType || data.actionType === 'link') && (
+          <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
+        )}
+        {data.actionType === 'subscribe' && (
+          <p className="text-xs text-gray-500">Visitors who click this button enter their email right there to join your mailing list — no link needed.</p>
+        )}
         <Field label="Style">
           <div className="flex gap-2">
             {['default','outline','ghost'].map(s=> (
@@ -418,13 +964,26 @@ const BLOCKS = {
     name: "Email Capture",
     icon: Mail,
     defaults: () => ({ headline: "Get early access", placeholder: "you@example.com", button: "Notify me", success: "Thanks! Check your inbox." }),
-    render: ({ data }) => (
+    render: ({ data, onChange, editable, funnelOwnerUid }) => (
       <div className="mx-auto max-w-md w-full">
-        <h3 className="text-xl font-semibold tracking-tight text-center">{data.headline}</h3>
-        <form onSubmit={(e)=>e.preventDefault()} className="mt-3 flex gap-2">
-          <Input placeholder={data.placeholder} className="flex-1" />
-          <Button type="submit">{data.button}</Button>
-        </form>
+        <h3
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+          className="text-xl font-semibold tracking-tight text-center focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+        >
+          {data.headline}
+        </h3>
+        <div className="mt-3">
+          <SubscribeInlineForm
+            label={data.button}
+            placeholder={data.placeholder}
+            successMessage={data.success}
+            full
+            funnelOwnerUid={funnelOwnerUid}
+            editable={editable}
+          />
+        </div>
   <p className="text-xs text-gray-600 mt-2 text-center">We respect your privacy.</p>
       </div>
     ),
@@ -448,14 +1007,47 @@ const BLOCKS = {
         { id: uuidv4(), title: "Integrated", desc: "Connect payments, email, analytics." },
       ],
     }),
-    render: ({ data }) => (
+    render: ({ data, onChange, editable }) => (
       <div className="w-full">
-        <h3 className="text-xl font-semibold tracking-tight text-center">{data.title}</h3>
+        <h3
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ title: e.target.textContent })}
+          className="text-xl font-semibold tracking-tight text-center focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+        >
+          {data.title}
+        </h3>
         <div className="grid md:grid-cols-3 gap-4 mt-4">
           {data.items.map((it, i)=> (
             <Card key={it.id} className="h-full">
-              <CardHeader className="pb-2"><CardTitle className="text-base">{it.title}</CardTitle></CardHeader>
-              <CardContent className="text-sm text-gray-600">{it.desc}</CardContent>
+              <CardHeader className="pb-2">
+                <CardTitle
+                  contentEditable={editable}
+                  suppressContentEditableWarning={true}
+                  onBlur={(e) => {
+                    if (!onChange) return;
+                    const items = [...data.items];
+                    items[i] = { ...it, title: e.target.textContent };
+                    onChange({ items });
+                  }}
+                  className="text-base focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+                >
+                  {it.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent
+                contentEditable={editable}
+                suppressContentEditableWarning={true}
+                onBlur={(e) => {
+                  if (!onChange) return;
+                  const items = [...data.items];
+                  items[i] = { ...it, desc: e.target.textContent };
+                  onChange({ items });
+                }}
+                className="text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+              >
+                {it.desc}
+              </CardContent>
             </Card>
           ))}
         </div>
@@ -488,7 +1080,91 @@ const BLOCKS = {
       </div>
     )
   },
+  cta: {
+    name: "Call to Action",
+    icon: ArrowUpRight,
+    defaults: () => ({
+      headline: "Ready to get started?",
+      subhead: "Join hundreds of happy customers today.",
+      ctaLabel: "Get Started",
+      ctaHref: "#",
+      theme: "dark",
+      background: { color: "indigo-600" },
+      align: "center",
+    }),
+    render: ({ data, onChange, editable, funnelOwnerUid }) => {
+      const isLight = data.theme === 'light' && !data.background?.color;
+      const bgColor = isLight ? CTA_BG_COLORS.light : (CTA_BG_COLORS[data.background?.color] || CTA_BG_COLORS['indigo-600']);
+      const textColor = data.textColor === 'dark' || isLight ? '#0f172a' : '#ffffff';
+      const alignCls = data.align === 'left' ? 'items-start text-left' : data.align === 'right' ? 'items-end text-right' : 'items-center text-center';
+      return (
+        <section
+          className={`rounded-2xl flex flex-col ${alignCls} ${data.padding || 'py-16'} px-8`}
+          style={{ backgroundColor: bgColor, color: textColor }}
+        >
+          <h2
+            contentEditable={editable}
+            suppressContentEditableWarning={true}
+            onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
+            className="text-3xl md:text-4xl font-bold focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+          >
+            {data.headline}
+          </h2>
+          {(data.subhead || editable) && (
+            <p
+              contentEditable={editable}
+              suppressContentEditableWarning={true}
+              onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
+              className="mt-3 max-w-xl opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+            >
+              {data.subhead}
+            </p>
+          )}
+          <div className="mt-6">
+            <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-white text-gray-900 hover:bg-gray-100" />
+          </div>
+        </section>
+      );
+    },
+    inspector: ({ data, onChange, funnelOwnerUid }) => (
+      <div className="space-y-4">
+        <Field label="Headline"><Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} /></Field>
+        <Field label="Subheadline"><Textarea value={data.subhead} onChange={e=>onChange({ subhead: e.target.value })} /></Field>
+        <Field label="Button label"><Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} /></Field>
+        <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} />
+        {(!data.actionType || data.actionType === 'link') && (
+          <Field label="Button link"><Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} /></Field>
+        )}
+        <Field label="Background color">
+          <div className="flex flex-wrap gap-2">
+            {Object.keys(CTA_BG_COLORS).map((key) => (
+              <button
+                key={key}
+                type="button"
+                title={key}
+                onClick={() => onChange({ background: { color: key }, theme: key === 'light' ? 'light' : 'dark' })}
+                className={`h-8 w-8 rounded-full border-2 ${data.background?.color === key ? 'border-indigo-500' : 'border-gray-200'}`}
+                style={{ backgroundColor: CTA_BG_COLORS[key] }}
+              />
+            ))}
+          </div>
+        </Field>
+        <Field label="Alignment">
+          <div className="flex gap-2">
+            {['left','center','right'].map(al=> (
+              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className="text-black" onClick={()=>onChange({ align: al })}>{al}</Button>
+            ))}
+          </div>
+        </Field>
+      </div>
+    )
+  },
 };
+
+// Exported so the public viewer (FunnelViewer.js) can render a saved
+// funnel's real blocks with the exact same markup as the editor, instead
+// of maintaining a second copy of every block's display logic.
+export { BLOCKS };
 
 // (Templates gallery removed — templates are now managed in the separate TemplatesPage)
 
@@ -500,8 +1176,8 @@ const Field = ({ label, children }) => (
   </div>
 );
 const ToggleField = ({ label, checked, onCheckedChange }) => (
-  <div className="flex items-center justify-between py-1">
-    <Label className="text-xs uppercase tracking-wider text-gray-600">{label}</Label>
+  <div className="flex items-center justify-between gap-3 py-1">
+    <Label className="text-sm text-gray-700">{label}</Label>
     <Switch checked={checked} onCheckedChange={onCheckedChange} />
   </div>
 );
@@ -539,7 +1215,7 @@ function SortableItem({ id, children, selected, onSelect }) {
 }
 
 // ----- Main App ----- //
-export default function FunnelBuilder({ initialTemplateId = null }) {
+export default function FunnelBuilder({ initialTemplateId = null, funnelId = null, currentUserId = null, companySlug = null }) {
   // Map simple template ids (from the TemplatesPage) to block type arrays.
   const TEMPLATE_MAP = {
     volunteer: ['volunteerHero', 'paragraph'],
@@ -556,14 +1232,6 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
   const [device, setDevice] = useState('desktop');
   const [blocks, setBlocks] = useState(()=>loadInitial(initialTemplateId));
   const [selectedId, setSelectedId] = useState(null);
-  // showCreateModal is false by default; open it when the user clicks "Create"
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [funnelData, setFunnelData] = useState({
-    name: "",
-    domain: "<storename>.fotonix.co.uk",
-    goal: "",
-    currency: "Euro",
-  });
   const [showExport, setShowExport] = useState(false);
   const [importText, setImportText] = useState("");
   // edit mode enables inline editable regions in the canvas
@@ -571,9 +1239,91 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
 
+  // Real persistence — funnelId is set when this editor was opened from the
+  // dashboard for an existing (or just-created) funnel row. Before this,
+  // the editor only ever wrote to a single shared localStorage key; that
+  // stays as a crash-recovery draft cache, but the funnels API is now the
+  // source of truth whenever we have a real id to save against.
+  const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+  const [publishStatus, setPublishStatus] = useState('idle'); // idle | publishing | published | error
+  const [publicUrl, setPublicUrl] = useState(null);
+  const authHeaders = useMemo(() => ({
+    'Content-Type': 'application/json',
+    'x-member-uid': currentUserId || 'test_user_1',
+  }), [currentUserId]);
+
   const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 5 } }), useSensor(TouchSensor));
 
   useEffect(()=>{ localStorage.setItem('funnel.blocks', JSON.stringify(blocks)); },[blocks]);
+
+  // If we're editing a real, already-saved funnel, load its actual blocks
+  // from the backend — this overrides whatever loadInitial() guessed from
+  // a template or the shared localStorage draft.
+  useEffect(() => {
+    if (!funnelId) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/funnels/${funnelId}`, { headers: authHeaders });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.funnel?.blocks)) {
+          setBlocks(data.funnel.blocks);
+        }
+        if (data.funnel?.published) {
+          setPublishStatus('published');
+        }
+      } catch (e) {
+        // non-fatal — editor still usable against whatever loadInitial() gave it
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [funnelId]);
+
+  // Debounced autosave to the real backend whenever blocks change, if we
+  // have a funnel to save against.
+  useEffect(() => {
+    if (!funnelId) return;
+    setSaveStatus('saving');
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/funnels/${funnelId}`, {
+          method: 'PATCH',
+          headers: authHeaders,
+          body: JSON.stringify({ blocks }),
+        });
+        setSaveStatus(res.ok ? 'saved' : 'error');
+      } catch (e) {
+        setSaveStatus('error');
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, funnelId]);
+
+  async function publishFunnel() {
+    if (!funnelId) {
+      alert('Create this funnel from the Funnels dashboard first, then publishing will be available here.');
+      return;
+    }
+    setPublishStatus('publishing');
+    try {
+      const res = await fetch(`${API_URL}/api/funnels/${funnelId}/publish`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      if (!res.ok) {
+        setPublishStatus('error');
+        return;
+      }
+      const data = await res.json();
+      setPublishStatus('published');
+      if (companySlug && data.funnel?.slug) {
+        setPublicUrl(`${window.location.origin}/funnel/${companySlug}/${data.funnel.slug}`);
+      }
+    } catch (e) {
+      setPublishStatus('error');
+    }
+  }
 
   // If the URL contains a ?template=... param (navigated from TemplatesPage),
   // hydrate the editor with the starter blocks from the central registry.
@@ -674,80 +1424,6 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
 
   function importSchema(){ try { const obj = JSON.parse(importText); if (obj?.blocks) { setBlocks(obj.blocks); setVariant(obj.variant||'A'); setShowExport(false);} } catch(e){ alert('Invalid JSON'); } }
 
-  const CreateFunnelModal = () => (
-    <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-      <DialogContent className="max-w-md rounded-2xl p-6">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">Create funnel</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 mt-4">
-          <Field label="Name">
-            <Input
-              placeholder="Name"
-              value={funnelData.name}
-              onChange={(e) => setFunnelData({ ...funnelData, name: e.target.value })}
-            />
-          </Field>
-
-          <Field label="Funnel domain">
-            <Input
-              value={funnelData.domain}
-              onChange={(e) => setFunnelData({ ...funnelData, domain: e.target.value })}
-            />
-          </Field>
-
-          <Field label="Choose your funnel goal">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { id: "audience", title: "Build an audience", desc: "Collect email addresses and build your email list.", icon: funnelAudienceIcon },
-                { id: "sell", title: "Sell", desc: "Sell a product or a service.", icon: funnelSellIcon },
-                { id: "custom", title: "Custom", desc: "Build a custom funnel from scratch.", icon: funnelCustomIcon },
-                { id: "webinar", title: "Run an evergreen webinar", desc: "Run webinars to automate your business.", icon: funnelWebinarIcon },
-              ].map((goal) => (
-                <button
-                  key={goal.id}
-                  onClick={() => setFunnelData({ ...funnelData, goal: goal.id })}
-                  className={`rounded-lg border p-3 text-left transition hover:bg-gray-50 ${
-                    funnelData.goal === goal.id ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-200"
-                  }`}
-                >
-                  {/* Icon above the card text */}
-                  <div className="flex items-center justify-center mb-3">
-                    <img src={goal.icon} alt={goal.title} className="w-14 h-10 object-contain opacity-95" />
-                  </div>
-                  <h4 className="font-medium text-sm">{goal.title}</h4>
-                  <p className="text-xs text-gray-600 mt-1">{goal.desc}</p>
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Currency">
-            <select
-              value={funnelData.currency}
-              onChange={(e) => setFunnelData({ ...funnelData, currency: e.target.value })}
-              className="w-full rounded-md border border-gray-200 px-2 py-1"
-            >
-              <option>Euro</option>
-              <option>USD</option>
-              <option>GBP</option>
-            </select>
-          </Field>
-
-          <div className="flex justify-end mt-6">
-            <Button
-              disabled={!funnelData.name || !funnelData.goal}
-              onClick={() => setShowCreateModal(false)}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-gradient-to-b from-white to-gray-100">
@@ -755,11 +1431,8 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
           <EditorHeader
             variant={variant}
             setVariant={setVariant}
-            setShowCreateModal={setShowCreateModal}
             device={device}
             setDevice={setDevice}
-            doUndo={doUndo}
-            doRedo={doRedo}
             showExport={showExport}
             setShowExport={setShowExport}
             schema={schema}
@@ -768,6 +1441,10 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
             importSchema={importSchema}
             editMode={editMode}
             setEditMode={setEditMode}
+            saveStatus={saveStatus}
+            publishStatus={publishStatus}
+            publishFunnel={publishFunnel}
+            publicUrl={publicUrl}
           />
 
           <div className="pt-[72px] md:pt-[86px]">
@@ -795,7 +1472,7 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
                 <ScrollArea className="h-[calc(100vh-240px)] p-3">
                   {selectedId ? (
                     <div className="p-4">
-                      <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} />
+                      <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} funnelOwnerUid={currentUserId} />
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
@@ -845,6 +1522,7 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
                       block={block}
                       editable={editMode}
                       onChange={(patch) => updateBlock(block.id, patch)}
+                      funnelOwnerUid={currentUserId}
                     />
                     <div className="mt-3 flex items-center justify-end gap-2">
                       <Button
@@ -883,6 +1561,7 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
                       onChange={(patch) =>
                         updateBlock(activeBlock.id, patch)
                       }
+                      funnelOwnerUid={currentUserId}
                     />
                   </div>
                 ) : null}
@@ -898,24 +1577,39 @@ export default function FunnelBuilder({ initialTemplateId = null }) {
         </div>
       </div>
     </div>
-      {showCreateModal && <CreateFunnelModal />}
     </TooltipProvider>
   );
 }
 
-function BLOCKRenderer({ block, editable = false, onChange }){
+function BLOCKRenderer({ block, editable = false, onChange, funnelOwnerUid }){
   const def = BLOCKS[block.type];
   if (!def) return <div className="text-red-500">Unknown block: {block.type}</div>;
   return (
     <AnimatePresence mode="popLayout">
-      <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-        {def.render({ data: block.data, onChange, editable })}
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        // Blocks render real <a href> CTAs/links so the public funnel page
+        // works normally — but that means clicking one here in the editor
+        // to select/edit it would also really navigate the browser away.
+        // Swallowing the click at capture time (before the anchor's native
+        // navigation runs) stops that. Scoped to actual <a> elements only
+        // (not the whole block) — a blanket preventDefault here would also
+        // suppress a submit <button>'s default action (triggering its
+        // form's submit event), which is exactly what the "Join mailing
+        // list" button/Email Capture block need in order to show their
+        // editor-preview success state at all.
+        onClickCapture={(e) => { if (editable && e.target.closest('a')) e.preventDefault(); }}
+      >
+        {def.render({ data: block.data, onChange, editable, funnelOwnerUid })}
       </motion.div>
     </AnimatePresence>
   );
 }
 
-function Inspector({ block, onChange }){
+function Inspector({ block, onChange, funnelOwnerUid }){
   if (!block) return null;
   const def = BLOCKS[block.type];
   return (
@@ -924,7 +1618,7 @@ function Inspector({ block, onChange }){
         <h4 className="font-medium">{def.name}</h4>
         <Badge variant="secondary" className="uppercase">{block.type}</Badge>
       </div>
-      {def.inspector({ data: block.data, onChange })}
+      {def.inspector({ data: block.data, onChange, funnelOwnerUid })}
     </div>
   );
 }
@@ -948,6 +1642,164 @@ function TooltipWrap({ label, children }){
   );
 }
 
+// SubscribeInlineForm — real email-capture submission, shared by the
+// "Join mailing list" button action and the Email Capture block. Posts to
+// the funnel owner's contacts (via server/routes/email/contacts.js, using
+// their uid as the x-member-uid header) rather than a separate per-affiliate
+// list system, which doesn't exist — see src/Bible/emails/gotchas.md.
+function SubscribeInlineForm({
+  label = "Subscribe",
+  placeholder = "you@example.com",
+  successMessage = "Thanks — you're on the list!",
+  full = false,
+  style = 'default',
+  funnelOwnerUid,
+  editable,
+}) {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState('idle'); // idle | submitting | success | error
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!email || status === 'submitting') return;
+
+    // In the editor canvas this is just a live preview of the block — don't
+    // write a real signup every time someone testing the funnel clicks it.
+    if (editable) {
+      setStatus('success');
+      return;
+    }
+
+    setStatus('submitting');
+    try {
+      const res = await fetch(`${API_URL}/api/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-member-uid': funnelOwnerUid || '' },
+        body: JSON.stringify({ email, source: 'funnel_signup' }),
+      });
+      // 409 = this email is already subscribed — that's a success from the visitor's point of view.
+      setStatus(res.ok || res.status === 409 ? 'success' : 'error');
+    } catch (err) {
+      setStatus('error');
+    }
+  }
+
+  if (status === 'success') {
+    return <p className="text-sm text-center text-emerald-700 font-medium py-2">{successMessage}</p>;
+  }
+
+  return (
+    <div className={full ? 'w-full' : ''}>
+      <form onSubmit={handleSubmit} className={`flex gap-2 ${full ? 'w-full' : 'justify-center'}`}>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 min-w-0 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100"
+        />
+        <Button
+          type="submit"
+          disabled={status === 'submitting'}
+          variant={style === 'ghost' ? 'ghost' : style === 'outline' ? 'outline' : 'default'}
+        >
+          {status === 'submitting' ? '…' : label}
+        </Button>
+      </form>
+      {status === 'error' && (
+        <p className="text-xs text-red-600 text-center mt-1">Something went wrong — please try again.</p>
+      )}
+    </div>
+  );
+}
+
+// Resize + re-encode an image client-side before it ever reaches Firebase
+// Storage. Storage cost (and every later page load's bandwidth) scales with
+// stored bytes — an un-resized phone photo can be 4000px+ and several MB;
+// funnel images are never displayed larger than the page width, so there's
+// no reason to store more than ~1600px on the long edge. WebP at 0.82
+// quality typically lands a photo like that in the low hundreds of KB
+// (vs multiple MB for the original) with no visible quality loss at
+// display size. Falls back to JPEG if the browser can't encode WebP.
+async function compressImageFile(file, { maxDimension = 1600, quality = 0.82 } = {}) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    let { width, height } = bitmap;
+    if (width > maxDimension || height > maxDimension) {
+      const scale = maxDimension / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+
+    const webpBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+    if (webpBlob) return { blob: webpBlob, extension: 'webp' };
+
+    const jpegBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (jpegBlob) return { blob: jpegBlob, extension: 'jpg' };
+  } catch (e) {
+    // createImageBitmap/canvas unsupported for this file — fall through to the original
+  }
+  return { blob: file, extension: (file.name.split('.').pop() || 'jpg').toLowerCase() };
+}
+
+async function uploadFunnelImage(file) {
+  const { blob, extension } = await compressImageFile(file);
+  const path = `uploads/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
+  const sRef = storageRef(storage, path);
+  const task = uploadBytesResumable(sRef, blob);
+  await new Promise((res, rej) => {
+    task.on('state_changed', null, (err) => rej(err), () => res());
+  });
+  return getDownloadURL(task.snapshot.ref);
+}
+
+// ImageUrlField — an inspector field that accepts either a pasted URL or a
+// direct file upload (compressed via uploadFunnelImage before it's stored).
+function ImageUrlField({ label = "Image URL", value, onChange }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      setUploading(true);
+      const url = await uploadFunnelImage(file);
+      onChange(url);
+    } catch (err) {
+      console.error('Upload failed', err);
+      alert('Image upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = null;
+    }
+  }
+
+  return (
+    <Field label={label}>
+      <div className="flex items-center gap-2">
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Paste an image URL…" />
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="shrink-0 text-black"
+          disabled={uploading}
+          onClick={() => inputRef.current && inputRef.current.click()}
+        >
+          {uploading ? 'Uploading…' : 'Upload'}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
 // UploadImage — small helper that opens a file picker and uploads the image
 function UploadImage({ onUploaded, accept = 'image/*', className }){
   const inputRef = useRef(null);
@@ -958,13 +1810,7 @@ function UploadImage({ onUploaded, accept = 'image/*', className }){
     if (!file) return;
     try {
       setUploading(true);
-      const path = `uploads/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g,'')}`;
-      const sRef = storageRef(storage, path);
-      const task = uploadBytesResumable(sRef, file);
-      await new Promise((res, rej) => {
-        task.on('state_changed', null, (err)=> rej(err), ()=> res());
-      });
-      const url = await getDownloadURL(task.snapshot.ref);
+      const url = await uploadFunnelImage(file);
       if (onUploaded) onUploaded(url);
     } catch (err) {
       console.error('Upload failed', err);
@@ -999,7 +1845,7 @@ const TT = ({ label, children }) => (
   </Tooltip>
 );
 
-export function CompactControls({ device, setDevice, doUndo, doRedo }) {
+export function CompactControls({ device, setDevice }) {
   const deviceOpts = [
     { key: "desktop", Icon: Laptop, label: "Desktop" },
     { key: "tablet", Icon: Tablet, label: "Tablet" },
@@ -1016,31 +1862,6 @@ export function CompactControls({ device, setDevice, doUndo, doRedo }) {
         rounded-xl px-2 py-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.06)]
       "
     >
-      {/* Undo / Redo */}
-      <div className="flex items-center gap-1">
-        <TT label="Undo (⌘/Ctrl+Z)">
-          <button
-            type="button"
-            onClick={doUndo}
-            className="h-8 w-8 grid place-items-center rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:scale-[.97] transition-all"
-          >
-            <Undo2 className="h-4 w-4" />
-          </button>
-        </TT>
-
-        <TT label="Redo (⌘/Ctrl+Shift+Z)">
-          <button
-            type="button"
-            onClick={doRedo}
-            className="h-8 w-8 grid place-items-center rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:scale-[.97] transition-all"
-          >
-            <Redo2 className="h-4 w-4" />
-          </button>
-        </TT>
-      </div>
-
-      <span className="h-5 w-px bg-gray-200 mx-1" aria-hidden />
-
       {/* Device preview buttons */}
       <div className="flex items-center gap-1">
         {deviceOpts.map(({ key, Icon, label }) => {
@@ -1116,11 +1937,8 @@ function Segmented({ options, value, onChange, compact = false }) {
 function EditorHeader({
   variant,
   setVariant,
-  setShowCreateModal,
   device,
   setDevice,
-  doUndo,
-  doRedo,
   showExport,
   setShowExport,
   schema,
@@ -1129,6 +1947,10 @@ function EditorHeader({
   importSchema,
   editMode,
   setEditMode,
+  saveStatus,
+  publishStatus,
+  publishFunnel,
+  publicUrl,
 }) {
   return (
     <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/80 border-b border-gray-200 shadow-sm">
@@ -1150,14 +1972,6 @@ function EditorHeader({
             />
 
             <Button
-              size="sm"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
-              onClick={() => setShowCreateModal(true)}
-            >
-              + Create
-            </Button>
-
-            <Button
               variant={editMode ? "default" : "outline"}
               size="icon"
               onClick={() => setEditMode(!editMode)}
@@ -1170,7 +1984,7 @@ function EditorHeader({
 
         {/* Secondary row (compact + pretty) */}
         <div className="h-12 px-4 md:px-6 flex items-center justify-start">
-          <CompactControls device={device} setDevice={setDevice} doUndo={doUndo} doRedo={doRedo} />
+          <CompactControls device={device} setDevice={setDevice} />
         </div>
 
         {/* Right — Actions */}
@@ -1220,12 +2034,35 @@ function EditorHeader({
             </DialogContent>
           </Dialog>
 
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-md hover:shadow-lg transition-all">
+          <span className="hidden md:inline text-xs text-gray-400">
+            {saveStatus === 'saving' && 'Saving…'}
+            {saveStatus === 'saved' && 'Saved'}
+            {saveStatus === 'error' && 'Save failed'}
+          </span>
+
+          <Button
+            onClick={publishFunnel}
+            disabled={publishStatus === 'publishing'}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-60"
+          >
             <Play className="h-4 w-4 mr-2" />
-            Publish
+            {publishStatus === 'publishing' ? 'Publishing…' : publishStatus === 'published' ? 'Published' : 'Publish'}
           </Button>
         </div>
       </div>
+
+      {publicUrl && (
+        <div className="max-w-[1400px] mx-auto px-4 md:px-6 pb-2 text-xs text-emerald-700 flex items-center gap-2">
+          Live at
+          <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="underline font-medium">{publicUrl}</a>
+          <button
+            className="text-emerald-600 hover:text-emerald-800"
+            onClick={() => navigator.clipboard?.writeText(publicUrl)}
+          >
+            Copy
+          </button>
+        </div>
+      )}
     </header>
   );
 }

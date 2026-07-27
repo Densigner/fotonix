@@ -12,6 +12,7 @@ import {
   Loader2
 } from 'lucide-react';
 import linkService, { linkUtils } from '../services/linkService';
+import { API_URL } from '../../../config/environment';
 
 const LinkCreator = ({ 
   userType = 'member', 
@@ -116,7 +117,7 @@ const LinkCreator = ({
       setLoading(true);
       try {
         // Search member's personal affiliates instead of global database
-        const response = await fetch(`/api/member/affiliates/search?q=${encodeURIComponent(affiliateQuery)}`, {
+        const response = await fetch(`${API_URL}/api/member/affiliates/search?q=${encodeURIComponent(affiliateQuery)}`, {
           headers: {
             'x-member-uid': 'current-member-id'
           }

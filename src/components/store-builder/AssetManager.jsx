@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
+import { API_URL } from '../../config/environment';
 
 // Simple Asset Manager modal
 export default function AssetManager({ tid, onClose, onSelect }) {
@@ -14,7 +15,7 @@ export default function AssetManager({ tid, onClose, onSelect }) {
 
   async function fetchAssets() {
     try {
-      const res = await fetch(`/api/tenants/${tid}/assets`);
+      const res = await fetch(`${API_URL}/api/tenants/${tid}/assets`);
       const json = await res.json();
       // expect array of { id, url, filename, width, height }
       setAssets(json || []);
@@ -52,7 +53,7 @@ export default function AssetManager({ tid, onClose, onSelect }) {
       const optimized = await optimizeFile(f);
       const form = new FormData();
       form.append('file', optimized, f.name.replace(/\.[^/.]+$/, '') + '.webp');
-      const res = await fetch(`/api/tenants/${tid}/assets`, { method: 'POST', body: form });
+      const res = await fetch(`${API_URL}/api/tenants/${tid}/assets`, { method: 'POST', body: form });
       const json = await res.json();
       // assume response returns the new asset
       setAssets(a => [json, ...a]);
@@ -68,7 +69,7 @@ export default function AssetManager({ tid, onClose, onSelect }) {
     if (!window.confirm(`Delete asset ${asset.filename || asset.id}?`)) return;
     try {
       // soft-delete API
-      await fetch(`/api/tenants/${tid}/assets/${asset.id}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/api/tenants/${tid}/assets/${asset.id}`, { method: 'DELETE' });
       setAssets(a => a.filter(x => x.id !== asset.id));
     } catch (e) {
       console.warn('delete failed', e);

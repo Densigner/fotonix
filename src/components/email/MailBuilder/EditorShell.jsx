@@ -1,6 +1,7 @@
 // BAD: setBlocks(blocks.map(...))  // uses closed-over snapshot
 // GOOD: setBlocks(prev => prev.map(b => b.id === id ? { ...b, meta:{ ...b.meta, content: newValue } } : b));
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { API_URL } from '../../../config/environment';
 import { createBlock, cloneBlock, serializeBlocks } from '../../../lib/blockModel';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -326,7 +327,7 @@ function EditorShellInner({ initialBlocks = [], onSave = () => {} }) {
   async function saveAsTemplate() {
     if (!templateName) return alert('Please enter a name');
     const payload = { name: templateName, blocks, assets: [] };
-    const res = await fetch(`/api/tenants/default/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch(`${API_URL}/api/tenants/default/templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (res.ok) {
       setShowSaveTemplate(false);
       alert('Template saved');
@@ -423,7 +424,7 @@ function EditorShellInner({ initialBlocks = [], onSave = () => {} }) {
                 try {
                   // serialize current blocks to html
                   const html = serializeBlocksToHtml(blocks, { brand });
-                  const res = await fetch(`/api/tenants/default/templates/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html }) });
+                  const res = await fetch(`${API_URL}/api/tenants/default/templates/render`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html }) });
                   if (!res.ok) {
                     const txt = await res.text();
                     setInlinedHtml('<pre>Error fetching inline HTML: ' + txt + '</pre>');

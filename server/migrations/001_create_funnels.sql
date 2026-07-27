@@ -4,9 +4,9 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS funnels (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id uuid,
+  user_id varchar(255) NOT NULL,
   name text,
-  slug text,
+  slug text NOT NULL,
   blocks jsonb NOT NULL,
   variant char(1) DEFAULT 'A',
   published boolean DEFAULT false,
@@ -18,10 +18,20 @@ CREATE TABLE IF NOT EXISTS funnels (
 
 CREATE UNIQUE INDEX IF NOT EXISTS funnels_user_slug_idx ON funnels (user_id, slug);
 
+-- One company_slug per user, used as the first segment of the public
+-- /funnel/:companySlug/:funnelSlug URL. Kept in its own table (rather than
+-- a column on funnels) because it's a single claim per user, not per funnel,
+-- and needs its own uniqueness constraint independent of (user_id, slug).
+CREATE TABLE IF NOT EXISTS funnel_owners (
+  user_id varchar(255) PRIMARY KEY,
+  company_slug text UNIQUE NOT NULL,
+  created_at timestamp with time zone DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS funnel_revisions (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   funnel_id uuid REFERENCES funnels(id) ON DELETE CASCADE,
-  user_id uuid,
+  user_id varchar(255),
   snapshot jsonb NOT NULL,
   version integer,
   note text,
