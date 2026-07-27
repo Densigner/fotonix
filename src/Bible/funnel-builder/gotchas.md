@@ -613,3 +613,26 @@ own action** (`imageActionType`/`imagePlatform`/`imageHandle`/
 the exact same `ActionFields`/`ClickableImage` components (which only
 know about plain field names) be reused for the image without either
 click action's inspector fields overwriting the other's.
+
+## Hero's image was needlessly capped to the text's reading width (fixed 2026-07-27)
+
+Reported from a screenshot: the default hero's image rendered noticeably
+narrower than the card around it, with visible empty space on both sides
+that wasn't just the section's own padding. Root cause: in centered-align
+mode, the image lived as a sibling *inside* the same wrapper
+(`max-w-2xl`, 672px) used to keep the headline/subhead at a comfortable
+reading width. That width cap makes sense for text — it doesn't for a
+photo, which generally looks better filling the available card width.
+
+Fixed by moving the centered-mode image **out of** the `max-w-2xl`
+wrapper entirely, so it now defaults to the full width of the hero
+section (minus the section's own padding) instead of being squeezed to
+672px. Side-by-side mode was already fine — there, the image is a grid
+column, not a sibling of the text-width wrapper.
+
+Also added an actual **Width** control (a percentage slider, 20–100%,
+matching the pattern the `paragraph` block's "Max width" already used) to
+both hero's image and the standalone `image` block — so once the
+default-too-narrow bug above was fixed, there's still a real, deliberate
+way to make an image narrower if that's the look someone wants, rather
+than it happening by accident.
