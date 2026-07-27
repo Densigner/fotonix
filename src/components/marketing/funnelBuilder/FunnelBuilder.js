@@ -1433,8 +1433,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
             setVariant={setVariant}
             device={device}
             setDevice={setDevice}
-            doUndo={doUndo}
-            doRedo={doRedo}
             showExport={showExport}
             setShowExport={setShowExport}
             schema={schema}
@@ -1847,7 +1845,7 @@ const TT = ({ label, children }) => (
   </Tooltip>
 );
 
-export function CompactControls({ device, setDevice, doUndo, doRedo }) {
+export function CompactControls({ device, setDevice }) {
   const deviceOpts = [
     { key: "desktop", Icon: Laptop, label: "Desktop" },
     { key: "tablet", Icon: Tablet, label: "Tablet" },
@@ -1864,31 +1862,6 @@ export function CompactControls({ device, setDevice, doUndo, doRedo }) {
         rounded-xl px-2 py-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.06)]
       "
     >
-      {/* Undo / Redo */}
-      <div className="flex items-center gap-1">
-        <TT label="Undo (⌘/Ctrl+Z)">
-          <button
-            type="button"
-            onClick={doUndo}
-            className="h-8 w-8 grid place-items-center rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:scale-[.97] transition-all"
-          >
-            <Undo2 className="h-4 w-4" />
-          </button>
-        </TT>
-
-        <TT label="Redo (⌘/Ctrl+Shift+Z)">
-          <button
-            type="button"
-            onClick={doRedo}
-            className="h-8 w-8 grid place-items-center rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:scale-[.97] transition-all"
-          >
-            <Redo2 className="h-4 w-4" />
-          </button>
-        </TT>
-      </div>
-
-      <span className="h-5 w-px bg-gray-200 mx-1" aria-hidden />
-
       {/* Device preview buttons */}
       <div className="flex items-center gap-1">
         {deviceOpts.map(({ key, Icon, label }) => {
@@ -1966,8 +1939,6 @@ function EditorHeader({
   setVariant,
   device,
   setDevice,
-  doUndo,
-  doRedo,
   showExport,
   setShowExport,
   schema,
@@ -2013,7 +1984,7 @@ function EditorHeader({
 
         {/* Secondary row (compact + pretty) */}
         <div className="h-12 px-4 md:px-6 flex items-center justify-start">
-          <CompactControls device={device} setDevice={setDevice} doUndo={doUndo} doRedo={doRedo} />
+          <CompactControls device={device} setDevice={setDevice} />
         </div>
 
         {/* Right — Actions */}
