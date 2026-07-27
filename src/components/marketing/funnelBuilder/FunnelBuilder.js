@@ -154,6 +154,158 @@ function resolveOverlayColor(gradientColor) {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
+// "Follow / Subscribe" platform presets for CTA buttons — built for the
+// creators (YouTubers, podcasters) this builder is actually for, who want
+// a button that grows their following on a specific platform, not just a
+// generic link. YouTube reuses the exact same `sub_confirmation=1` +
+// UTM deep-link mechanism already built for email campaigns
+// (src/components/email/MailBuilder/SubscribeButtonBuilder.jsx) — clicking
+// it opens YouTube's native one-click subscribe prompt instead of just
+// landing on the channel page. Other platforms don't have an equivalent
+// deep link, so they just take a profile URL.
+const FOLLOW_PLATFORMS = {
+  youtube: { label: 'YouTube', color: '#FF0000', defaultLabel: '▶ Subscribe on YouTube', placeholder: '@yourhandle or full channel URL', isHandle: true },
+  spotify: { label: 'Spotify', color: '#1DB954', defaultLabel: 'Listen on Spotify', placeholder: 'https://open.spotify.com/show/...' },
+  applepodcasts: { label: 'Apple Podcasts', color: '#A855F7', defaultLabel: 'Listen on Apple Podcasts', placeholder: 'https://podcasts.apple.com/...' },
+  instagram: { label: 'Instagram', color: '#E1306C', defaultLabel: 'Follow on Instagram', placeholder: 'https://instagram.com/yourhandle' },
+  tiktok: { label: 'TikTok', color: '#000000', defaultLabel: 'Follow on TikTok', placeholder: 'https://tiktok.com/@yourhandle' },
+  twitter: { label: 'Twitter / X', color: '#1DA1F2', defaultLabel: 'Follow on X', placeholder: 'https://x.com/yourhandle' },
+  facebook: { label: 'Facebook', color: '#1877F2', defaultLabel: 'Follow on Facebook', placeholder: 'https://facebook.com/yourpage' },
+};
+
+function normalizeYouTubeLink(input) {
+  let s = (input || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('@')) s = s.slice(1);
+  if (/^UC[\w-]{20,}$/.test(s)) return `https://www.youtube.com/channel/${s}`;
+  return `https://www.youtube.com/@${s}`;
+}
+
+function buildFollowLink(platform, handle) {
+  if (!handle) return '#';
+  if (platform === 'youtube') {
+    const base = normalizeYouTubeLink(handle);
+    try {
+      const u = new URL(base);
+      u.searchParams.set('sub_confirmation', '1');
+      return u.toString();
+    } catch (e) {
+      return base + (base.includes('?') ? '&' : '?') + 'sub_confirmation=1';
+    }
+  }
+  return /^https?:\/\//i.test(handle) ? handle : `https://${handle}`;
+}
+
+// Shared inspector fragment for any block with a CTA — the Action choice
+// (link / join mailing list / follow-a-platform) plus whichever fields
+// that choice needs. Reused by the standalone `button` block, `hero`'s
+// CTA, and the `cta` block, so all three offer the same options instead
+// of three independently-maintained copies.
+function ActionFields({ data, onChange }) {
+  return (
+    <>
+      <Field label="Action">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={(!data.actionType || data.actionType === 'link') ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
+          <Button size="sm" variant={data.actionType === 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
+          <Button
+            size="sm"
+            variant={data.actionType === 'follow' ? 'default':'outline'}
+            className="text-black"
+            onClick={() => {
+              const platform = data.platform || 'youtube';
+              const patch = { actionType: 'follow', platform };
+              if (!data.platform) {
+                // first time picking "follow" — seed a sensible default label
+                patch.label = FOLLOW_PLATFORMS[platform].defaultLabel;
+                patch.ctaLabel = FOLLOW_PLATFORMS[platform].defaultLabel;
+              }
+              onChange(patch);
+            }}
+          >
+            Follow / Subscribe
+          </Button>
+        </div>
+      </Field>
+      {data.actionType === 'follow' && (
+        <>
+          <Field label="Platform">
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(FOLLOW_PLATFORMS).map(([id, p]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onChange({ platform: id, label: p.defaultLabel, ctaLabel: p.defaultLabel })}
+                  className="text-xs px-3 py-1.5 rounded-full border transition"
+                  style={{
+                    backgroundColor: data.platform === id ? p.color : '#fff',
+                    color: data.platform === id ? '#fff' : '#111827',
+                    borderColor: data.platform === id ? p.color : '#e5e7eb',
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label={FOLLOW_PLATFORMS[data.platform]?.isHandle ? 'Channel handle or URL' : `${FOLLOW_PLATFORMS[data.platform]?.label || 'Profile'} URL`}>
+            <Input
+              value={data.handle || ''}
+              onChange={(e) => onChange({ handle: e.target.value })}
+              placeholder={FOLLOW_PLATFORMS[data.platform]?.placeholder || 'https://...'}
+            />
+          </Field>
+          {data.platform === 'youtube' && (
+            <p className="text-xs text-gray-500">
+              Opens YouTube's one-click subscribe prompt directly, instead of just linking to your channel page.
+            </p>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// Shared CTA renderer — the actual button/form markup for whichever action
+// ActionFields above chose. Reused by hero (both layouts) and the cta
+// block so "link vs mailing-list vs follow-a-platform" behaves and looks
+// identical everywhere a CTA button appears, not just on the standalone
+// button block.
+function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, showIcon }) {
+  if (data.actionType === 'subscribe') {
+    return (
+      <SubscribeInlineForm
+        label={data.ctaLabel}
+        funnelOwnerUid={funnelOwnerUid}
+        editable={editable}
+      />
+    );
+  }
+  const isFollow = data.actionType === 'follow';
+  const platform = isFollow ? FOLLOW_PLATFORMS[data.platform] : null;
+  const href = isFollow ? buildFollowLink(data.platform, data.handle) : (data.ctaHref || '#');
+  return (
+    <Button
+      asChild
+      className={buttonClassName}
+      style={platform ? { backgroundColor: platform.color, color: '#fff' } : undefined}
+    >
+      <a href={href} target={isFollow ? '_blank' : undefined} rel={isFollow ? 'noopener noreferrer' : undefined} className="inline-flex items-center gap-2">
+        <span
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
+          className="focus:outline-none"
+        >
+          {data.ctaLabel}
+        </span>
+        {showIcon && <ArrowUpRight className="h-4 w-4" />}
+      </a>
+    </Button>
+  );
+}
+
 // ----- Block registry ----- //
 const BLOCKS = {
   hero: {
@@ -164,11 +316,12 @@ const BLOCKS = {
       subhead: "A blazing‑fast funnel built with our drag‑and‑drop editor.",
       ctaLabel: "Get Started",
       ctaHref: "#",
+      actionType: "link",
       image: "/images/AmeliaBedroom.png",
       align: "center",
       gradient: true,
     }),
-    render: ({ data, onChange, editable }) => {
+    render: ({ data, onChange, editable, funnelOwnerUid }) => {
       // Full-bleed background image with the headline/CTA overlaid on top —
       // what the Wildlife/Women's Empowerment templates actually intend
       // (they set gradientOverlay/gradientColor/textColor), as opposed to
@@ -205,19 +358,7 @@ const BLOCKS = {
                 {data.subhead}
               </p>
               <div className={`mt-6 flex gap-3 ${data.align === 'center' ? 'justify-center' : 'justify-start'}`}>
-                <Button asChild className="bg-white text-gray-900 hover:bg-gray-100">
-                  <a href={data.ctaHref} className="inline-flex items-center gap-2">
-                    <span
-                      contentEditable={editable}
-                      suppressContentEditableWarning={true}
-                      onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
-                      className="focus:outline-none"
-                    >
-                      {data.ctaLabel}
-                    </span>
-                    <ArrowUpRight className="h-4 w-4" />
-                  </a>
-                </Button>
+                <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-white text-gray-900 hover:bg-gray-100" showIcon />
               </div>
             </div>
 
@@ -254,19 +395,7 @@ const BLOCKS = {
                 {data.subhead}
               </p>
               <div className={`mt-5 ${data.align === "center" ? "justify-center" : "justify-start"} flex gap-3`}>
-                <Button asChild>
-                  <a href={data.ctaHref} className="inline-flex items-center gap-2">
-                    <span
-                      contentEditable={editable}
-                      suppressContentEditableWarning={true}
-                      onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
-                      className="focus:outline-none"
-                    >
-                      {data.ctaLabel}
-                    </span>
-                    <ArrowUpRight className="h-4 w-4" />
-                  </a>
-                </Button>
+                <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} showIcon />
               </div>
             </div>
 
@@ -320,14 +449,15 @@ const BLOCKS = {
         <Field label="Sub‑headline">
           <Textarea value={data.subhead} onChange={e=>onChange({ subhead: e.target.value })} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="CTA Label">
-            <Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} />
-          </Field>
+        <Field label="CTA Label">
+          <Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} />
+        </Field>
+        <ActionFields data={data} onChange={onChange} />
+        {(!data.actionType || data.actionType === 'link') && (
           <Field label="CTA Link">
             <Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} />
           </Field>
-        </div>
+        )}
         <ImageUrlField label="Image URL" value={data.image} onChange={(image) => onChange({ image })} />
         <Field label="Alignment">
           <div className="flex items-center gap-2">
@@ -571,19 +701,30 @@ const BLOCKS = {
     name: "Button",
     icon: Link,
     defaults: () => ({ label: "Get started", href: "#", style: "default", full: false, actionType: "link" }),
-    render: ({ data, onChange, editable, funnelOwnerUid }) => (
-      data.actionType === 'subscribe' ? (
-        <SubscribeInlineForm
-          label={data.label}
-          full={data.full}
-          style={data.style}
-          funnelOwnerUid={funnelOwnerUid}
-          editable={editable}
-        />
-      ) : (
+    render: ({ data, onChange, editable, funnelOwnerUid }) => {
+      if (data.actionType === 'subscribe') {
+        return (
+          <SubscribeInlineForm
+            label={data.label}
+            full={data.full}
+            style={data.style}
+            funnelOwnerUid={funnelOwnerUid}
+            editable={editable}
+          />
+        );
+      }
+      const isFollow = data.actionType === 'follow';
+      const platform = isFollow ? FOLLOW_PLATFORMS[data.platform] : null;
+      const href = isFollow ? buildFollowLink(data.platform, data.handle) : data.href;
+      return (
         <div className={`flex ${data.full? '':'justify-center'}`}>
-          <Button asChild className={data.full? 'w-full':''} variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}>
-            <a href={data.href}>
+          <Button
+            asChild
+            className={data.full? 'w-full':''}
+            variant={data.style === 'ghost'? 'ghost': data.style === 'outline'? 'outline':'default'}
+            style={platform ? { backgroundColor: platform.color, color: '#fff' } : undefined}
+          >
+            <a href={href} target={isFollow ? '_blank' : undefined} rel={isFollow ? 'noopener noreferrer' : undefined}>
               <span
                 contentEditable={editable}
                 suppressContentEditableWarning={true}
@@ -595,21 +736,17 @@ const BLOCKS = {
             </a>
           </Button>
         </div>
-      )
-    ),
+      );
+    },
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
         <Field label="Label"><Input value={data.label} onChange={e=>onChange({ label: e.target.value })} /></Field>
-        <Field label="Action">
-          <div className="flex gap-2">
-            <Button size="sm" variant={data.actionType !== 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
-            <Button size="sm" variant={data.actionType === 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
-          </div>
-        </Field>
-        {data.actionType === 'subscribe' ? (
-          <p className="text-xs text-gray-500">Visitors who click this button enter their email right there to join your mailing list — no link needed.</p>
-        ) : (
+        <ActionFields data={data} onChange={onChange} />
+        {(!data.actionType || data.actionType === 'link') && (
           <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
+        )}
+        {data.actionType === 'subscribe' && (
+          <p className="text-xs text-gray-500">Visitors who click this button enter their email right there to join your mailing list — no link needed.</p>
         )}
         <Field label="Style">
           <div className="flex gap-2">
@@ -754,7 +891,7 @@ const BLOCKS = {
       background: { color: "indigo-600" },
       align: "center",
     }),
-    render: ({ data, onChange, editable }) => {
+    render: ({ data, onChange, editable, funnelOwnerUid }) => {
       const isLight = data.theme === 'light' && !data.background?.color;
       const bgColor = isLight ? CTA_BG_COLORS.light : (CTA_BG_COLORS[data.background?.color] || CTA_BG_COLORS['indigo-600']);
       const textColor = data.textColor === 'dark' || isLight ? '#0f172a' : '#ffffff';
@@ -783,18 +920,7 @@ const BLOCKS = {
             </p>
           )}
           <div className="mt-6">
-            <Button asChild className="bg-white text-gray-900 hover:bg-gray-100">
-              <a href={data.ctaHref || '#'}>
-                <span
-                  contentEditable={editable}
-                  suppressContentEditableWarning={true}
-                  onBlur={(e) => onChange && onChange({ ctaLabel: e.target.textContent })}
-                  className="focus:outline-none"
-                >
-                  {data.ctaLabel}
-                </span>
-              </a>
-            </Button>
+            <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-white text-gray-900 hover:bg-gray-100" />
           </div>
         </section>
       );
@@ -803,10 +929,11 @@ const BLOCKS = {
       <div className="space-y-4">
         <Field label="Headline"><Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} /></Field>
         <Field label="Subheadline"><Textarea value={data.subhead} onChange={e=>onChange({ subhead: e.target.value })} /></Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Button label"><Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} /></Field>
+        <Field label="Button label"><Input value={data.ctaLabel} onChange={e=>onChange({ ctaLabel: e.target.value })} /></Field>
+        <ActionFields data={data} onChange={onChange} />
+        {(!data.actionType || data.actionType === 'link') && (
           <Field label="Button link"><Input value={data.ctaHref} onChange={e=>onChange({ ctaHref: e.target.value })} /></Field>
-        </div>
+        )}
         <Field label="Background color">
           <div className="flex flex-wrap gap-2">
             {Object.keys(CTA_BG_COLORS).map((key) => (
