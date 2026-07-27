@@ -130,9 +130,15 @@ in leads from three other sources into the `contacts` table — PBN customers
 (`syncPBNCustomers`, from `user_email_verification`/`pbn_orders`/
 `contact_events`), conversion leads (`syncConversionLeads`, from
 `conversion_leads`), and Stencil Forge users (`syncStencilUsers`, from
-`users` — **this one always fails silently**, the `users` table doesn't
-exist; it's wrapped in `.catch(() => {})` so it's harmless, just permanently
-a no-op). Supports `?search=`, `?segment=` (`vip`|`high_engagement`|
+`users`). **Update 2026-07-27**: the `users` table now exists (see
+`../funnel-builder/gotchas.md`'s "`POST /api/users/sync` was 404ing on
+every login" entry — same table, fixed while working on something
+unrelated) — `syncStencilUsers` should start actually populating rows from
+here on, instead of permanently no-op'ing via its `.catch(() => {})`.
+Not independently re-verified live as of this note; if Stencil Forge
+signups still aren't appearing in contacts, check that this sync is
+actually finding rows in `users` before assuming it's still broken.
+Supports `?search=`, `?segment=` (`vip`|`high_engagement`|
 `low_engagement`|a named `audience_segments` label), `?page=`/`?limit=`.
 
 ### `GET /mine`

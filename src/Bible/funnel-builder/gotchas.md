@@ -235,3 +235,142 @@ specifically:
 This only affects `BLOCKRenderer` (the editor's canvas). `FunnelViewer.js`
 (the public page) calls each block's `render()` directly, not through
 `BLOCKRenderer` — links behave completely normally there, as they should.
+
+## A batch of usability/consistency fixes (2026-07-27)
+
+Several smaller issues reported together in one pass, fixed and deployed
+together. None of these are individually large, but they add up to a much
+more trustworthy-feeling editor.
+
+### `POST /api/users/sync` was 404ing on every single login — site-wide, not a funnel-builder bug
+
+Noticed via the browser console while testing the funnel builder, but this
+has nothing to do with funnels specifically — `src/contexts/AuthContext.js`
+calls this on *every* Firebase login/signup, site-wide, to keep a
+PostgreSQL copy of user data in sync. Same root cause as `chatbotServer.js`
+and (before 2026-07-26) the funnels API: **`server/routes/auth/users.js`
+was a real, complete, already-written route file that was simply never
+`require`d/mounted in `server/index.js`.** The call was already wrapped in
+a try/catch that only logs a `console.warn` (see `AuthContext.js`'s
+`syncUserToPostgres`), so nothing else broke — it's just been silently
+failing on every login, forever, until someone actually looked at the
+console.
+
+Compounding it: the `users` table it needs didn't exist either (confirmed
+via `\d users` — matches the earlier finding in `../emails/gotchas.md` that
+`contacts.js`'s `syncStencilUsers` always no-ops because `users` doesn't
+exist — same missing table, two different pieces of code both silently
+depending on it). Added `server/migrations/002_create_users.sql` (`users` +
+`user_activity`, columns taken directly from `users.js`'s own queries —
+nothing guessed) and mounted the route at `/api/users`. This is a genuine
+two-for-one fix: it makes `/api/users/sync` work for the first time ever,
+*and* it means `syncStencilUsers` (in `contacts.js`) will actually start
+populating real Stencil Forge users into the contacts list going forward,
+instead of being a permanent no-op.
+
+**If you're ever chasing down another "why does this call 404" question in
+this codebase, check `server/index.js`'s `require()`/`app.use()` list
+first** — there's now a confirmed pattern of complete, correct route files
+sitting unmounted (`chatbotServer.js`, the funnels API before 2026-07-26,
+and now this).
+
+### Four more broken template images, found by checking every Unsplash URL in the folder
+
+The tiger-photo fix (above, same day) prompted a systematic check: grepped
+every `images.unsplash.com/photo-...` URL used anywhere under
+`funnelBuilder/` and curl'd each one. Four were dead (404s pointing at
+since-removed Unsplash photos), on top of the Wildlife one already found:
+
+- `LawFirmLanding.jsx`'s hero background ("Law library" — replaced with a
+  real grand-library photo, `photo-1505664194779-8beaceb93744`).
+- `templateRegistry.js`'s Women's Empowerment hero image *and* the matching
+  reference in `WomenEmpowermentPage.jsx` (both pointed at the same dead
+  URL — replaced with `photo-1495837174058-628aafc7d610`, three women
+  silhouetted at sunset).
+- The `volunteerHero` block's **default** background image in
+  `FunnelBuilder.js` (`photo-1600055701524-4040df79c3d3`, dead) — replaced
+  with `photo-1511632765486-a01980e01a18`.
+- `templateRegistry.js`'s real Volunteer template schema (`getVolunteerSchema()`)
+  and the matching standalone preview (`VolunteerTemplate.jsx`) were **each
+  independently pointing at `/templates/volunhero.png`** — a local file
+  that was never actually added anywhere under `public/`. Not a dead
+  remote URL this time, just a path to a file that doesn't exist. Both
+  fixed to the same real Unsplash photo used for the block default above.
+
+**Lesson**: an Unsplash photo URL that worked when the template was
+originally written can silently 404 later if the photo gets taken down —
+this isn't a code bug that static analysis would catch, and it renders as
+"just a gradient, no image" or a broken-image icon depending on the
+block's layout, easy to miss in a quick glance. If a template's hero looks
+empty/plain, curl the image URL before assuming it's a rendering bug.
+
+### The two hero layouts weren't clearly two different things in the inspector
+
+Before this pass, whether a hero was "side-by-side" or "full-bleed image
+with overlaid text" was controlled by a single checkbox buried among other
+fields, labeled "Text overlays image (full-bleed background)" — easy to
+miss, and didn't communicate that this is a fundamental choice between two
+distinct visual layouts, not a minor option. Replaced with a `Field`
+labeled **"Hero Style"** at the top of the inspector, presented as two
+clearly-described clickable cards ("Side-by-side" vs "Full-bleed image,
+text overlaid"), each with a one-line explanation of what it does.
+
+### `ToggleField`/`Switch` were genuinely hard to use — not just a labeling nitpick
+
+Reported as "what does this say? Unreadable" about the "Gradient
+background" toggle. Root cause was two compounding styling problems:
+
+1. Every toggle's label used `text-xs uppercase tracking-wider
+   text-gray-600` — fine for a short field label like "IMAGE URL," but
+   turns into a cramped, hard-to-parse wall of tiny spaced-out capital
+   letters for anything longer.
+2. `Switch` itself was a **completely unstyled native `<input
+   type="checkbox">`** — despite being named "Switch," it didn't look like
+   a toggle at all, just a small default browser checkbox easy to miss
+   entirely next to its own label.
+
+Fixed both, globally (affects every `ToggleField` across every block, not
+just hero): `ToggleField`'s label is now `text-sm text-gray-700` (normal
+case, readable at any length), and `Switch` is now a real pill-shaped
+toggle with a sliding circle (`role="switch"`, `aria-checked`), colored
+indigo when on. Also renamed hero's "Gradient background" toggle to
+"Subtle gradient tint behind text" — it does something completely
+different from the new "Hero Style" full-bleed overlay feature above, and
+sharing the word "gradient" between two unrelated features was itself part
+of the confusion.
+
+### Blocks were inconsistent about what's inline-editable vs. inspector-only — now every block supports both
+
+Reported directly: some blocks let you click text in the canvas and type
+(only `hero`'s headline/subhead had this), while everything else — 
+`heading`, `paragraph`, `volunteerHero`, `button`'s label, `emailCapture`'s
+headline, `features`' title *and* each item's title/description, the new
+`cta` block's headline/subhead/button label, and hero's own CTA label —
+could only be changed through the Inspector panel. Added
+`contentEditable`/`onBlur` to all of them, following the exact same
+pattern hero's headline already used, so every block now supports **both**
+inline click-to-edit *and* the Inspector — not one or the other.
+
+**Deliberate exception, not an oversight**: the "Join mailing list" button
+and the Email Capture block's button/input (`SubscribeInlineForm`) stay
+Inspector-only for their button label. That component's button is a real
+interactive submit control (see the mailing-list entries above) — making
+it simultaneously a text-edit target risks fighting with its actual click
+behavior. Its label is still fully editable, just from the Inspector, not
+inline.
+
+**Known remaining gap, not fixed in this pass**: `volunteerHero`'s nav bar
+(logo text, nav links, its own separate CTA button) is still
+Inspector-only — secondary/less commonly touched content, and the nav
+links are an array, which would need more than a simple `contentEditable`
+span. Flagging so it isn't assumed to be part of the "both editable"
+guarantee above.
+
+### The Create Funnel modal didn't explain what happens after you click Create
+
+Reported as "how are they actually publishing this funnel? this is
+confusing." The modal walked through name/company/goal/currency but never
+mentioned that creating a funnel just opens the editor with a **draft** —
+nothing is publicly visible until the separate Publish button (top-right
+of the editor, added 2026-07-26) is clicked. Added a plain-language note
+directly in the modal, right above the Create button, saying exactly that.

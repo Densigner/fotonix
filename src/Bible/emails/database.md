@@ -171,11 +171,15 @@ Don't write code assuming these exist without creating them first — this
 exact mistake caused several silent-failure bugs this session (see
 `gotchas.md`):
 
-- `users` — referenced by `contacts.js`'s `syncStencilUsers` (safely
-  `.catch()`-wrapped, permanently a no-op) and by `server/routes/auth/users.js`
-  (`/api/users/sync` — route file exists but is never mounted in
-  `server/index.js`, so it 404s; low priority, called on every auth state
-  change but failure is non-fatal, just logs a console error).
+- ~~`users`~~ — **fixed 2026-07-27**, see `../funnel-builder/gotchas.md`'s
+  "`POST /api/users/sync` was 404ing on every login" entry. Was referenced
+  by `contacts.js`'s `syncStencilUsers` (safely `.catch()`-wrapped,
+  permanently a no-op) and by `server/routes/auth/users.js` (route file
+  existed but was never mounted). Table now created
+  (`server/migrations/002_create_users.sql`) and the route mounted at
+  `/api/users` — both dependents should work now, though
+  `syncStencilUsers` specifically hasn't been independently re-verified
+  live.
 - `m.labels` (a column on `email_messages`) — the old label-filtering logic
   in `GET /messages` referenced this; removed this session along with the
   Star feature cleanup, since no labels table/column exists.
