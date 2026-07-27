@@ -122,3 +122,35 @@ affiliate-facing "here are funnels you can promote" UI exists yet, though
 the underlying click-tracking needs no new work once that UI is built —
 any real page on this domain already gets the referral tracking
 automatically.
+
+## "Unknown block: cta" — a block type referenced everywhere but never defined (fixed 2026-07-27)
+
+Reported live: picking a template showed a red "Unknown block: cta" box
+instead of real content — `BLOCKRenderer`'s fallback for `BLOCKS[block.type]`
+being `undefined`. Grepped `templateRegistry.js` for every `type:` string
+used across all starter schemas: `cta` is referenced by three of them —
+**the Wildlife and Women's Empowerment templates, and, more importantly,
+the default "Custom Blank" starter** (`CustomBlankTemplate.jsx`'s
+`getSchema()`) — but `BLOCKS` never had a `cta` entry at all. Since "Custom
+Blank" is presumably the most commonly picked starting point (it's the
+generic "start from scratch" option), this was likely the single most
+commonly hit bug in the whole builder, not an edge case in a rarely-used
+template.
+
+The three call sites' data shapes weren't even fully consistent with each
+other — Wildlife/Women's Empowerment pass `background: { color: 'emerald-800' | 'rose-600' }`
+and a real `ctaHref`; Custom Blank's placeholder passes neither, just
+`{headline, subhead, ctaLabel, theme: 'light'}`. The new `cta` block
+(`FunnelBuilder.js`) handles both: resolves `background.color` through a
+small hardcoded hex map (`CTA_BG_COLORS`) rather than interpolating a
+Tailwind class name like `` `bg-${color}` `` — Tailwind's build-time
+class scanner only picks up literal strings that appear in source, so a
+runtime-constructed class name would have silently rendered with no
+background at all — and falls back to a light/dark default when
+`background`/`ctaHref` are missing, matching Custom Blank's minimal shape.
+
+**If you add a new template to `templateRegistry.js` (or any of the
+`funnelBuilderTemplates/*.jsx` files) that references a block `type` in its
+starter schema, that type has to already exist in `FunnelBuilder.js`'s
+`BLOCKS` registry** — nothing checks this at write time, it only surfaces
+as "Unknown block" the first time someone actually picks that template.
