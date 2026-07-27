@@ -467,3 +467,149 @@ with a *different*, non-blanked `buttonLabel`. It's never called;
 `getStarterBlocks('volunteer')` only ever calls `templateRegistry.js`'s
 `getVolunteerSchema()` (confirmed via the `case 'volunteer':` switch).
 Harmless as long as nothing ever wires that dead function up for real.
+
+## "Run an evergreen webinar" had nothing behind it — and neither did the other three goals (fixed 2026-07-27)
+
+Asked directly: what's behind the "Run an evergreen webinar" option in the
+Create Funnel modal? Checked, and the honest answer was **nothing at
+all** — same shape as several other findings this session. `goal` is
+collected in the modal's form state and required to enable the Create
+button (`disabled={... || !form.goal || ...}`), but `handleCreate` only
+ever sent `{name, slug}` to `POST /api/funnels` — `goal` (and `currency`,
+see below) were captured and then silently discarded. Every funnel, no
+matter which goal you picked, started as an empty draft.
+
+This also surfaced a bigger, related gap: the five *real* templates with
+actual pre-built content (Law Firm, Volunteer, Wildlife, Women's
+Empowerment, Custom Blank — see `getStarterBlocks()` in
+`templateRegistry.js`) were, as of the 2026-07-27 dead-modal removal
+(above), **completely unreachable from the live app.** The only route to
+`FunnelTemplatesPage` (`currentPage === 'funnel-builder/templates'`) was
+the dead internal "+ Create" button removed earlier the same day — nothing
+else in the codebase ever navigates there. Grepped the whole
+`funnelBuilder/` folder for that hash string to confirm: zero hits outside
+`App.js`'s own route definition.
+
+**Fixed by making the modal's goal choice actually do something**,
+rather than trying to re-surface the orphaned `FunnelTemplatesPage` flow
+(the goal categories — audience/sell/custom/webinar — don't map cleanly
+onto the five industry-specific templates anyway, so keeping them as a
+separate, simpler system made more sense than forcing a merge):
+
+- Built a real **Evergreen Webinar** schema (`getWebinarSchema()` in
+  `templateRegistry.js`) — hero (full-bleed image + `actionType:
+  'subscribe'` CTA, so "Save My Seat" opens the real inline signup form
+  directly, no separate page section needed), heading, features, paragraph,
+  a closing `cta` block (also `subscribe`). "Evergreen" specifically means
+  presented as available on-demand any time, not a scheduled live event —
+  hence no date/countdown copy anywhere in it.
+- Added `'audience'` and `'sell'` cases to `getStarterBlocks()` too, so
+  every goal in the modal now seeds something real, not just webinar —
+  `'audience'` → hero/features/emailCapture, `'sell'` → hero/features/cta.
+  `'custom'` now explicitly returns `[]` (a real, addressed case) rather
+  than silently falling through to the `default:` case's generic
+  "Start from Scratch" hero.
+- `FunnelBuilderDash.js`'s `handleCreate` now calls
+  `getStarterBlocks(form.goal)` and sends the result as `blocks` in the
+  `POST /api/funnels` body — this is the actual fix; everything above was
+  pointless without this one-line wiring change, since `templateRegistry.js`
+  already had four other working schemas that nothing was calling from
+  the real creation flow.
+
+## Currency selector in the Create Funnel modal was, and still is, purely decorative — added an honest disclaimer instead of pretending otherwise
+
+While fixing the goal-wiring bug above, noticed `currency` has the exact
+same problem `goal` did: collected in form state, shown in the UI, never
+sent anywhere. Unlike `goal`, this wasn't asked to be wired up to real
+tax/currency-conversion logic — there's no VAT/tax-agreement handling with
+EU countries anywhere in this codebase, and building real multi-currency
+checkout support is a much bigger job than this modal. Instead, added a
+plain-language disclaimer that appears in the modal whenever a non-GBP
+currency is selected:
+
+> Prices may be displayed in your local currency. The final amount can
+> vary slightly due to exchange rates or fees charged by your bank or
+> payment provider. International delivery charges, import VAT, customs
+> duties or handling fees may also apply depending on the customer's
+> country.
+
+This doesn't make the currency field *functional* — it still isn't sent
+anywhere — but it stops the UI from silently implying a level of
+international pricing support that doesn't exist.
+
+## New CTA actions: Go to my Shop, Go to a Product (2026-07-27)
+
+Requested directly: buttons (and images, see below) should be able to
+send visitors to the affiliate's own storefront or to one specific
+product, not just an arbitrary URL. Added as two more options in
+`ActionFields`'s Action row, alongside Link/Join-mailing-list/Follow:
+
+- **Go to my Shop** — resolves to `/@<handle>`, where `<handle>` is looked
+  up live from Firebase RTDB (`storefronts/{funnelOwnerUid}/handle`) —
+  this is a genuinely different identifier from the funnel's own
+  `company_slug` (Postgres), see `architecture.md`'s "Company slugs"
+  section for that distinction. If the affiliate hasn't set up a
+  storefront yet, the button renders visibly disabled (dimmed, not
+  clickable, with a title tooltip) rather than linking to a broken `/@`
+  URL.
+- **Go to a Product** — a dropdown in the Inspector, populated by fetching
+  the affiliate's own product catalog (`products/{funnelOwnerUid}` —
+  the same Firebase node the affiliate dashboard's "My Products" list
+  already reads), linking to the real product page
+  (`/product/{funnelOwnerUid}/{productId}`, the same route
+  `CustomerProductPage.jsx` already serves for normal product links).
+
+**Why this needed a hook, not just a function**: resolving "Go to my Shop"
+requires an actual network round trip (the handle isn't known until it's
+looked up), unlike Link/Follow which are computable synchronously from
+data already on the block. `useResolvedActionHref` is a real hook
+(`useState`/`useEffect` inside it) for exactly this reason — used inside
+`CtaAction` and `ClickableImage`, both genuine components invoked via
+JSX, so the hook is safe there regardless of how the *calling* block's
+`render()` is written (see the `BLOCKRenderer`/anchor-guard gotcha above
+for the same reasoning applied to a different problem).
+
+**The standalone `button` block was refactored to stop duplicating
+`CtaAction`'s logic a third time** — it had its own separate,
+slightly-different copy of the follow-link computation before this
+change. It now renders `<CtaAction labelKey="label" .../>` like
+hero/cta/volunteerHero do — `labelKey` exists specifically because
+`button` stores its text in `data.label`, while hero/cta/volunteerHero use
+`data.ctaLabel`; `useResolvedActionHref`'s plain "link" case already
+checked both `data.href` and `data.ctaHref`, so only the *label* field
+name needed a real parameter, not a bigger refactor to unify the data
+shapes (which would risk breaking already-created button blocks that
+have real `label`/`href` data saved).
+
+## Images can now have a click action too (2026-07-27)
+
+Requested directly: "treat \[an image] like a button if they want an
+onclick." Added the same Action system to the standalone `image` block,
+minus "Join mailing list" (an inline email form doesn't make sense
+appearing in place of an image) and with an explicit "No click action"
+default (unlike buttons, where "Link" is the sensible default — a plain
+image shouldn't suddenly become clickable just because this feature
+shipped). `ActionFields` gained `allowSubscribe`/`allowNone` props for
+this; `ClickableImage` is the rendering counterpart — wraps its children
+in a real `<a>` only when an action is actually configured, otherwise
+returns the image completely unchanged.
+
+**Hero's own image, not just the standalone image block** — but only in
+the *side-by-side* layout, not the full-bleed overlay one. In overlay
+mode the image already fills the entire hero section behind the CTA
+button; wrapping it in its own separate anchor would mean an anchor
+containing another interactive element (the CTA), which is both invalid
+markup and confusing UX (two independently-clickable areas stacked on top
+of each other). Side-by-side mode's image is a genuinely separate visual
+element from the CTA, so it got the feature; the overlay background did
+not, on purpose. The Inspector reflects this — the image click-behavior
+section only appears when Hero Style is set to Side-by-side.
+
+Hero's image action needed a **separate field namespace from the CTA's
+own action** (`imageActionType`/`imagePlatform`/`imageHandle`/
+`imageProductId` vs. the CTA's plain `actionType`/`platform`/`handle`/
+`productId`) since one block now has two independent clickable things.
+`prefixedAction(data, onChange, 'image')` handles the remapping — it lets
+the exact same `ActionFields`/`ClickableImage` components (which only
+know about plain field names) be reused for the image without either
+click action's inspector fields overwriting the other's.

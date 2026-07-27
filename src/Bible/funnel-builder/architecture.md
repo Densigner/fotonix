@@ -171,6 +171,33 @@ just compressed first now.
    brand color applied to the button. This is aimed squarely at this
    builder's actual audience — YouTubers/podcasters growing a following,
    not just sending traffic somewhere.
+4. **Go to my Shop** (2026-07-27) — links to `/@<handle>`, resolved live
+   from Firebase (`storefronts/{funnelOwnerUid}/handle`) since the handle
+   isn't known until looked up. Renders visibly disabled if no storefront
+   exists yet, rather than linking to a broken URL.
+5. **Go to a Product** (2026-07-27) — a dropdown of the affiliate's own
+   products (`products/{funnelOwnerUid}`), linking to
+   `/product/{funnelOwnerUid}/{productId}` — the same real product page
+   the rest of the site uses.
+
+`volunteerHero`'s own CTA uses the same five actions too (added
+2026-07-27, alongside the fake-form fix documented in `gotchas.md`).
+
+**Async action resolution**: Link/Follow are computable synchronously from
+the block's own data; Shop needs a real Firebase round trip. `useResolvedActionHref`
+is a shared hook (not a plain function) handling both cases uniformly —
+used inside `CtaAction` and `ClickableImage` below.
+
+**Clickable images (2026-07-27)**: the standalone `image` block and
+hero's own image (side-by-side layout only — see `gotchas.md` for why the
+full-bleed overlay layout's background image was deliberately excluded)
+can now have the same actions as a button, minus "Join mailing list" and
+with an explicit "No click action" default. `ClickableImage` wraps the
+`<img>` in a real `<a>` only once an action is actually configured.
+Hero's image action uses a separate field namespace
+(`imageActionType`/`imagePlatform`/etc., via the `prefixedAction` helper)
+so it doesn't collide with the hero's own CTA action fields — one block,
+two independent clickable things.
 
 **Persistence, now real**: accepts `funnelId`/`currentUserId`/`companySlug`
 props (passed from `App.js`, sourced from the dashboard). If `funnelId` is
@@ -203,6 +230,19 @@ funnel row (`POST /api/funnels`) and navigates straight into the editor
 with a real `funnelId`. Clicking an existing row does the same — opens the
 editor against that funnel's real id, which triggers the load-on-mount
 effect described above.
+
+**The modal's "goal" choice is real (2026-07-27)**: `handleCreate` calls
+`getStarterBlocks(form.goal)` (`templateRegistry.js`) and sends the result
+as the new funnel's `blocks` — `'webinar'` seeds a full Evergreen Webinar
+starter (hero/heading/features/paragraph/cta, CTAs set to `subscribe` so
+"Save My Seat" opens the real signup form directly), `'audience'` and
+`'sell'` seed simpler generic starters, `'custom'` is explicitly `[]`.
+Before this, `goal` (and `currency`) were collected in the form but never
+sent anywhere — see `gotchas.md` for that history. The five industry-
+specific templates (Law Firm, Volunteer, Wildlife, Women's Empowerment,
+plus a from-scratch blank) are a *separate* system, reachable only via
+`FunnelTemplatesPage` — which, as of the same date, has no live route
+pointing to it anywhere in the app (see `gotchas.md`).
 
 ## The public viewer — `FunnelViewer.js`
 
