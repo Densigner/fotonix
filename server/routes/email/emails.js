@@ -2,6 +2,7 @@ const express = require('express');
 const { Client } = require('pg');
 const { loadTransport } = require('../../../src/email/smtp');
 const { renderTemplate } = require('../../../src/email/renderer');
+const { uploadAttachments } = require('../../email-attachments');
 const router = express.Router();
 
 // PostgreSQL helper function using same pattern as other routes
@@ -27,25 +28,37 @@ async function query(sql, params = []) {
 
 // Helper function to get tenant ID from request
 function getTenantId(req) {
-  // Support both 'tenant' and 'tenantId' query params, and map string values
+  // Support both 'tenant' and 'tenantId' query params, and map string values.
+  // Single-tenant platform — tenant_id columns are integers referencing
+  // tenants(id), so slug-style values must map to the real numeric tenant (1),
+  // not the string 'default' (which fails "invalid input syntax for integer").
   const tenant = req.headers['x-tenant-id'] || req.query.tenant || req.query.tenantId;
-  
-  // If tenant is a string like 'fotonix-prod', map to 'default' for consistency
-  if (tenant === 'fotonix-prod' || tenant === 'default') {
-    return 'default';
+
+  if (tenant === 'fotonix-prod' || tenant === 'default' || !tenant) {
+    return 1;
   }
-  
-  return tenant || 1;
+
+  const numeric = Number(tenant);
+  return Number.isFinite(numeric) ? numeric : 1;
 }
 
 // Send individual email (UPDATED with business_email support and defensive checks)
 router.post('/send', async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { to, from, subject, html, text, templateName, templateData, businessEmailId } = req.body;
+    const { to, from, subject, html, text, templateName, templateData, businessEmailId, attachments: rawAttachments } = req.body;
 
     if (!to || !subject) {
       return res.status(400).json({ error: 'to and subject are required' });
+    }
+
+    // Upload any attachments before creating the message record, so their
+    // metadata can be stored alongside it in one insert.
+    let uploadedAttachments = [];
+    try {
+      uploadedAttachments = await uploadAttachments(rawAttachments, `send-${Date.now()}`);
+    } catch (attachErr) {
+      return res.status(400).json({ error: 'Attachment upload failed', detail: attachErr.message });
     }
 
     // Check if recipient is suppressed
@@ -116,13 +129,15 @@ router.post('/send', async (req, res) => {
       }
     }
 
+    const attachmentMeta = uploadedAttachments.map(({ filename, contentType, size, url }) => ({ filename, contentType, size, url }));
+
     // Create message record (DEFENSIVE: handle empty result)
     const messageResult = await query(`
-      INSERT INTO email_messages 
-      (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta, business_email_id)
-      VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7, $8)
+      INSERT INTO email_messages
+      (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta, business_email_id, attachments)
+      VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7, $8, $9)
       RETURNING id
-    `, [tenantId, actualFrom, to, subject, finalHtml, finalText, JSON.stringify(req.body), businessEmailId || null]);
+    `, [tenantId, actualFrom, to, subject, finalHtml, finalText, JSON.stringify(req.body), businessEmailId || null, JSON.stringify(attachmentMeta)]);
 
     // DEFENSIVE CHECK: Ensure we got an ID back
     if (!messageResult.rows || messageResult.rows.length === 0 || !messageResult.rows[0]?.id) {
@@ -139,6 +154,7 @@ router.post('/send', async (req, res) => {
         subject: subject,
         html: finalHtml,
         text: finalText,
+        attachments: uploadedAttachments.map(a => ({ filename: a.filename, content: a.buffer, contentType: a.contentType })),
         headers: {
           'Message-ID': `<${messageId}@${req.get('host') || 'fotonix.co.uk'}>`,
           'X-Tenant-ID': tenantId,
@@ -208,7 +224,7 @@ router.post('/send', async (req, res) => {
 router.post('/send-bulk', async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { recipients, subject, html, text, templateName, templateData, campaignId, fromEmail, fromName, replyTo } = req.body;
+    const { recipients, subject, html, text, templateName, templateData, campaignId, fromEmail, fromName, replyTo, attachments: rawAttachments } = req.body;
 
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'recipients array is required' });
@@ -217,6 +233,17 @@ router.post('/send-bulk', async (req, res) => {
     if (!subject) {
       return res.status(400).json({ error: 'subject is required' });
     }
+
+    // Upload attachments once — the same files are sent to every recipient,
+    // no need to re-upload per recipient.
+    let uploadedAttachments = [];
+    try {
+      uploadedAttachments = await uploadAttachments(rawAttachments, `campaign-${campaignId || Date.now()}`);
+    } catch (attachErr) {
+      return res.status(400).json({ error: 'Attachment upload failed', detail: attachErr.message });
+    }
+    const attachmentMeta = uploadedAttachments.map(({ filename, contentType, size, url }) => ({ filename, contentType, size, url }));
+    const nodemailerAttachments = uploadedAttachments.map(a => ({ filename: a.filename, content: a.buffer, contentType: a.contentType }));
 
     const results = [];
     const { transport, defaultFrom } = await loadTransport(tenantId);
@@ -266,11 +293,11 @@ router.post('/send-bulk', async (req, res) => {
 
           // Create message record
           const messageResult = await query(`
-            INSERT INTO email_messages 
-            (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta)
-            VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7)
+            INSERT INTO email_messages
+            (tenant_id, from_address, to_address, subject, html, text, status, queued_at, meta, attachments)
+            VALUES ($1, $2, $3, $4, $5, $6, 'queued', NOW(), $7, $8)
             RETURNING id
-          `, [tenantId, fromEmail || defaultFrom, recipient.email || recipient, subject, finalHtml, finalText, JSON.stringify({ campaignId, recipient })]);
+          `, [tenantId, fromEmail || defaultFrom, recipient.email || recipient, subject, finalHtml, finalText, JSON.stringify({ campaignId, recipient }), JSON.stringify(attachmentMeta)]);
 
           const messageId = messageResult.rows[0].id;
 
@@ -282,6 +309,7 @@ router.post('/send-bulk', async (req, res) => {
             subject: subject,
             html: finalHtml,
             text: finalText,
+            attachments: nodemailerAttachments,
             headers: {
               'Message-ID': `<${messageId}@${req.get('host') || 'fotonix.co.uk'}>`,
               'X-Tenant-ID': tenantId,
@@ -395,10 +423,13 @@ router.get('/messages', async (req, res) => {
     const params = [tenantId];
     let paramIndex = 1;
 
-    // Filter by member's business emails if memberUid provided
-    if (memberUid && memberBusinessEmails.length > 0) {
+    // Filter by member's business emails if memberUid provided. Deliberately
+    // fail-closed: even if this member has zero business_emails rows yet,
+    // still apply the clause (it'll just match nothing) rather than skipping
+    // the filter and falling through to every tenant message.
+    if (memberUid) {
       sql += ` AND (
-        m.to_address = ANY($${++paramIndex}::text[]) 
+        m.to_address = ANY($${++paramIndex}::text[])
         OR m.from_address = ANY($${paramIndex}::text[])
         OR be.member_uid = $${++paramIndex}
       )`;
@@ -420,20 +451,12 @@ router.get('/messages', async (req, res) => {
       sql += ` AND m.status = 'deleted'`;
     }
     
-    if (filter === 'starred') {
-      sql += ` AND m.is_starred = true`;
-    }
     if (filter === 'unread') {
       sql += ` AND m.is_read = false`;
     }
-    if (label) {
-      sql += ` AND $${++paramIndex} = ANY(m.labels)`;
-      params.push(label);
-    }
     if (searchQuery) {
-      sql += ` AND (m.subject ILIKE $${++paramIndex} OR m.text_content ILIKE $${++paramIndex})`;
+      sql += ` AND (m.subject ILIKE $${++paramIndex} OR m.text ILIKE $${++paramIndex})`;
       params.push(`%${searchQuery}%`, `%${searchQuery}%`);
-      paramIndex++;
     }
     if (cursor) {
       sql += ` AND m.created_at < $${++paramIndex}`;
@@ -497,9 +520,19 @@ router.get('/messages/:messageId', async (req, res) => {
   try {
     const tenantId = getTenantId(req);
     const { messageId } = req.params;
+    const { memberUid } = req.query;
 
-    const result = await query(`
-      SELECT 
+    let memberBusinessEmails = [];
+    if (memberUid) {
+      const businessEmailsResult = await query(
+        'SELECT email_address FROM business_emails WHERE member_uid = $1 AND is_active = true',
+        [memberUid]
+      );
+      memberBusinessEmails = businessEmailsResult.rows.map(r => r.email_address);
+    }
+
+    let sql = `
+      SELECT
         m.*,
         be.email_address as business_email,
         be.business_name,
@@ -507,7 +540,20 @@ router.get('/messages/:messageId', async (req, res) => {
       FROM email_messages m
       LEFT JOIN business_emails be ON m.business_email_id = be.id
       WHERE m.id = $1 AND m.tenant_id = $2
-    `, [messageId, tenantId]);
+    `;
+    const params = [messageId, tenantId];
+
+    // Same fail-closed member scoping as GET /messages — see comment there.
+    if (memberUid) {
+      sql += ` AND (
+        m.to_address = ANY($3::text[])
+        OR m.from_address = ANY($3::text[])
+        OR be.member_uid = $4
+      )`;
+      params.push(memberBusinessEmails, memberUid);
+    }
+
+    const result = await query(sql, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Message not found' });
@@ -521,6 +567,72 @@ router.get('/messages/:messageId', async (req, res) => {
       error: 'Internal server error',
       detail: error.message
     });
+  }
+});
+
+// Mark messages read/unread
+router.post('/messages/mark-read', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { message_ids, read } = req.body || {};
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return res.status(400).json({ error: 'message_ids array is required' });
+    }
+
+    await query(
+      `UPDATE email_messages SET is_read = $1 WHERE id = ANY($2) AND tenant_id = $3`,
+      [read !== false, message_ids, tenantId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Mark-read error:', error);
+    res.status(500).json({ error: 'Internal server error', detail: error.message });
+  }
+});
+
+// Archive messages
+router.post('/messages/archive', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { message_ids } = req.body || {};
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return res.status(400).json({ error: 'message_ids array is required' });
+    }
+
+    await query(
+      `UPDATE email_messages SET status = 'archived' WHERE id = ANY($1) AND tenant_id = $2`,
+      [message_ids, tenantId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Archive error:', error);
+    res.status(500).json({ error: 'Internal server error', detail: error.message });
+  }
+});
+
+// Delete messages (soft delete — moves to Trash, matching the 'deleted' status filter)
+router.delete('/messages/delete', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { message_ids } = req.body || {};
+
+    if (!Array.isArray(message_ids) || message_ids.length === 0) {
+      return res.status(400).json({ error: 'message_ids array is required' });
+    }
+
+    await query(
+      `UPDATE email_messages SET status = 'deleted' WHERE id = ANY($1) AND tenant_id = $2`,
+      [message_ids, tenantId]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({ error: 'Internal server error', detail: error.message });
   }
 });
 

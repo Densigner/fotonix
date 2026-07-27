@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { 
-  Search, Star, Archive, Trash2, Tag, Forward, Reply, ReplyAll, 
+  Search, Archive, Trash2, Tag, Forward, Reply, ReplyAll,
   MoreHorizontal, Clock, Send, Paperclip, Eye, EyeOff, Flag,
   ChevronDown, Filter, SortAsc, SortDesc, Settings, Plus,
   ArrowRight, ArrowLeft, Maximize2, Minimize2, X, Sun, Moon,
@@ -12,11 +12,12 @@ import {
 import { storage } from '../../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
+import { API_URL } from '../../config/environment';
 
 /**
  * CONFIG — point this at your deployed API + tenant
  */
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:4000";
+const API_BASE = API_URL;
 const TENANT_SLUG = process.env.REACT_APP_TENANT_SLUG || "fotonix-prod";
 
 /**
@@ -107,7 +108,8 @@ export default function AdvancedInboxScreen() {
     signature: null,
     priority: 0,
     trackingEnabled: true,
-    scheduleAt: null
+    scheduleAt: null,
+    attachments: [] // array of File objects, converted to base64 at send time
   });
 
   // Business emails state
@@ -130,7 +132,10 @@ export default function AdvancedInboxScreen() {
     
     try {
       // Fetch full email details
-      const res = await fetch(`${API_BASE}/api/email/messages/${email.id}?tenant=${TENANT_SLUG}`);
+      const memberUid = getAuth().currentUser?.uid;
+      const detailParams = new URLSearchParams({ tenant: TENANT_SLUG });
+      if (memberUid) detailParams.set("memberUid", memberUid);
+      const res = await fetch(`${API_BASE}/api/email/messages/${email.id}?${detailParams.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const fullEmail = await res.json();
       
@@ -315,8 +320,8 @@ export default function AdvancedInboxScreen() {
     setError(null);
 
     // Get current user's memberUid
-    const memberUid = localStorage.getItem('memberUID');
-    
+    const memberUid = getAuth().currentUser?.uid;
+
     const params = new URLSearchParams();
     params.set("tenant", TENANT_SLUG);
     params.set("limit", "25");
@@ -339,8 +344,6 @@ export default function AdvancedInboxScreen() {
       params.set("status", "spam");
     } else if (currentFilter === 'trash') {
       params.set("status", "deleted");
-    } else if (currentFilter === 'starred') {
-      params.set("filter", "starred");
     } else if (currentFilter === 'unread') {
       params.set("filter", "unread");
     } else if (currentFilter.startsWith('label:')) {
@@ -527,7 +530,10 @@ export default function AdvancedInboxScreen() {
       if (!activeId) { setDetail(null); return; }
       setDetailLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/email/messages/${activeId}?tenant=${TENANT_SLUG}`);
+        const memberUid = getAuth().currentUser?.uid;
+        const detailParams = new URLSearchParams({ tenant: TENANT_SLUG });
+        if (memberUid) detailParams.set("memberUid", memberUid);
+        const res = await fetch(`${API_BASE}/api/email/messages/${activeId}?${detailParams.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!ignore) {
@@ -551,7 +557,13 @@ export default function AdvancedInboxScreen() {
   useEffect(() => {
     function onKey(e) {
       if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
-      
+      // These are bare single-letter shortcuts (Gmail-style). Without this
+      // guard, e.key is still 'c'/'r'/'a'/'f'/'s'/'x' even when Ctrl/Cmd is
+      // held, so Ctrl+C, Ctrl+R, Ctrl+A, Ctrl+F, Ctrl+S, Ctrl+X were all
+      // being hijacked (copy/refresh/select-all/find/save/cut) instead of
+      // reaching the browser.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       const selectedCount = selectedItems.size;
       const currentIndex = items.findIndex(m => m.id === activeId);
       
@@ -590,13 +602,6 @@ export default function AdvancedInboxScreen() {
           e.preventDefault();
           if (detail && !isComposing) {
             startReply('forward');
-          }
-          break;
-          
-        case 's':
-          e.preventDefault();
-          if (activeId) {
-            toggleStar([activeId]);
           }
           break;
           
@@ -665,47 +670,31 @@ export default function AdvancedInboxScreen() {
   // Message actions
   const markAsRead = async (ids) => {
     try {
-      await fetch(`${API_BASE}/api/email/messages/mark-read`, {
+      const res = await fetch(`${API_BASE}/api/email/messages/mark-read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids, read: true })
       });
-      
-      setItems(prev => prev.map(item => 
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      setItems(prev => prev.map(item =>
         ids.includes(item.id) ? { ...item, is_read: true } : item
       ));
     } catch (e) {
       console.error('Failed to mark as read:', e);
-    }
-  };
-
-  const toggleStar = async (ids) => {
-    try {
-      const currentItem = items.find(item => ids.includes(item.id));
-      const newStarred = !currentItem?.is_starred;
-      
-      await fetch(`${API_BASE}/api/email/messages/star`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids, starred: newStarred })
-      });
-      
-      setItems(prev => prev.map(item => 
-        ids.includes(item.id) ? { ...item, is_starred: newStarred } : item
-      ));
-    } catch (e) {
-      console.error('Failed to toggle star:', e);
+      setError('Failed to mark as read — please try again');
     }
   };
 
   const archiveMessages = async (ids) => {
     try {
-      await fetch(`${API_BASE}/api/email/messages/archive`, {
+      const res = await fetch(`${API_BASE}/api/email/messages/archive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids })
       });
-      
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       setItems(prev => prev.filter(item => !ids.includes(item.id)));
       setSelectedItems(new Set());
       if (ids.includes(activeId)) {
@@ -714,17 +703,19 @@ export default function AdvancedInboxScreen() {
       }
     } catch (e) {
       console.error('Failed to archive:', e);
+      setError('Failed to archive — please try again');
     }
   };
 
   const deleteMessages = async (ids) => {
     try {
-      await fetch(`${API_BASE}/api/email/messages/delete`, {
+      const res = await fetch(`${API_BASE}/api/email/messages/delete`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: TENANT_SLUG, message_ids: ids })
       });
-      
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       setItems(prev => prev.filter(item => !ids.includes(item.id)));
       setSelectedItems(new Set());
       if (ids.includes(activeId)) {
@@ -733,6 +724,7 @@ export default function AdvancedInboxScreen() {
       }
     } catch (e) {
       console.error('Failed to delete:', e);
+      setError('Failed to delete — please try again');
     }
   };
 
@@ -764,9 +756,10 @@ export default function AdvancedInboxScreen() {
       priority: 0,
       trackingEnabled: true,
       scheduleAt: null,
-      originalMessageId: null
+      originalMessageId: null,
+      attachments: []
     });
-    
+
     // Focus compose area
     setTimeout(() => {
       if (composeRef.current) {
@@ -811,14 +804,14 @@ export default function AdvancedInboxScreen() {
     // Prepare email body based on mode
     let bodyContent = '';
     if (isForward) {
-      bodyContent = `\\n\\n--- Forwarded message ---\\nFrom: ${detail.from_address || detail.from?.[0]?.address}\\nDate: ${new Date(detail.created_at).toLocaleString()}\\nSubject: ${detail.subject}\\n\\n${detail.text || detail.html?.replace(/<[^>]*>/g, '') || ''}`;
+      bodyContent = `\n\n--- Forwarded message ---\nFrom: ${detail.from_address || detail.from?.[0]?.address}\nDate: ${new Date(detail.created_at).toLocaleString()}\nSubject: ${detail.subject}\n\n${detail.text || detail.html?.replace(/<[^>]*>/g, '') || ''}`;
     } else {
       // For replies, add the original message as quoted text at the bottom
       const originalSender = detail.from_address || detail.from?.[0]?.address || 'Unknown';
       const originalDate = new Date(detail.created_at).toLocaleString();
       const originalText = detail.text || detail.html?.replace(/<[^>]*>/g, '') || '';
-      
-      bodyContent = `[Type your reply here]\\n\\n\\n\\n--- Original Message ---\\nFrom: ${originalSender}\\nDate: ${originalDate}\\nSubject: ${detail.subject || '(no subject)'}\\n\\n${originalText.split('\\n').map(line => `> ${line}`).join('\\n')}`;
+
+      bodyContent = `[Type your reply here]\n\n\n\n--- Original Message ---\nFrom: ${originalSender}\nDate: ${originalDate}\nSubject: ${detail.subject || '(no subject)'}\n\n${originalText.split('\n').map(line => `> ${line}`).join('\n')}`;
     }
     
     setComposeData(prev => ({
@@ -852,11 +845,27 @@ export default function AdvancedInboxScreen() {
     }, 150);
   };
 
+  // Read a File as base64 (without the data: URL prefix) for JSON transport.
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
   const sendMessage = async () => {
     try {
       // Find the business email object for the selected from address
       const selectedBusinessEmail = businessEmails.find(be => be.email === composeData.from);
-      
+
+      const attachments = await Promise.all(
+        (composeData.attachments || []).map(async (file) => ({
+          filename: file.name,
+          contentType: file.type || 'application/octet-stream',
+          dataBase64: await fileToBase64(file)
+        }))
+      );
+
       const payload = {
         tenant_slug: TENANT_SLUG,
         from: composeData.from,
@@ -871,6 +880,7 @@ export default function AdvancedInboxScreen() {
         tracking_enabled: composeData.trackingEnabled,
         schedule_at: composeData.scheduleAt,
         signature_id: composeData.signature,
+        attachments,
         in_reply_to_id: replyMode && replyMode !== 'forward' ? composeData.originalMessageId : undefined
       };
 
@@ -908,7 +918,8 @@ export default function AdvancedInboxScreen() {
         priority: 0,
         trackingEnabled: true,
         scheduleAt: null,
-        fromEmailId: selectedBusinessEmail?.id
+        fromEmailId: selectedBusinessEmail?.id,
+        attachments: []
       });
 
       // Show success message
@@ -929,8 +940,14 @@ export default function AdvancedInboxScreen() {
 
   return (
     <div className={clsx(
-      "h-screen w-full transition-colors duration-200",
-      isDarkMode 
+      // Not h-screen: this renders inside the normal page flow (site Header
+      // above, site Footer below), not as a standalone full-viewport page.
+      // h-screen with no overflow-hidden let the overflowing message list
+      // visually spill past this box into the Footer below, since the
+      // Footer's document position is based on this box's declared height,
+      // not where the spilling content actually renders.
+      "w-full transition-colors duration-200",
+      isDarkMode
         ? "bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100"
         : "bg-gradient-to-b from-gray-50 via-white to-gray-50 text-gray-900"
     )}>
@@ -1064,7 +1081,7 @@ export default function AdvancedInboxScreen() {
                 "text-xs",
                 isDarkMode ? "text-slate-400" : "text-gray-500"
               )}>Filter:</span>
-              {['inbox', 'starred', 'unread', 'sent', 'archive'].map(filter => (
+              {['inbox', 'unread', 'sent', 'archive'].map(filter => (
                 <button
                   key={filter}
                   onClick={() => setCurrentFilter(filter)}
@@ -1113,7 +1130,19 @@ export default function AdvancedInboxScreen() {
       </header>
 
       {/* Main layout */}
-      <div className="flex h-[calc(100vh-120px)]">
+      {/* Not min-h/max-h off 100vh — this screen renders inside the normal page
+          flow (site Header above, site Footer below), not as a standalone
+          full-viewport page, so sizing off 100vh overflowed past the page's
+          real footer. Fixed height keeps the internal lists' overflow-auto
+          scrolling contained instead. */}
+      {/* overflow-hidden here + min-h-0 on the scrollable children below: flex
+          children default to min-height:auto, which lets their natural content
+          size override a bounded flex parent's height — the overflow-auto on
+          the list/detail panes below was silently defeated by this, so a long
+          list grew past its box instead of scrolling inside it (only visible
+          with enough items to exceed the box — hence it never reproduced with
+          a short local list). */}
+      <div className="flex h-[720px] max-h-[75vh] overflow-hidden">
         {/* Sidebar */}
         <div className={clsx(
           "w-64 border-r p-4",
@@ -1128,7 +1157,7 @@ export default function AdvancedInboxScreen() {
             )}>
               Folders
             </div>
-            {['inbox', 'starred', 'sent', 'drafts', 'archive', 'spam', 'trash'].map(folder => (
+            {['inbox', 'sent', 'drafts', 'archive', 'spam', 'trash'].map(folder => (
               <button
                 key={folder}
                 onClick={() => setCurrentFilter(folder)}
@@ -1142,7 +1171,6 @@ export default function AdvancedInboxScreen() {
                 )}
               >
                 {folder === 'inbox' && '📥'}
-                {folder === 'starred' && '⭐'}
                 {folder === 'sent' && '📤'}
                 {folder === 'drafts' && '📝'}
                 {folder === 'archive' && '📦'}
@@ -1181,11 +1209,14 @@ export default function AdvancedInboxScreen() {
         </div>
 
         {/* Email list */}
-        <div className="flex-1 flex">
+        <div className="flex-1 flex min-h-0">
           <div className={clsx(
-            "w-96 border-r",
-            isDarkMode 
-              ? "border-white/10 bg-white/5" 
+            // Was a plain block div — the inner list's flex-1/min-h-0/overflow-auto
+            // had no effect at all without a flex column parent to size against,
+            // which is why the list never actually became scrollable.
+            "w-96 border-r flex flex-col min-h-0",
+            isDarkMode
+              ? "border-white/10 bg-white/5"
               : "border-gray-200 bg-gray-50"
           )}>
             {/* Bulk actions */}
@@ -1202,13 +1233,6 @@ export default function AdvancedInboxScreen() {
                     title="Mark as read"
                   >
                     <Eye className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => toggleStar([...selectedItems])}
-                    className="p-1 rounded hover:bg-white/10"
-                    title="Star"
-                  >
-                    <Star className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => archiveMessages([...selectedItems])}
@@ -1236,7 +1260,22 @@ export default function AdvancedInboxScreen() {
             )}
 
             {/* Message list */}
-            <div ref={listRef} className="flex-1 overflow-auto">
+            <style>{`
+              .inbox-message-list::-webkit-scrollbar { width: 8px; }
+              .inbox-message-list::-webkit-scrollbar-track { background: transparent; }
+              .inbox-message-list::-webkit-scrollbar-thumb {
+                background: ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'};
+                border-radius: 4px;
+              }
+              .inbox-message-list::-webkit-scrollbar-thumb:hover {
+                background: ${isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)'};
+              }
+              .inbox-message-list {
+                scrollbar-width: thin;
+                scrollbar-color: ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'} transparent;
+              }
+            `}</style>
+            <div ref={listRef} className="inbox-message-list flex-1 min-h-0 overflow-auto">
               {items.map((message, idx) => (
                 <div
                   key={`${message.id}-${idx}`}
@@ -1275,9 +1314,8 @@ export default function AdvancedInboxScreen() {
                           </div>
                           
                           <div className="flex items-center gap-1 ml-auto">
-                            {message.is_starred && <Star className="w-3 h-3 text-yellow-400 fill-current" />}
                             {message.priority > 1 && <Flag className="w-3 h-3 text-red-400" />}
-                            {message.has_attachments && <Paperclip className={clsx(
+                            {Array.isArray(message.attachments) && message.attachments.length > 0 && <Paperclip className={clsx(
                               "w-3 h-3",
                               isDarkMode ? "text-slate-400" : "text-gray-500"
                             )} />}
@@ -1323,7 +1361,7 @@ export default function AdvancedInboxScreen() {
           </div>
 
           {/* Message detail pane */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0">
             {!activeItem ? (
               <div className={clsx(
                 "flex-1 flex items-center justify-center",
@@ -1365,93 +1403,89 @@ export default function AdvancedInboxScreen() {
                     </div>
                     
                     {/* Action buttons */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <button
                         onClick={() => startReply('reply')}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Reply (R)"
                       >
                         <Reply className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Reply</span>
                       </button>
                       <button
                         onClick={() => startReply('reply-all')}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Reply All (A)"
                       >
                         <ReplyAll className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Reply All</span>
                       </button>
                       <button
                         onClick={() => startReply('forward')}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Forward (F)"
                       >
                         <Forward className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => toggleStar([activeId])}
-                        className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
-                            : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-                        )}
-                        title="Star (S)"
-                      >
-                        <Star className={clsx("w-4 h-4", activeItem.is_starred && "fill-current text-yellow-400")} />
+                        <span className="text-[9px] leading-none">Forward</span>
                       </button>
                       <button
                         onClick={() => archiveMessages([activeId])}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Archive (E)"
                       >
                         <Archive className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Archive</span>
                       </button>
                       <button
                         onClick={() => deleteMessages([activeId])}
                         className={clsx(
-                          "p-2 rounded-xl border transition-colors",
-                          isDarkMode 
-                            ? "border-white/10 bg-white/5 hover:bg-white/10" 
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
                             : "border-gray-200 bg-gray-50 hover:bg-gray-100"
                         )}
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">Delete</span>
                       </button>
-                      <button className={clsx(
-                        "p-2 rounded-xl border transition-colors",
-                        isDarkMode 
-                          ? "border-white/10 bg-white/5 hover:bg-white/10" 
-                          : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-                      )}>
+                      <button
+                        title="More options"
+                        className={clsx(
+                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border transition-colors",
+                          isDarkMode
+                            ? "border-white/10 bg-white/5 hover:bg-white/10"
+                            : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                        )}>
                         <MoreHorizontal className="w-4 h-4" />
+                        <span className="text-[9px] leading-none">More</span>
                       </button>
                     </div>
                   </div>
                 </div>
 
                 {/* Message body */}
-                <div className="flex-1 overflow-auto p-4">
+                <div className="flex-1 min-h-0 overflow-auto p-4">
                   {detailLoading ? (
                     <div className={clsx(
                       "text-sm",
@@ -1463,7 +1497,45 @@ export default function AdvancedInboxScreen() {
                       isDarkMode ? "text-rose-300" : "text-red-600"
                     )}>Error: {detail.error}</div>
                   ) : (
-                    <MessageBody html={detail?.html} text={detail?.text} isDarkMode={isDarkMode} />
+                    <>
+                      <MessageBody html={detail?.html} text={detail?.text} isDarkMode={isDarkMode} />
+                      {Array.isArray(detail?.attachments) && detail.attachments.length > 0 && (
+                        <div className={clsx(
+                          "mt-4 pt-4 border-t space-y-2",
+                          isDarkMode ? "border-white/10" : "border-gray-200"
+                        )}>
+                          <div className={clsx(
+                            "text-xs font-semibold uppercase tracking-wide",
+                            isDarkMode ? "text-slate-400" : "text-gray-500"
+                          )}>
+                            {detail.attachments.length} Attachment{detail.attachments.length > 1 ? 's' : ''}
+                          </div>
+                          {detail.attachments.map((att, idx) => (
+                            <a
+                              key={idx}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={att.filename}
+                              className={clsx(
+                                "flex items-center gap-2 text-sm px-3 py-2 rounded-lg border w-fit transition-colors",
+                                isDarkMode
+                                  ? "border-white/10 bg-white/5 hover:bg-white/10"
+                                  : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                              )}
+                            >
+                              <Paperclip className="w-4 h-4 shrink-0" />
+                              <span className="truncate max-w-[240px]">{att.filename}</span>
+                              {att.size != null && (
+                                <span className={isDarkMode ? "text-slate-500" : "text-gray-400"}>
+                                  {(att.size / 1024).toFixed(0)}KB
+                                </span>
+                              )}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </>
@@ -1617,6 +1689,55 @@ export default function AdvancedInboxScreen() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <label className={clsx(
+                  "text-sm flex items-center gap-2 cursor-pointer w-fit",
+                  isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-gray-600 hover:text-gray-900"
+                )}>
+                  <Paperclip className="w-4 h-4" />
+                  Attach files
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files || []);
+                      setComposeData(prev => ({ ...prev, attachments: [...(prev.attachments || []), ...newFiles] }));
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {composeData.attachments && composeData.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {composeData.attachments.map((file, idx) => (
+                      <div
+                        key={`${file.name}-${idx}`}
+                        className={clsx(
+                          "flex items-center gap-2 text-xs px-2 py-1 rounded-lg border",
+                          isDarkMode ? "border-white/10 bg-white/5" : "border-gray-200 bg-gray-50"
+                        )}
+                      >
+                        <span className="truncate max-w-[160px]">{file.name}</span>
+                        <span className={isDarkMode ? "text-slate-500" : "text-gray-400"}>
+                          {(file.size / 1024).toFixed(0)}KB
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setComposeData(prev => ({
+                            ...prev,
+                            attachments: prev.attachments.filter((_, i) => i !== idx)
+                          }))}
+                          className="hover:text-red-400"
+                          title="Remove"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Compose actions */}
               <div className={clsx(
                 "flex items-center justify-between pt-4 border-t",
@@ -1665,13 +1786,26 @@ export default function AdvancedInboxScreen() {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const missing = [
+                      !composeData.from && 'From',
+                      !composeData.to && 'To',
+                      !composeData.subject && 'Subject'
+                    ].filter(Boolean);
+                    if (missing.length === 0) return null;
+                    return (
+                      <span className={clsx("text-xs", isDarkMode ? "text-amber-400" : "text-amber-600")}>
+                        Missing: {missing.join(', ')}
+                      </span>
+                    );
+                  })()}
                   <button
                     onClick={() => setIsComposing(false)}
                     className={clsx(
                       "px-4 py-2 text-sm border rounded-xl transition-colors",
-                      isDarkMode 
-                        ? "border-white/10 hover:bg-white/5" 
+                      isDarkMode
+                        ? "border-white/10 hover:bg-white/5"
                         : "border-gray-200 hover:bg-gray-50"
                     )}
                   >
@@ -2031,7 +2165,7 @@ export default function AdvancedInboxScreen() {
                           ? "bg-white/5 border-white/10 focus:border-white/20" 
                           : "bg-gray-50 border-gray-200 focus:border-gray-300"
                       )}
-                      placeholder="123 Business Street, London, UK"
+                      placeholder="Shropshire Gardens, St Helens, England"
                     />
                   </div>
                 </div>
