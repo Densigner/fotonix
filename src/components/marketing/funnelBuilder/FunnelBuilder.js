@@ -51,12 +51,6 @@ import { storage } from '../../../firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { API_URL } from '../../../config/environment';
 
-// local funnel icons (used in the create-funnel modal)
-import funnelAudienceIcon from './funnel-icon_audience.svg';
-import funnelSellIcon from './funnel-icon_sell_canopy.svg';
-import funnelCustomIcon from './funnel-icon_custom.svg';
-import funnelWebinarIcon from './funnel-icon_webinar.png';
-
 // shadcn/ui (use relative paths to avoid alias resolution issues in CRA)
 import { Button } from "../../shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../shared/ui/card";
@@ -910,14 +904,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
   const [device, setDevice] = useState('desktop');
   const [blocks, setBlocks] = useState(()=>loadInitial(initialTemplateId));
   const [selectedId, setSelectedId] = useState(null);
-  // showCreateModal is false by default; open it when the user clicks "Create"
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [funnelData, setFunnelData] = useState({
-    name: "",
-    domain: "<storename>.fotonix.co.uk",
-    goal: "",
-    currency: "Euro",
-  });
   const [showExport, setShowExport] = useState(false);
   const [importText, setImportText] = useState("");
   // edit mode enables inline editable regions in the canvas
@@ -1110,80 +1096,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
 
   function importSchema(){ try { const obj = JSON.parse(importText); if (obj?.blocks) { setBlocks(obj.blocks); setVariant(obj.variant||'A'); setShowExport(false);} } catch(e){ alert('Invalid JSON'); } }
 
-  const CreateFunnelModal = () => (
-    <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-      <DialogContent className="max-w-md rounded-2xl p-6">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">Create funnel</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 mt-4">
-          <Field label="Name">
-            <Input
-              placeholder="Name"
-              value={funnelData.name}
-              onChange={(e) => setFunnelData({ ...funnelData, name: e.target.value })}
-            />
-          </Field>
-
-          <Field label="Funnel domain">
-            <Input
-              value={funnelData.domain}
-              onChange={(e) => setFunnelData({ ...funnelData, domain: e.target.value })}
-            />
-          </Field>
-
-          <Field label="Choose your funnel goal">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { id: "audience", title: "Build an audience", desc: "Collect email addresses and build your email list.", icon: funnelAudienceIcon },
-                { id: "sell", title: "Sell", desc: "Sell a product or a service.", icon: funnelSellIcon },
-                { id: "custom", title: "Custom", desc: "Build a custom funnel from scratch.", icon: funnelCustomIcon },
-                { id: "webinar", title: "Run an evergreen webinar", desc: "Run webinars to automate your business.", icon: funnelWebinarIcon },
-              ].map((goal) => (
-                <button
-                  key={goal.id}
-                  onClick={() => setFunnelData({ ...funnelData, goal: goal.id })}
-                  className={`rounded-lg border p-3 text-left transition hover:bg-gray-50 ${
-                    funnelData.goal === goal.id ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-200"
-                  }`}
-                >
-                  {/* Icon above the card text */}
-                  <div className="flex items-center justify-center mb-3">
-                    <img src={goal.icon} alt={goal.title} className="w-14 h-10 object-contain opacity-95" />
-                  </div>
-                  <h4 className="font-medium text-sm">{goal.title}</h4>
-                  <p className="text-xs text-gray-600 mt-1">{goal.desc}</p>
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Currency">
-            <select
-              value={funnelData.currency}
-              onChange={(e) => setFunnelData({ ...funnelData, currency: e.target.value })}
-              className="w-full rounded-md border border-gray-200 px-2 py-1"
-            >
-              <option>Euro</option>
-              <option>USD</option>
-              <option>GBP</option>
-            </select>
-          </Field>
-
-          <div className="flex justify-end mt-6">
-            <Button
-              disabled={!funnelData.name || !funnelData.goal}
-              onClick={() => setShowCreateModal(false)}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-gradient-to-b from-white to-gray-100">
@@ -1191,7 +1103,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
           <EditorHeader
             variant={variant}
             setVariant={setVariant}
-            setShowCreateModal={setShowCreateModal}
             device={device}
             setDevice={setDevice}
             doUndo={doUndo}
@@ -1340,7 +1251,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
         </div>
       </div>
     </div>
-      {showCreateModal && <CreateFunnelModal />}
     </TooltipProvider>
   );
 }
@@ -1726,7 +1636,6 @@ function Segmented({ options, value, onChange, compact = false }) {
 function EditorHeader({
   variant,
   setVariant,
-  setShowCreateModal,
   device,
   setDevice,
   doUndo,
@@ -1762,14 +1671,6 @@ function EditorHeader({
               value={variant}
               onChange={setVariant}
             />
-
-            <Button
-              size="sm"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
-              onClick={() => setShowCreateModal(true)}
-            >
-              + Create
-            </Button>
 
             <Button
               variant={editMode ? "default" : "outline"}
