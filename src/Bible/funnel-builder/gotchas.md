@@ -374,3 +374,28 @@ mentioned that creating a funnel just opens the editor with a **draft** —
 nothing is publicly visible until the separate Publish button (top-right
 of the editor, added 2026-07-26) is clicked. Added a plain-language note
 directly in the modal, right above the Create button, saying exactly that.
+
+### There were genuinely two different "Create funnel" modals — one real, one dead
+
+Found right after the note above, from a screenshot of a "Create funnel"
+dialog with a `<storename>.fotonix.co.uk`-style domain field, goal icons,
+and a "Save" button — a form that looks almost identical to the real one
+on the Funnels dashboard, but isn't it. This second modal
+(`CreateFunnelModal`, defined *inside* `FunnelBuilder.js` itself, opened
+via a "+ Create" button in the editor's own header) predates the 2026-07-26
+backend build and was simply never removed: its "Save" button only ever
+called `setShowCreateModal(false)` — closes the dialog, no API call, no
+funnel created, nothing saved anywhere. Its own local `funnelData` state
+(name/domain/goal/currency) was written to and read from *only within this
+one dead component* — nothing downstream ever consumed it.
+
+Removed entirely rather than wired up — the "+ Create" button, the modal,
+its state, and its four now-unused icon imports
+(`funnel-icon_audience.svg` etc.) — since you're already inside the editor
+for a specific real funnel by the time you'd see this button; a second
+"create another funnel" entry point nested inside the editor doesn't add
+anything the dashboard's own real "Create" button doesn't already do, and
+having two near-identical forms where only one actually works is strictly
+worse than having one. The Funnels dashboard's "Create" button
+(`FunnelBuilderDash.js`) is now the only create-funnel entry point in the
+app.
