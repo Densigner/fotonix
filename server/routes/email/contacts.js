@@ -256,23 +256,46 @@ router.get('/mine', async (req, res) => {
 
     const tenantId = await getTenantId(memberUid);
 
-    const page   = parseInt(req.query.page)  || 1;
-    const limit  = parseInt(req.query.limit) || 50;
-    const offset = (page - 1) * limit;
+    const page    = parseInt(req.query.page)  || 1;
+    const limit   = parseInt(req.query.limit) || 50;
+    const offset  = (page - 1) * limit;
+    const search  = req.query.search  || '';
+    const segment = req.query.segment || '';
+
+    // Same search/segment filters as GET / (minus the named-audience-segment
+    // join, which ContactManagement.jsx's dropdown doesn't offer as an
+    // option anyway — just all/vip/high_engagement/low_engagement).
+    let where = `WHERE tenant_id = $1 AND member_uid = $2`;
+    const queryParams = [tenantId, memberUid];
+    let paramIndex = 3;
+
+    if (search) {
+      where += ` AND (email ILIKE $${paramIndex} OR first_name ILIKE $${paramIndex} OR last_name ILIKE $${paramIndex})`;
+      queryParams.push(`%${search}%`);
+      paramIndex++;
+    }
+    if (segment === 'vip') {
+      where += ` AND is_vip = true`;
+    } else if (segment === 'high_engagement') {
+      where += ` AND engagement_score >= 0.7`;
+    } else if (segment === 'low_engagement') {
+      where += ` AND engagement_score < 0.4`;
+    }
 
     const contacts = await query(
       `SELECT id, email, first_name, last_name, display_name, is_vip,
+              false AS is_blocked, 'monthly' AS contact_frequency,
               engagement_score, custom_fields, source, created_at, updated_at
        FROM contacts
-       WHERE tenant_id = $1 AND member_uid = $2
+       ${where}
        ORDER BY created_at DESC
-       LIMIT $3 OFFSET $4`,
-      [tenantId, memberUid, limit, offset]
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...queryParams, limit, offset]
     );
 
     const countResult = await query(
-      `SELECT COUNT(*) FROM contacts WHERE tenant_id = $1 AND member_uid = $2`,
-      [tenantId, memberUid]
+      `SELECT COUNT(*) FROM contacts ${where}`,
+      queryParams
     );
     const totalCount = parseInt(countResult.rows[0].count);
 
@@ -402,14 +425,15 @@ router.post('/import-csv', upload.single('file'), async (req, res) => {
             for (const contact of contacts) {
               try {
                 const insertQuery = `
-                  INSERT INTO contacts (tenant_id, email, first_name, last_name, engagement_score)
-                  VALUES ($1, $2, $3, $4, 0.5)
+                  INSERT INTO contacts (tenant_id, member_uid, email, first_name, last_name, engagement_score, source)
+                  VALUES ($1, $2, $3, $4, $5, 0.5, 'csv_import')
                   ON CONFLICT (tenant_id, email) DO NOTHING
                   RETURNING id
                 `;
-                
+
                 const result = await query(insertQuery, [
                   tenantId,
+                  memberUid,
                   contact.email,
                   contact.firstName,
                   contact.lastName

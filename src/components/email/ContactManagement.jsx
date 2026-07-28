@@ -54,7 +54,7 @@ export default function ContactManagement({ memberUid, isDarkMode = true }) {
         segment: selectedSegment
       });
 
-      const response = await fetch(`${API_URL}/api/contacts?${params}`, {
+      const response = await fetch(`${API_URL}/api/contacts/mine?${params}`, {
         headers: {
           'x-member-uid': memberUid
         }
