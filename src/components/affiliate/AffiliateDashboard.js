@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import AffiliateMasterDashboard from './AffiliateMasterDashboard';
 import { Link } from 'react-router-dom';
 import { API_URL } from '../../config/environment';
 import { Clipboard, Check, ExternalLink, TrendingUp, MousePointerClick, BadgeCheck, Filter, Store, Package, Mail, DollarSign } from "lucide-react";
@@ -28,7 +27,6 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [copied, setCopied] = useState(false);
-  const [showMaster, setShowMaster] = useState(false);
 
   const referralLink = useMemo(() => buildReferralLink(programUrl, affiliateCode), [programUrl, affiliateCode]);
 
@@ -90,19 +88,6 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      {/* Master dashboard modal */}
-      {showMaster && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowMaster(false)} />
-          <div className="relative z-10 w-full max-w-6xl overflow-auto rounded-2xl bg-white p-4 shadow-xl">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold">Master Affiliate Dashboard</h3>
-              <button onClick={() => setShowMaster(false)} className="text-sm text-zinc-500">Close</button>
-            </div>
-            <AffiliateMasterDashboard affiliateCode={affiliateCode} apiBase={apiBase} />
-          </div>
-        </div>
-      )}
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -157,7 +142,7 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
             View Clicks
           </button>
           <button
-            onClick={() => setShowMaster(true)}
+            onClick={() => window.location.hash = 'affiliate-master-dashboard'}
             className="inline-flex items-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:shadow-md"
           >
             <DollarSign className="h-4 w-4" />
