@@ -208,6 +208,14 @@ function Header({ currentPage, onShowLogin, onNavigate, onLogoClick, onSearch, o
               Member Dashboard
             </button>
           )}
+          {isAuthenticated && isMember && (
+            <button
+              onClick={() => onNavigate ? onNavigate('admin-affiliate-payouts') : navigateToHash('admin-affiliate-payouts')}
+              className="px-3 py-2 rounded-xl text-sm font-medium text-neutral-200 hover:text-white hover:bg-white/10 transition"
+            >
+              Affiliate Payouts
+            </button>
+          )}
           {isAuthenticated ? (
             <button
               onClick={() => onNavigate ? onNavigate('account') : navigateToHash('account')}
