@@ -31,15 +31,26 @@ day) — all computed by filtering `clicks.json`/`attributions.json`/
 `orders.json` in memory for `affiliateId === code`. `commissionCents` per
 day was added 2026-07-25 (summed from each attribution's real, snapshotted
 commission) so `AffiliateDashboard.js`'s "Commission by Day" chart no longer
-has to guess a flat 10% rate — see `gotchas.md`. **Known gap**:
-`AffiliateMasterDashboard.jsx` calls
-this without a `code` param at all, so it currently 400s for that component
-— see `gotchas.md`.
+has to guess a flat 10% rate — see `gotchas.md`.
+
+Both this route and `/attributions` below require a real `apiBase`/full
+`API_URL` to reach from the frontend — `AffiliateDashboard.js` used to
+default `apiBase` to `''` and was never passed a real value from `App.js`,
+so both fetches silently hit the frontend's own SPA fallback in production
+(fixed 2026-07-28, see `gotchas.md` — same bug class as the click-tracking
+one just above). `AffiliateMasterDashboard.jsx` (the "Master Dashboard"
+page) had its own separate bug calling this with no `code` param at all,
+also fixed 2026-07-28 — see `gotchas.md` for the full story of everything
+wrong with that component.
 
 ### `GET /attributions?code=<affiliateCode>`
 Same auth as above. Returns every attribution for that affiliate, most
 detail already flattened for display (order id, date, amount, commission,
-status).
+status). Real field names on each row: `{id, orderNumber, date, amountCents,
+commissionCents, status, notes}` — no `affiliateId` (it's implicitly "you"),
+no `ratePct`. `AffiliateMasterDashboard.jsx` used to assume different field
+names entirely (`orderId`, `ratePct`, `createdAt`, `affiliateId`) that don't
+exist on this shape — fixed 2026-07-28, see `gotchas.md`.
 
 ### `GET /settings`
 No auth. Returns `{ programDefaultCommissionPct }` from
@@ -120,7 +131,12 @@ one currently returns **all** attributions regardless of member, with a
 site, would need real filtering if this ever supports multiple sellers).
 `mark-paid` flips `status: 'pending'` → `'approved'` for the given
 attribution IDs — this is the actual "I've paid this affiliate externally,
-mark it settled" action.
+mark it settled" action. This pair backs `MembersDashboard.jsx`'s "Overview"
+tab (real "What You Owe (by Affiliate)" breakdown + working Mark Paid
+button) — was silently returning `[]`/doing nothing until 2026-07-28's
+`DATA_DIR` fix (see `gotchas.md`), which looked identical to "not built yet"
+until someone deliberately checked whether `attributions.json` actually had
+rows in it.
 
 ### `GET /affiliates/search` (deprecated) / `GET /affiliates/search` (duplicate route path, second one is dead code)
 Both registered at the literal same path `/affiliates/search` — Express

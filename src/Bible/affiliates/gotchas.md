@@ -216,3 +216,141 @@ check against existing codes in Firebase RTDB (retries on collision, up to
 25 times, with a timestamp-based guaranteed-unique fallback if that
 somehow still collides). See `architecture.md`'s "Self-signup" section for
 the exact mechanism.
+
+## "Master Dashboard" was broken by design, not just missing a param (fixed 2026-07-27/28)
+
+Found while investigating a user report that the commission dashboard "looks
+bad" and showed another affiliate's order. Turned out to be several stacked
+problems, not one:
+
+1. **`AffiliateMasterDashboard.jsx` called `/api/affiliates/stats` and
+   `/api/affiliates/attributions` with no `code` query param at all** — both
+   routes require it and always 400'd (`{"error":"Missing code"}`), so the
+   modal never loaded real data regardless of anything else. This was
+   already flagged as a known gap further up this file before being
+   properly fixed.
+2. **Despite the name, neither route was ever a cross-affiliate "admin"
+   view** — both filter to `attributions.filter(a => a.affiliateId === code)`
+   server-side. So even giving it a `code` would only ever show *that one
+   affiliate's* data, never "every affiliate's owed commissions" the
+   component's own "What You Owe to Affiliates" section implied.
+3. **The ledger table read field names neither route actually returns**
+   (`a.orderId`, `a.ratePct`, `a.createdAt`, `a.affiliateId`) — the real
+   `/attributions` shape is `{id, orderNumber, date, amountCents,
+   commissionCents, status, notes}`, matching what `AffiliateDashboard.js`'s
+   own (correctly working) commissions table already used. `a.ratePct.toFixed(1)`
+   would have thrown outright the moment any real attribution existed to
+   render — it just hadn't triggered yet because the test account being
+   used had zero commissions.
+4. **The "Mark Paid" button called `POST /api/affiliates/mark-paid/:affiliateId`,
+   which didn't exist anywhere on the backend** — would have 404'd.
+
+**`AffiliateMasterDashboard.jsx`** (still reached via the "Master Dashboard"
+button — name not yet changed) is now fixed to be a real "your own
+commissions" page: correct `code`/`x-affiliate-code` header, correct field
+names, no cross-affiliate section, no fake Mark Paid button. Converted from
+an inline modal to a real page (`currentPage === 'affiliate-master-dashboard'`
+in `App.js`) per explicit request — reachable via hash navigation with a
+"← Back to Affiliate Dashboard" link, same auth/`emailVerified` gate as the
+dashboard it's linked from.
+
+For the genuine cross-affiliate "what do I owe everyone" view: **a whole new
+admin page (`AdminAffiliatePayouts.jsx`) was built first, then deleted again
+in the same session** once it turned out to be redundant — see the very next
+entry. `MembersDashboard.jsx`'s existing "Overview" tab (reachable via the
+pre-existing "Member Dashboard" nav link, already `isMember`-gated) already
+does this job: real `attributions.json` data, a working "What You Owe (by
+Affiliate)" breakdown, Mark Paid via the already-existing
+`POST /api/member/attributions/mark-paid`, full ledger, CSV export. It just
+looked broken (empty state) because of a DATA_DIR bug — see below. Once that
+was fixed, the new page was pure duplication and got removed rather than
+kept alongside it.
+
+## A new admin payouts page was built, then found to be redundant and removed (2026-07-28)
+
+Straightforward "measure twice" lesson worth writing down in full since it
+cost real (avoidable) work: `AdminAffiliatePayouts.jsx` (new component),
+`GET /admin/overview` + `POST /admin/mark-paid/:affiliateId` (new routes in
+`affiliates.js`), a new "Affiliate Payouts" nav link, and a new gated page in
+`App.js` were all built and deployed live before it was checked whether
+something already covered this. It did: `MembersDashboard.jsx`'s "Overview"
+tab (see above) computes the identical "owed by affiliate" breakdown and
+ledger from the same real `attributions.json` data, with a working mark-paid
+action already wired to a real route (`POST /api/member/attributions/mark-paid`
+in `member.js`) — it was just returning empty results because of the
+DATA_DIR bug below, which read as "no data yet," not "broken."
+
+All of the new admin-specific code was deleted once this was confirmed:
+`AdminAffiliatePayouts.jsx`, its import/page-block in `App.js`, its nav link
+in `Header.js`, and `ADMIN_EMAIL`/`isAdmin()`/`amountCentsForOrder()` plus
+the two new routes in `affiliates.js`. The `DATA_DIR`/`writeJSON` fixes
+below (which is what actually made the *existing* Overview tab start working)
+were kept, since those are real, independent bug fixes regardless of which
+UI ends up using them.
+
+**Takeaway**: before building a new admin-facing view from scratch, check
+whether an existing admin-gated page (`MembersDashboard.jsx` here) already
+computes the same thing from the same data source — an empty-looking result
+from a real feature and "this was never built" look identical from the
+outside, and this codebase has enough of the latter that it's easy to
+default to assuming that's what you're looking at.
+
+## `AffiliateDashboard.js`'s own stats were also silently all-zero in production (fixed 2026-07-28)
+
+Found while building the above: the *main* per-affiliate dashboard (not just
+the broken modal) defaulted `apiBase` to `''` and was never passed a real
+value from `App.js` (`<AffiliateDashboard affiliateCode={...} programUrl={...} />`
+— no `apiBase` prop at all). Its stats/attributions fetches then used a bare
+relative `${apiBase || ''}/api/affiliates/stats?code=...` path — on
+`fotonix.co.uk` (the static frontend host, no reverse proxy for `/api/*`),
+that silently hit the SPA's own `index.html` fallback (a `200 OK` with HTML,
+not JSON) instead of erroring, which threw on `.json()` and fell into the
+existing "show empty state on error" branch. Same failure signature as
+`../emails/gotchas.md`'s item 8 (~40 other call sites hit by the identical
+bug pattern) — confirmed live by curling both the relative and full-URL
+paths directly and comparing responses, not just reading code. Fixed by
+falling back to the imported `API_URL` instead of an empty string. This had
+apparently been broken in production for a while — nothing about it looked
+wrong in local dev, since CRA's proxy config masks the exact same class of
+bug there.
+
+## The DATA_DIR/writeJSON bugs turned out to exist independently in *two* files (fixed 2026-07-28)
+
+Both are repeats of bugs this very file already documented as fixed once in
+`affiliates.js` — worth a strong warning for next time:
+
+1. **Regression in `affiliates.js` itself.** `writeJSON` (called in
+   `POST /settings`, never defined) and `DATA_DIR` pointing one directory
+   level too shallow (`path.join(__dirname, '..', 'data')` = `routes/data/`,
+   empty on the VPS, instead of `path.join(__dirname, '..', '..', 'data')` =
+   the real `server/data/`) both reappeared in the version of this file that
+   had been sitting in the local working copy — despite both already being
+   documented above as "found and fixed" during the original affiliate-
+   program repair. Deploying that stale local copy (as part of the
+   now-removed admin-payouts work) briefly broke `/stats` in production —
+   verified working with real numbers earlier this same session, verified
+   broken (all zeros) immediately after that deploy, caught and fixed within
+   the same session. Classic "two copies drift" (`DEPLOYMENT.md`) — the VPS
+   had a fix that was never committed to git, and the local copy overwrote it.
+2. **The exact same bug, independently, in `member.js`** (a completely
+   separate file, `server/routes/member/member.js`) — same one-level-too-
+   shallow `DATA_DIR`, same missing `writeJSON`. This one wasn't a
+   regression, just never fixed in this file at all — found while checking
+   whether `MembersDashboard.jsx`'s "Overview" tab (see above) could replace
+   the newly-built admin page, since its `/api/member/attributions` fetch
+   was mysteriously returning `[]` despite `attributions.json` genuinely
+   having 4 rows. This is also what was silently breaking
+   `member_links.json`/`member_affiliates.json` reads/writes elsewhere in
+   the same file (the tracked-links feature, the affiliate-search
+   autocomplete) — worth re-checking those now that the path is fixed,
+   they weren't independently re-verified live this session.
+
+**Takeaway**: after any deploy touching either of these files, don't just
+check the API responds — check the *numbers* match what's actually in
+`server/data/*.json`. Both of these bugs return a perfectly well-formed,
+error-free, empty-looking response, indistinguishable from "no data yet"
+unless you already know what real data should look like. If a route's data
+source is `readJSON`/`writeJSON` against `DATA_DIR`, and it's ever returning
+suspiciously empty results, check `DATA_DIR`'s resolved path against
+`server/data/` directly before assuming the underlying data is actually
+missing.

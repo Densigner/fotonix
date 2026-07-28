@@ -105,6 +105,30 @@ currently block dashboard access anywhere in the frontend — it's tracked but
 unenforced. If you're asked to add an approval gate, this is the field to
 check against.
 
+### Email address at signup (added 2026-07-27)
+
+Affiliate signup didn't create any email address for the new affiliate at
+all before this — `POST /api/member/business-email/create-standard` (the
+flow member signup uses) was never called from `AffiliateSignupPage.js`.
+Added a lighter sibling, `POST /api/member/business-email/create-affiliate`
+(`server/routes/member/member.js`), called right after the referral code is
+generated: one `business_emails` row, address
+`support+<affiliateCode>@fotonix.co.uk`. Deliberately **not** a
+`storeName@fotonix.co.uk`-style address like `create-standard` produces —
+those are database rows only with no matching real Postfix/Dovecot mailbox,
+so they can send (rides the shared `noreply@` SMTP identity) but can't
+receive (real inbound mail bounces, "user unknown"). The `support+` scheme
+instead rides the one real, already-working `support@` mailbox via Postfix
+and Dovecot's `recipient_delimiter = +` (confirmed set on both, via
+`postconf`/`doveconf`, not just the on-disk config — see `../emails/architecture.md`'s
+"How a mailbox is actually defined" section) — inbound mail to the `+tag`
+address lands in `support@`'s real Maildir and gets attributed back
+correctly by `mail-poller.js` (which matches by the literal `to` address
+string, unaffected by which physical mailbox it landed in). Zero new VPS
+provisioning per affiliate, real send **and** receive, at the cost of not
+being a standalone mailbox account (no separate login/password — usable
+through Fotonix's own inbox UI only, not an external mail client).
+
 ## Commission rate resolution order
 
 Set once, at click-creation time, and snapshotted onto the click record (so

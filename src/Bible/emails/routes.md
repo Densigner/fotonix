@@ -30,7 +30,7 @@ send. Returns `{ success, messageId, providerMessageId, from, response }`.
 ### `POST /send-bulk`
 Campaign send — one email to many recipients.
 
-Body: `{ recipients: [...], subject, html?, text?, templateName?, templateData?, campaignId?, fromEmail?, fromName?, replyTo?, attachments? }`
+Body: `{ recipients: [...], subject, html?, text?, templateName?, templateData?, campaignId?, fromEmail?, fromName?, replyTo?, attachments?, trackOpens?, trackClicks? }`
 `recipients`: array of email strings or `{ email, ...mergeFields }` objects —
 if a recipient object has extra fields and `templateName` is set, those
 fields are merged into the template render (`renderTemplate`, simple
@@ -41,6 +41,16 @@ sent to everyone. Processes in batches of 10. Per-recipient: suppression
 check, insert `email_messages` row, send, update status. Returns per-recipient
 results array.
 
+`trackOpens`/`trackClicks` (both default `true`, added 2026-07-28): if
+either is true, `injectTracking()` rewrites `<a href>` links through
+`GET /click/:messageId` and/or appends a 1x1 pixel pointing at
+`GET /open/:messageId`, keyed by that specific recipient's own
+`email_messages` row id — applied only to the HTML actually mailed via
+nodemailer, **not** to what gets stored in the `html` column, so viewing a
+sent campaign message later still shows the clean original. See
+`architecture.md` for the full mechanism and why it's separate from the
+single-send `/send` route (deliberately not tracked — see `gotchas.md`).
+
 ### `GET /messages`
 List/search inbox messages. Query params:
 - `limit` (default 25), `cursor` (created_at-based pagination — "less than"
@@ -50,13 +60,26 @@ List/search inbox messages. Query params:
   `direction`/`status` columns — see `database.md`)
 - `filter=unread` → `is_read = false`
 - `q` → searches `subject ILIKE` and `text ILIKE`
-- `memberUid` → restricts to messages to/from that member's `business_emails`
+- `memberUid` → restricts to messages to/from that member's `business_emails`.
+  **Fail-closed as of 2026-07-27**: if `memberUid` is present at all, the
+  scoping clause always applies, even if that member has zero
+  `business_emails` rows yet (matches nothing rather than silently falling
+  back to every tenant message). Before that fix, the clause only applied
+  when the member had ≥1 business email, which — combined with the frontend
+  never actually sending `memberUid` at all (a dead `localStorage` key, see
+  `gotchas.md`) — meant every account's inbox showed the entire tenant's
+  mail, always. If `memberUid` is omitted, still unscoped (legacy path, only
+  safe because the real inbox UI always sends it now).
 
 Returns `{ items: [...], next_cursor, has_more }`.
 
 ### `GET /messages/:messageId`
 Single message detail, joined with `business_emails` for display name. 404 if
-not found (or wrong tenant).
+not found (or wrong tenant). Accepts the same `memberUid` param and applies
+the identical fail-closed scoping as `GET /messages` (added 2026-07-27) —
+previously had **no** member scoping at all, just `tenant_id`, so any message
+was fetchable by anyone who could guess/increment its plain sequential
+integer id.
 
 ### `POST /messages/mark-read`
 Body: `{ message_ids: [...], read? }` (`read` defaults to `true`). Real
@@ -76,6 +99,30 @@ hard-delete route exists. Built this session.
 ### `GET /stats`
 Query param `timeframe` (`24h`|`7d`|`30d`, default `24h`). Returns send
 counts by status + open/click counts + suppression counts grouped by reason.
+
+`campaignId` (added 2026-07-28, optional): when given, replaces the time
+window entirely — filters on `meta->>'campaignId' = $1` instead, so a
+specific campaign's real open/click numbers can be checked regardless of
+when it was sent. Used by `CampaignSendPage.js`'s post-send stats panel.
+
+### `GET /open/:messageId`
+Open-tracking pixel (added 2026-07-28). Returns a 1x1 transparent gif
+unconditionally (even on DB error — a recipient should never see a broken
+image because of a hiccup), and asynchronously sets
+`email_messages.opened_at = COALESCE(opened_at, NOW())` for that id. Only
+ever embedded in campaign sends via `injectTracking()` in `/send-bulk` — see
+`architecture.md`.
+
+### `GET /click/:messageId?url=...`
+Click-tracking redirect (added 2026-07-28). 302s to `url` immediately, then
+asynchronously sets `email_messages.clicked_at = COALESCE(clicked_at, NOW())`.
+Only ever linked to by `injectTracking()`-rewritten `<a href>`s in campaign
+sends. **Not the same routes as** `routes/email/tracking.js`'s
+`/api/email/track/open|click/:trackingId` (mounted separately at
+`/api/email/track`) — that older pair is real too, but wired to the dead
+Firebase-backed "Email Automation" feature, not these Postgres
+`email_messages` rows. Don't confuse the two if debugging tracking issues —
+check which `trackingId`/`messageId` format you're looking at first.
 
 ### `POST /webhook`
 Delivery-event webhook (opens/clicks/bounces/complaints) — for an email
@@ -188,7 +235,15 @@ Lists named `audience_segments` for the tenant with member counts.
   `/messages`, `/messages/:id`, `/messages/mark-read`, `/messages/archive`,
   `/messages/delete`, `/labels`, `/signatures`, `/send`, plus
   `/api/member/business-emails/:uid` (in `server/routes/member/member.js`,
-  not this folder) for the compose "From" dropdown.
+  not this folder) for the compose "From" dropdown. That route **no longer
+  falls back to Fotonix's own real addresses** for members with none of
+  their own (fixed 2026-07-27 — see `gotchas.md`); returns `[]` instead, and
+  the frontend shows "No business emails available." Also note
+  `server/routes/member/member.js`'s `POST /business-email/create-standard`
+  (member signup) and the newer `POST /business-email/create-affiliate`
+  (affiliate signup, added 2026-07-27 — one `support+<code>@fotonix.co.uk`
+  address per affiliate, see `../affiliates/gotchas.md`) are what actually
+  populate the rows this dropdown reads.
 - `src/components/email/MailBuilder/CampaignSendPage.js` — campaign builder.
   Calls `/send`, `/send-bulk`, and `/api/contacts` + `/api/contacts/segments`
   to auto-populate the recipient list from a segment (this used to silently

@@ -273,3 +273,148 @@ affiliate's referral *code* (`TESTAFF72`-style) used elsewhere on that same
 dashboard for stats — see `../funnel-builder/architecture.md`'s "Company
 slugs" section for the same code-vs-uid distinction playing out elsewhere
 in this codebase.
+
+## The inbox showed every account's email to every account (fixed 2026-07-27)
+
+Found by the user directly: logged in as a non-admin account, the Advanced
+Inbox showed the same messages as the admin's own inbox. Root cause was pure
+dead code, not a spoofing/guessing attack — worse, actually, since it needed
+no attacker at all:
+
+`AdvancedInboxScreen.js`'s `fetchMessages` read
+`localStorage.getItem('memberUID')` to scope the request, but **nothing
+anywhere in `src/` ever calls `localStorage.setItem('memberUID', ...)`** —
+grepped the whole tree, zero matches. So `memberUid` was always `null` for
+every user, the `if (memberUid)` branch never fired, and the query param was
+never sent at all.
+
+On the backend, `GET /messages` (`server/routes/email/emails.js`) only
+applied its member-scoping `WHERE` clause when `memberUid && memberBusinessEmails.length > 0`
+— since the param never arrived, this was always false, and the query fell
+through to `WHERE m.tenant_id = $1` only. Since this is a single-tenant
+platform (`tenant_id` always `1`), that clause doesn't isolate anyone —
+every account's inbox returned literally every message on the entire
+platform, always.
+
+Fixed in two parts:
+1. **Frontend**: use the real Firebase uid (`getAuth().currentUser?.uid`,
+   already fetched correctly elsewhere in the same file for the "From"
+   dropdown) instead of the dead localStorage key, in both `fetchMessages`
+   and the message-detail fetch (`GET /messages/:messageId` had **no** member
+   scoping at all before this — a second, separate IDOR, since message IDs
+   are plain sequential integers with no auth check beyond `tenant_id`).
+2. **Backend**: made the scoping **fail-closed** — `if (memberUid)` alone now
+   applies the `WHERE` clause (matching zero rows if this member genuinely
+   has no `business_emails` yet), instead of `if (memberUid && ...length > 0)`
+   silently skipping the filter and falling back to "show everything."
+   Applied to both `GET /messages` and the newly-scoped `GET /messages/:messageId`.
+
+Verified live: a fabricated `memberUid` now returns `{"items":[]}` / 404 on
+detail, instead of the full tenant's mail.
+
+## Compose "From" address silently coming up empty (fixed 2026-07-27/28)
+
+Two unrelated bugs, both making the compose modal's From field end up empty
+(Send disabled, "Missing: From") even when the member has a real business
+email:
+
+1. **Race condition on fresh loads.** The business-emails-loading `useEffect`
+   read `getAuth().currentUser` synchronously, once, in a `useEffect(..., [])`
+   — but Firebase's session restore is async, so on a fresh page load
+   `currentUser` can still be `null` at that exact instant. The fetch would
+   then silently skip ("no authenticated user"), with **no retry** since the
+   effect never re-runs. Fixed by subscribing to `onAuthStateChanged` instead,
+   so it fires as soon as auth state actually resolves.
+2. **`startCompose()` and the post-send reset both replaced `composeData`
+   with a brand-new object instead of spreading previous state, and neither
+   included a `from`/`fromEmailId` key at all.** This silently wiped
+   whatever the loader effect had auto-selected, every single time "New
+   Message" was clicked or right after a successful send. Confusingly, the
+   `<select>` still *looked* like it had the right address selected — a
+   `<select>` whose `value` matches no `<option>` just falls back to
+   displaying its first option, which happened to be the one real address.
+   The visual was a lie; `composeData.from` was genuinely empty underneath.
+   Fixed by defaulting both fields to the first loaded business email in
+   both reset call sites. `startReply` and the popup's reply/forward
+   handlers already used the `prev => ({...prev, ...})` spread form, so they
+   were unaffected.
+
+## `GET /api/member/business-emails/:memberUid` handed out Fotonix's own real addresses to anyone (fixed 2026-07-27)
+
+Found while investigating the above: this route (`server/routes/member/member.js`)
+fell back to a hardcoded list of the platform's real mailboxes
+(`noreply@`/`orders@`/`support@fotonix.co.uk`) whenever the requested member
+had zero `business_emails` rows of their own (or the query errored) — meaning
+**any** logged-in account with no addresses of its own got offered the
+platform's own official identities as legitimate "From" options, able to
+send campaign mail that looked like it came from Fotonix itself. The admin
+account already has real rows for all 4 real mailboxes tied to its own
+`member_uid` (confirmed via `\d`/direct query), so this fallback was never
+actually needed for legitimate use — it only ever fired for everyone else.
+Removed the fallback (both the empty-result branch and the on-error catch
+branch); now returns `[]`, and the frontend already had a proper "No
+business emails available" empty state for exactly this case.
+
+## Affiliates never got a real email address at signup (built 2026-07-27)
+
+`AffiliateSignupPage.js` never called the `create-standard` business-email
+flow that member signup uses — affiliates got zero `business_emails` rows,
+ever. Even for members who do get addresses via `create-standard`, those are
+**database rows only** — nothing provisions a real mailbox on the VPS's
+Postfix/Dovecot, so an address like `mystore@fotonix.co.uk` can send (rides
+the shared `noreply@` SMTP identity) but any real inbound mail to it bounces,
+since only 5 mailboxes physically exist (see `architecture.md`).
+
+Added `POST /api/member/business-email/create-affiliate` (`member.js`):
+gives each affiliate one address, `support+<affiliateCode>@fotonix.co.uk` —
+confirmed live (via `postconf`/`doveconf`, not just reading the on-disk
+config) that both Postfix and Dovecot already have `recipient_delimiter = +`,
+so this rides the real, already-working `support@` mailbox with **zero new
+VPS provisioning**. Inbound mail to the `+tag` address lands in `support@`'s
+real Maildir and gets attributed back correctly by `mail-poller.js`/
+`receive-webhook.js`, which already match by the literal `to` address
+string — no changes needed there. Wired into `AffiliateSignupPage.js` right
+after the referral code is generated. Idempotent (a retried signup returns
+the existing row instead of hitting the `UNIQUE(email_address)` constraint).
+
+One real limitation: it's not an independent mailbox account (no separate
+login/password) — an affiliate can send and receive through Fotonix's own
+inbox screen, but can't configure the address into an external mail client
+like Outlook. Confirmed acceptable for this use case (send/receive within
+the platform, not standalone use).
+
+## The "Track opens" checkbox in the small inbox compose modal was pure UI theater (removed 2026-07-28)
+
+`tracking_enabled` was sent in the `/send` request body but never once read
+anywhere in `emails.js` — checking or unchecking it changed nothing.
+Deliberately **not** fixed by wiring it up: per-open tracking isn't worth the
+infrastructure (or the mild invasiveness) for a compose box used for
+one-to-one correspondence with one or two people, versus bulk campaign sends
+where engagement rate is an actually useful signal. Removed the checkbox,
+its `composeData.trackingEnabled` state, and the payload key entirely rather
+than build tracking a small personal-inbox compose box doesn't need.
+
+## Campaign sends (`/send-bulk`) had the same dead tracking checkboxes — this time actually built (2026-07-28)
+
+`CampaignSendPage.js`'s "Track Opens"/"Track Clicks" toggles (`config.trackOpens`/
+`config.trackClicks`, both default `true`) were never included in the actual
+`/send-bulk` request body at all — same "checkbox exists, does nothing"
+pattern as the inbox one above. Unlike the inbox case, this one was worth
+actually building, since campaign engagement rate across many recipients is
+a real signal. See `architecture.md`'s "Real open/click tracking" section
+for how it works — the short version: a per-recipient tracking pixel + link
+rewrite injected only into what's actually mailed (not the stored `html`
+column), landing on two new routes (`GET /open/:messageId`, `GET /click/:messageId`)
+that update the already-existing (previously always-null) `email_messages.opened_at`/
+`clicked_at` columns. `GET /stats` gained an optional `?campaignId=` filter
+so a specific send's real numbers can be checked regardless of when it went
+out — surfaced in `CampaignSendPage.js`'s post-send panel with a manual
+refresh button (opens/clicks only happen after someone actually reads the
+mail, so there's nothing to show immediately after sending).
+
+**Don't confuse this with `routes/email/tracking.js`** (mounted at
+`/api/email/track/*`) — that one is real too, but wired to the *dead* "Email
+Automation" lifecycle feature's Firebase-backed tracking IDs
+(`emailTracking/{trackingId}` in Realtime DB), not real Postgres
+`email_messages` rows. The new campaign tracking added here is a separate,
+independent mechanism living directly in `emails.js`.

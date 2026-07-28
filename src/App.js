@@ -24,7 +24,6 @@ import Account from './components/auth/Account';
 import CustomerDashboard from './components/auth/CustomerDashboard';
 import AffiliateDashboard from './components/affiliate/AffiliateDashboard';
 import AffiliateMasterDashboard from './components/affiliate/AffiliateMasterDashboard';
-import AdminAffiliatePayouts from './components/admin/AdminAffiliatePayouts';
 import AffiliateClickCard from './components/affiliate/AffiliateClickCard';
 import ShortReviewPage from './pages/ShortReviewPage';
 import AffiliateSignupPage from './components/affiliate/AffiliateSignupPage';
@@ -609,29 +608,6 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in to access the commission dashboard.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
-              </div>
-            </div>
-          )
-        )}
-
-        {currentPage === 'admin-affiliate-payouts' && (
-          auth && auth.isAuthenticated && auth.currentUser?.email === 'joshmarsden28@gmail.com' ? (
-            <div className="mx-auto max-w-6xl px-6 py-8">
-              <button
-                onClick={() => setCurrentPage('member-dashboard')}
-                className="mb-4 text-sm text-zinc-500 hover:text-zinc-800"
-              >
-                ← Back to Member Dashboard
-              </button>
-              <h1 className="text-2xl font-semibold tracking-tight mb-4">Affiliate Payouts</h1>
-              <AdminAffiliatePayouts currentUserEmail={auth.currentUser?.email} />
-            </div>
-          ) : (
-            <div className="mx-auto max-w-lg px-6 py-10">
-              <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
-                <h3 className="text-lg font-semibold mb-2">Access Required</h3>
-                <p className="text-sm text-gray-600 mb-4">Please log in to access this page.</p>
                 <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
               </div>
             </div>

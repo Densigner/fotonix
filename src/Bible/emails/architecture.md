@@ -142,3 +142,52 @@ non-interactively).
   `cid:` in HTML email bodies) are filtered out by `mail-poller.js` before
   forwarding — only real attachments (`Content-Disposition: attachment` or
   no disposition header) get uploaded and shown.
+
+## Open/click tracking (campaign sends only, added 2026-07-28)
+
+Deliberately built for `/send-bulk` only, not the single-send `/send` route
+used by the small one-to-one inbox compose modal — per-open tracking is
+worth having for a real campaign's engagement rate across many recipients,
+not for a compose box used to email one or two people directly (see
+`gotchas.md`'s writeup of removing the identical, previously-dead checkbox
+from the inbox compose modal).
+
+1. `POST /send-bulk` accepts `trackOpens`/`trackClicks` (both default
+   `true`). For each recipient, after their `email_messages` row is inserted
+   (so its real `id` exists) but before `transport.sendMail()`,
+   `injectTracking(html, messageId, { trackOpens, trackClicks })` runs on a
+   **copy** of the HTML used only for the actual send — the `html` column
+   stored in the DB keeps the clean original, so viewing a sent campaign
+   message later in the inbox doesn't show tracking cruft.
+2. `injectTracking()` (in `emails.js`, next to the route):
+   - If `trackClicks`: rewrites every `<a href="...">` (skipping `mailto:`,
+     `tel:`, and `#` anchors) to `https://api.fotonix.co.uk/api/email/click/<messageId>?url=<encoded original>`.
+   - If `trackOpens`: appends a 1x1 transparent gif `<img>` pointing at
+     `https://api.fotonix.co.uk/api/email/open/<messageId>`, right before
+     `</body>` if present, otherwise at the very end of the HTML.
+3. `GET /open/:messageId` and `GET /click/:messageId?url=...` (both in
+   `emails.js`) are what the recipient's mail client actually hits — the
+   pixel request updates `opened_at`, the click redirect (302 to `url`)
+   updates `clicked_at`. Both use `COALESCE(..., NOW())` so re-opens/re-clicks
+   don't overwrite the *first* open/click time. Both respond to the
+   recipient (pixel/redirect) **before** doing the DB write, so a slow or
+   failing update never delays or breaks what the recipient sees.
+4. `GET /api/email/stats?campaignId=<id>` (campaignId matches
+   `email_messages.meta->>'campaignId'`, set at insert time) returns real
+   `opened`/`clicked` counts for one specific campaign regardless of when it
+   was sent — this is what `CampaignSendPage.js`'s post-send panel polls (on
+   a manual "Refresh" button, not auto-polling, since opens/clicks only
+   happen once someone actually reads the mail — there's nothing to show
+   the instant a send completes).
+
+**Don't confuse this with `routes/email/tracking.js`** (mounted separately
+at `/api/email/track/*` in `server/index.js`) — that's a real, independently
+working pixel/redirect pair too, but it's wired to the entirely different,
+*dead* "Email Automation" lifecycle feature: it looks up
+`emailTracking/{trackingId}` in Firebase Realtime DB (a shape only that
+abandoned automation system's sender, `email-automation/vpsMailClient.js`,
+ever produces) and updates stats under
+`stores/{storeId}/emailAutomation/stats/{campaignId}/{emailId}` — nothing to
+do with the real, Postgres-backed `email_messages` table this new mechanism
+uses. If tracking data seems to be going nowhere, check which of the two
+systems is actually in play first.

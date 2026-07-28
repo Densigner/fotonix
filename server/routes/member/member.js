@@ -20,7 +20,12 @@ async function query(sql, params = []) {
   }
 }
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// `../../data`, not `../data` — this file lives at server/routes/member/, so
+// one level up is server/routes/ (no data/ there), two levels up is server/
+// (the real data/). Same bug, independently present, as
+// server/routes/affiliate/affiliates.js had — see
+// src/Bible/affiliates/gotchas.md for the full story of that one.
+const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 function readJSON(name, def) {
   try {
     const p = path.join(DATA_DIR, name);
@@ -31,6 +36,11 @@ function readJSON(name, def) {
     console.warn('member readJSON failed', name, e);
     return def;
   }
+}
+
+function writeJSON(name, data) {
+  const p = path.join(DATA_DIR, name);
+  fs.writeFileSync(p, JSON.stringify(data, null, 2));
 }
 
 // Simple auth check (in production, use proper session/JWT validation)
