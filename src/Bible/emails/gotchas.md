@@ -142,6 +142,25 @@ the empty result. Run the underlying SQL directly via `psql` first.**
   writes config to Firebase but nothing ever reads/acts on it. The intended
   processor (`server/email-automation/vpsMailClient.js`) is never
   instantiated anywhere in the codebase.
+- **`contacts.engagement_score` is a one-time snapshot of *product/signup*
+  behavior, not real email engagement** — computed only when a contact is
+  synced in from PBN/conversion-leads/Stencil Forge (`syncPBNCustomers`/
+  `syncConversionLeads`/`syncStencilUsers` in `contacts.js`), based on things
+  like "did they complete a PBN order" or "what's their lead score" — it has
+  nothing to do with whether they've ever opened or clicked an actual email.
+  It's what backs the `vip`/`high_engagement`/`low_engagement` segment
+  filters in Contact Management and the Mail Builder's audience segments
+  today. **Revisit this once real per-recipient open/click tracking on
+  campaign sends (`email_messages.opened_at`/`clicked_at`, see the
+  "Open/click tracking" section in `architecture.md`, added 2026-07-28) is
+  actually being used to sort people through email funnels** — at that
+  point "engagement" for a contact could/should be driven by real email
+  interaction (has this person ever opened a campaign, clicked a link,
+  gone cold after N sends) rather than a frozen snapshot from whatever
+  funnel they originally signed up through. Also note `GET /contacts/mine`
+  (unlike `GET /contacts`) doesn't re-run the sync, so scores on
+  already-synced rows won't update at all under the per-member view fixed
+  2026-07-28 — worth deciding whether that matters once this is revisited.
 
 ## Two campaign systems that are just dead — don't get confused by them
 
