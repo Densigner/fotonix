@@ -85,7 +85,7 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
             <img 
               src={block.meta.src || '/placeholder-image.png'} 
               alt={block.meta.alt || ''} 
-              style={{ maxWidth: block.meta.width || '100%', height: 'auto' }}
+              style={{ maxWidth: block.meta.width || '100%', height: 'auto', display: 'inline-block' }}
             />
           </div>
         );
@@ -1418,7 +1418,7 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
     const html = blocks.map(b => {
       switch(b.type) {
         case 'text': return `<div style="text-align:${b.meta.align};font-size:${b.meta.fontSize}px;color:#000;white-space:pre-wrap">${escapeHtml(b.meta.content)}</div>`;
-        case 'image': return `<div><img src="${b.meta.src}" alt="${escapeHtml(b.meta.alt || '')}" style="max-width:100%;height:auto"/></div>`;
+        case 'image': return `<div style="text-align:${b.meta.align||'center'}"><img src="${b.meta.src}" alt="${escapeHtml(b.meta.alt || '')}" style="max-width:${b.meta.width||'100%'};height:auto;display:inline-block"/></div>`;
         case 'button': return `<div style="text-align:center"><a href="${b.meta.url}" style="display:inline-block;padding:8px 12px;background:${brandColor};color:#fff;border-radius:6px;text-decoration:none">${escapeHtml(b.meta.label)}</a></div>`;
         case 'divider': return `<div style="height:${b.meta.height}px;background:${b.meta.color};width:100%"></div>`;
         case 'spacer': return `<div style="height:${b.meta.height}px"></div>`;
@@ -1563,7 +1563,7 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
       const bodyHtml = blocks.map(b => {
         switch (b.type) {
           case 'text': return `<div style="text-align:${b.meta.align};font-size:${b.meta.fontSize}px;color:#000;white-space:pre-wrap">${b.meta.content || ''}</div>`;
-          case 'image': return `<div style="text-align:${b.meta.align||'center'}"><img src="${b.meta.src}" alt="${b.meta.alt||''}" style="max-width:100%;height:auto"/></div>`;
+          case 'image': return `<div style="text-align:${b.meta.align||'center'}"><img src="${b.meta.src}" alt="${b.meta.alt||''}" style="max-width:${b.meta.width||'100%'};height:auto;display:inline-block"/></div>`;
           case 'button': return `<div style="text-align:center"><a href="${b.meta.url}" style="display:inline-block;padding:8px 16px;background:${brandColor};color:#fff;border-radius:6px;text-decoration:none;font-weight:600">${b.meta.label}</a></div>`;
           case 'divider': return `<div style="height:${b.meta.height}px;background:${b.meta.color};width:100%"></div>`;
           case 'spacer': return `<div style="height:${b.meta.height}px"></div>`;
@@ -2042,6 +2042,23 @@ function ImageBlockInspector({ block, onUpdate }) {
           className="w-full border border-slate-200 rounded p-2 bg-white text-black text-sm"
           placeholder="Describe the image"
         />
+      </div>
+      <div>
+        <label className="text-xs block mb-1 text-slate-600">
+          Width — {parseInt(block.meta.width, 10) || 100}%
+        </label>
+        <input
+          type="range"
+          min="20"
+          max="100"
+          step="5"
+          value={parseInt(block.meta.width, 10) || 100}
+          onChange={(e) => onUpdate({ width: `${e.target.value}%` })}
+          className="w-full"
+        />
+        <p className="text-xs text-slate-400 mt-1">
+          Align only has visible room to work once the image is narrower than 100%.
+        </p>
       </div>
       <div>
         <label className="text-xs block mb-1 text-slate-600">Align</label>
@@ -2732,7 +2749,7 @@ function renderBlockPreviewEmail(b) {
   switch(b.type) {
     case 'video': return <div style={{ textAlign: 'center' }}><VideoBlockPreview block={b} /></div>;
     case 'text': return <div style={{ textAlign: b.meta.align, fontSize: b.meta.fontSize, whiteSpace: 'pre-wrap' }}>{b.meta.content}</div>;
-    case 'image': return <div style={{ textAlign: (b.meta && b.meta.align) || 'center' }}><img src={b.meta.src} alt={b.meta.alt} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6 }} /></div>;
+    case 'image': return <div style={{ textAlign: (b.meta && b.meta.align) || 'center' }}><img src={b.meta.src} alt={b.meta.alt} style={{ maxWidth: (b.meta && b.meta.width) || '100%', height: 'auto', borderRadius: 6, display: 'inline-block' }} /></div>;
     case 'button': {
       const placement = b.meta.placement || 'center';
       const bg = b.meta.background ?? (b.meta.style === 'solid' ? '#000' : 'transparent');
@@ -2920,7 +2937,7 @@ function truncate(s, n) { return s && s.length > n ? s.slice(0,n-1) + '…' : s 
 function renderBlockHtml(b) {
   switch(b.type) {
     case 'text': return `<div style="text-align:${b.meta.align};font-size:${b.meta.fontSize}px;color:#000;white-space:pre-wrap">${escapeHtml(b.meta.content)}</div>`;
-    case 'image': return `<div><img src="${b.meta.src}" alt="${escapeHtml(b.meta.alt || '')}" style="max-width:100%;height:auto"/></div>`;
+    case 'image': return `<div style="text-align:${b.meta.align||'center'}"><img src="${b.meta.src}" alt="${escapeHtml(b.meta.alt || '')}" style="max-width:${b.meta.width||'100%'};height:auto;display:inline-block"/></div>`;
     case 'button': {
       const bg = b.meta.background || (b.meta.style === 'solid' ? '#000' : 'transparent');
       const color = b.meta.color || (b.meta.style === 'solid' ? '#fff' : '#000');
