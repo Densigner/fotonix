@@ -17,6 +17,10 @@ the first thing to suspect — see `gotchas.md`.
 - **`database.md`** — every table involved and its real (verified) schema.
 - **`gotchas.md`** — every bug found and fixed this round, and the *pattern*
   behind them, so the same class of bug is easy to recognize next time.
+- **`abandoned-cart-roadmap.md`** — not built yet, purely a plan: what a
+  real "left in cart" recovery email (Amazon/eBay-style) would actually
+  require, and the core blocker (no cart, no pre-payment email capture)
+  that has to be solved first.
 
 ## Fastest orientation
 
