@@ -311,17 +311,28 @@ export default function EmailBuilderPage(props = {}) {
     return defaultTenants;
   });
 
-  // Real starter templates (src/components/email/MailBuilder/starterTemplates.js)
-  // instead of the old mock/localStorage seed — that fallback chain meant
-  // this list was actually leftover browser-local test data from whoever
-  // last used this screen (junk titles like "saveme"/"ffsAI" persisted
-  // forever in this one browser's localStorage), or two hardcoded
-  // placeholder mocks on a fresh browser. Neither was ever real, shared
-  // content. Deliberately no longer reads/writes `localStorage['email.templates']`
-  // at all, so stale junk from before this fix can't reappear either.
+  // Real starter templates (src/components/email/MailBuilder/starterTemplates.js),
+  // always included, plus whatever real, *usable* templates were passed in.
+  //
+  // Two separate junk sources fed this screen before, not one:
+  // 1. A mock/localStorage seed in this same file (fixed 2026-07-28) - the
+  //    fallback this file itself used when nothing was passed in at all.
+  // 2. MainMailBuilderDashBoard.js's `openComposer()` (called from the
+  //    "Header & Footer" tab's Edit button) passes `data.templates`, which
+  //    has real Firebase "saved brand format" entries
+  //    (mailbuilder/themes/{uid} - logo/colour presets from a *different*
+  //    feature) merged into it. Those aren't email templates at all - no
+  //    `.blocks` array - so they never actually loaded any content when
+  //    clicked, just cluttered this list. This second source completely
+  //    bypassed fix #1, since props.templates.length > 0 short-circuited
+  //    straight past the mock-seed fallback before the fix even mattered.
+  // Filtering to real `.blocks` content and always merging in the starters
+  // covers both paths at once, regardless of which one a given click
+  // happened to go through.
   const [templates, setTemplatesLocal] = useState(() => {
-    if (props.templates && props.templates.length) return props.templates;
-    return starterTemplates.map(t => ({ ...t, tenantId: 't1', sharedWith: { users: [] }, createdAt: t.createdAt || new Date().toISOString() }));
+    const seeded = starterTemplates.map(t => ({ ...t, tenantId: 't1', sharedWith: { users: [] }, createdAt: t.createdAt || new Date().toISOString() }));
+    const realPassedIn = (props.templates || []).filter(t => Array.isArray(t.blocks) && t.blocks.length > 0);
+    return [...seeded, ...realPassedIn];
   });
 
   // Expose a setTemplates that updates parent if provided
