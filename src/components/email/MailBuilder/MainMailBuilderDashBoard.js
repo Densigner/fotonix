@@ -330,7 +330,7 @@ function Topbar({ tenantName, onNewCampaign, newLabel = 'New Campaign', isDarkMo
   );
 }
 
-function Sidebar({ active, setActive, isDarkMode }) {
+function Sidebar({ active, setActive, isDarkMode, isAdmin }) {
   const items = [
     { key: "overview", label: "Overview" },
     { key: "inbox", label: "Inbox" },
@@ -338,7 +338,7 @@ function Sidebar({ active, setActive, isDarkMode }) {
     { key: "templates", label: "Header & Footer" },
     { key: "contacts", label: "Contacts" },
     { key: "assets", label: "Assets" },
-    { key: "automations", label: "Automations" },
+    ...(isAdmin ? [{ key: "automations", label: "Automations" }] : []),
     { key: "settings", label: "Settings" },
   ];
   return (
@@ -1360,6 +1360,11 @@ export default function MailBuilderDashboardWithComposer() {
   
   // Get current user for contact management
   const currentUser = auth.currentUser;
+  // Email Automation is admin-only, not for affiliates — same hardcoded
+  // platform-owner check src/components/shared/Header.js's `isMember` uses.
+  // The underlying feature is dead anyway (see Bible), but this keeps it out
+  // of the affiliate-facing Mail Campaign dashboard regardless.
+  const isAdminUser = currentUser?.email === 'joshmarsden28@gmail.com';
 
   // Check mailing eligibility and handle business email setup
   const checkMailingEligibilityAndSetup = async () => {
@@ -1653,7 +1658,7 @@ const openComposer = (template = null) => {
     onToggleTheme={handleToggleTheme}
   />
       <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
-        <Sidebar active={active} setActive={setActive} isDarkMode={isDarkMode} />
+        <Sidebar active={active} setActive={setActive} isDarkMode={isDarkMode} isAdmin={isAdminUser} />
 
         <main className="lg:col-span-5 space-y-6">
           {active === "overview" && (
@@ -1685,7 +1690,7 @@ const openComposer = (template = null) => {
 
           {active === "assets" && <AssetManager assets={assets} onUpload={handleUploadAsset} onDelete={handleDeleteAsset} isDarkMode={isDarkMode} />}
 
-          {active === "automations" && <Automations automations={automations} onCreate={handleCreateAutomation} isDarkMode={isDarkMode} currentUserId={currentUser?.uid} />}
+          {active === "automations" && isAdminUser && <Automations automations={automations} onCreate={handleCreateAutomation} isDarkMode={isDarkMode} currentUserId={currentUser?.uid} />}
 
           {active === "settings" && <SettingsPanel settings={data.settings} onSave={handleSaveSettings} isDarkMode={isDarkMode} />}
         </main>

@@ -779,13 +779,15 @@ function AppContent() {
           )
         )}
         {currentPage === 'email-automation' && (
-          auth && auth.isAuthenticated && auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development') ? (
+          // Admin-only, not affiliate-facing — same hardcoded platform-owner
+          // check Header.js's `isMember` uses.
+          auth && auth.isAuthenticated && auth.currentUser?.email === 'joshmarsden28@gmail.com' ? (
             <EmailAutomationDashboard storeId={auth.currentUser?.uid} currentUserId={auth.currentUser?.uid} />
           ) : (
             <div className="mx-auto max-w-lg px-6 py-10">
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
-                <p className="text-sm text-gray-600 mb-4">Please log in and verify your email to access email automation.</p>
+                <p className="text-sm text-gray-600 mb-4">Please log in to access email automation.</p>
                 <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
               </div>
             </div>
