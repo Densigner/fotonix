@@ -1675,7 +1675,23 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Export and Save buttons removed per UX request */}
+            <button onClick={onBack} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+              Back
+            </button>
+            <button
+              onClick={saveTemplate}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md font-semibold transition-colors"
+            >
+              Save Template
+            </button>
+            {typeof onSend === 'function' && (
+              <button
+                onClick={sendCampaign}
+                className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 hover:brightness-110 text-white px-6 py-2 rounded-md font-semibold transition-all shadow-md shadow-pink-500/25"
+              >
+                Send Campaign →
+              </button>
+            )}
           </div>
         </div>
 
@@ -1790,30 +1806,9 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
           {/* Right Column: Template Editor */}
           <div className="lg:col-span-2">
             <div className="border border-slate-200 rounded-lg p-4 bg-white shadow-sm">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
-                <div>
-                  <h2 className="text-lg font-semibold">Template Editor</h2>
-                  <p className="text-sm text-slate-600">Drag blocks from the left or edit existing content</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={onBack} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
-                    Back
-                  </button>
-                  <button
-                    onClick={saveTemplate}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-md font-semibold transition-colors"
-                  >
-                    Save Template
-                  </button>
-                  {typeof onSend === 'function' && (
-                    <button
-                      onClick={sendCampaign}
-                      className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 hover:brightness-110 text-white px-6 py-2 rounded-md font-semibold transition-all shadow-md shadow-pink-500/25"
-                    >
-                      Send Campaign →
-                    </button>
-                  )}
-                </div>
+              <div className="mb-4 pb-3 border-b border-slate-200">
+                <h2 className="text-lg font-semibold">Template Editor</h2>
+                <p className="text-sm text-slate-600">Drag blocks from the left or edit existing content</p>
               </div>
               
               {/* Email Canvas */}
