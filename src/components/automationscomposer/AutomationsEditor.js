@@ -24,7 +24,7 @@ import { starterTemplates } from '../email/MailBuilder/starterTemplates';
 //   reflect saved templates after a refresh.
 
 // EmailBlock component for rendering individual blocks in the automation editor
-const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, onMoveDown }) => {
+const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, onMoveDown, onSelectAny, onDeleteAny, onAddToColumn }) => {
 
   // Drag and Drop constants
   const DRAG_NEW_BLOCK = "application/x-automation-block";
@@ -216,6 +216,44 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
                 )
               ))
             )}
+          </div>
+        );
+      case 'columns':
+        return (
+          <div style={{ display: 'flex', gap: 12 }}>
+            {(meta.blocks || []).map((col, ci) => (
+              <div key={ci} style={{ flex: (meta.widths && meta.widths[ci]) || 1, minWidth: 0 }}>
+                {(!col || col.length === 0) ? (
+                  <div className="text-xs text-slate-400 border border-dashed border-slate-300 rounded p-6 text-center">
+                    Empty column
+                  </div>
+                ) : (
+                  col.map(nb => (
+                    <div
+                      key={nb.id}
+                      onClick={(e) => { e.stopPropagation(); onSelectAny && onSelectAny(nb.id); }}
+                      className="relative group/nested cursor-pointer hover:ring-1 hover:ring-indigo-300 rounded"
+                    >
+                      {renderBlockPreviewEmail(nb)}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDeleteAny && onDeleteAny(nb.id); }}
+                        className="absolute top-0 right-0 hidden group-hover/nested:block bg-red-500 text-white text-xs rounded-bl px-1 leading-4"
+                        title="Delete"
+                      >×</button>
+                    </div>
+                  ))
+                )}
+                <div className="flex gap-1 mt-1">
+                  {['text', 'image', 'button'].map(t => (
+                    <button
+                      key={t}
+                      onClick={(e) => { e.stopPropagation(); onAddToColumn && onAddToColumn(block.id, ci, t); }}
+                      className="text-xs px-2 py-1 border border-slate-200 rounded text-slate-500 hover:bg-slate-50"
+                    >+ {t}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         );
       default:
@@ -1407,6 +1445,24 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
   function moveBlock(id, dir) { setBlocks(b => { const i = b.findIndex(x=>x.id===id); if (i<0) return b; const ni = i + dir; if (ni<0||ni>=b.length) return b; const nb=[...b]; const [item]=nb.splice(i,1); nb.splice(ni,0,item); return nb; }); }
   function updateBlock(id, patch) { setBlocks(b => b.map(x => x.id===id ? { ...x, meta: { ...x.meta, ...patch } } : x)); }
 
+  // Selects any block by id, including ones nested inside a 'columns' block.
+  function selectAny(id) { setSelection(id); }
+
+  // Deletes a block by id wherever it lives (top-level or inside a column).
+  function deleteAny(id) {
+    setBlocks(prev => deleteBlockRecursive(prev, id));
+    if (selection === id) setSelection(null);
+  }
+
+  function addToColumn(columnsBlockId, colIndex, type) {
+    const newBlock = defaultBlock(type);
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== columnsBlockId || b.type !== 'columns') return b;
+      const cols = (b.meta.blocks || []).map((col, i) => i === colIndex ? [...col, newBlock] : col);
+      return { ...b, meta: { ...b.meta, blocks: cols } };
+    }));
+  }
+
   function exportJSON() { const payload = { subject, blocks }; const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }); downloadBlob(blob, `email-template-${Date.now()}.json`); }
 
   function exportHTML() {
@@ -1643,11 +1699,7 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
                   block={findBlockById(blocks, selection)} 
                   onUpdate={(changes) => {
                     console.log('Updating block:', selection, changes);
-                    setBlocks(prev => prev.map(b => 
-                      b.id === selection 
-                        ? { ...b, meta: { ...b.meta, ...changes } } 
-                        : b
-                    ));
+                    updateBlockById(setBlocks, selection, changes);
                   }}
                   realProducts={realProducts}
                   loadingProducts={loadingProducts}
@@ -1806,6 +1858,9 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
                             onDelete={() => deleteBlock(block.id)}
                             onMoveUp={index > 0 ? () => moveBlockByIndex(index, index - 1) : null}
                             onMoveDown={index < blocks.length - 1 ? () => moveBlockByIndex(index, index + 1) : null}
+                            onSelectAny={selectAny}
+                            onDeleteAny={deleteAny}
+                            onAddToColumn={addToColumn}
                           />
                           <DropZone index={index + 1} onDropType={addBlockAtIndex} onMoveBlock={moveBlockByIndex} />
                         </div>
@@ -1947,6 +2002,19 @@ function updateBlockById(setBlocks, id, patch) {
   });
 }
 
+// Removes a block by id wherever it lives — top-level or nested inside a
+// 'columns' block's per-column arrays.
+function deleteBlockRecursive(blocks, id) {
+  return blocks
+    .filter(b => b.id !== id)
+    .map(b => {
+      if (b.type === 'columns' && Array.isArray(b.meta?.blocks)) {
+        return { ...b, meta: { ...b.meta, blocks: b.meta.blocks.map(col => deleteBlockRecursive(col, id)) } };
+      }
+      return b;
+    });
+}
+
 // Temporary debug wrapper — create dbgSetBlocks to trace updates
 function makeDbgSetBlocks(realSetBlocks) {
   return function(next) {
@@ -1970,8 +2038,16 @@ function makeDbgSetBlocks(realSetBlocks) {
   };
 }
 function findBlockById(blocks, id) {
-  const found = blocks.find(b => b.id === id) || null;
-  return found;
+  for (const b of blocks) {
+    if (b.id === id) return b;
+    if (b.type === 'columns' && Array.isArray(b.meta?.blocks)) {
+      for (const col of b.meta.blocks) {
+        const found = findBlockById(col, id);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
 }
 
 function ImageBlockInspector({ block, onUpdate }) {
@@ -2591,6 +2667,35 @@ function InspectorEmail({ block, onUpdate, realProducts = [], loadingProducts = 
                 Right
               </button>
             </div>
+          </div>
+        </div>
+      );
+      break;
+    case 'columns':
+      inspectorContent = (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs block mb-1 font-medium">Number of columns</label>
+            <div className="flex gap-2">
+              {[2, 3].map(n => (
+                <button
+                  key={n}
+                  onClick={() => {
+                    const widths = Array.from({ length: n }, () => Math.floor(100 / n));
+                    const blocksArr = Array.from({ length: n }, (_, i) => (meta.blocks && meta.blocks[i]) || []);
+                    onUpdate({ columns: n, widths, blocks: blocksArr });
+                  }}
+                  className={`flex-1 py-2 px-3 text-xs rounded border ${
+                    (meta.columns || (meta.blocks || []).length || 2) === n
+                      ? 'bg-indigo-50 border-indigo-500 text-indigo-700'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >{n} columns</button>
+              ))}
+            </div>
+          </div>
+          <div className="text-xs text-slate-400">
+            Click a block inside a column on the canvas to edit it, or use the + buttons under each column to add one.
           </div>
         </div>
       );
