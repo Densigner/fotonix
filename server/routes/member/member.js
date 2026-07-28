@@ -1203,7 +1203,7 @@ router.post('/business-email/create-affiliate', async (req, res) => {
       memberUid,
       affiliateCode,
       emailAddress,
-      `${affiliateCode} (Affiliate)`,
+      affiliateCode,
       'Affiliate contact address'
     ]);
 
