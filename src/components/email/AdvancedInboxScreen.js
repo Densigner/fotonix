@@ -750,9 +750,16 @@ export default function AdvancedInboxScreen() {
   const startCompose = () => {
     setReplyMode(null);
     setIsComposing(true);
-    
-    // Reset compose data to blank state
+
+    // Reset compose data to blank state. Keep `from`/`fromEmailId` defaulted
+    // to the first loaded business email — omitting them here previously
+    // wiped out whatever the business-emails-loaded effect had auto-set,
+    // leaving composeData.from empty (Send disabled, "Missing: From") even
+    // though the dropdown displayed the address (a bare <select> just falls
+    // back to showing its first <option> when its value matches nothing).
     setComposeData({
+      from: businessEmails[0]?.email || '',
+      fromEmailId: businessEmails[0]?.id || null,
       to: '',
       cc: '',
       bcc: '',
@@ -915,6 +922,8 @@ export default function AdvancedInboxScreen() {
       setIsComposing(false);
       setReplyMode(null);
       setComposeData({
+        from: selectedBusinessEmail?.email || businessEmails[0]?.email || '',
+        fromEmailId: selectedBusinessEmail?.id || businessEmails[0]?.id || null,
         to: '',
         cc: '',
         bcc: '',
@@ -924,7 +933,6 @@ export default function AdvancedInboxScreen() {
         priority: 0,
         trackingEnabled: true,
         scheduleAt: null,
-        fromEmailId: selectedBusinessEmail?.id,
         attachments: []
       });
 
