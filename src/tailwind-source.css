@@ -1,9 +1,0 @@
-/* Input for scripts/build-tailwind.js — do not import this file directly.
-   It's compiled ahead of time into src/tailwind-generated.css, which
-   src/index.css imports as plain CSS. See that script for why: CRA/CRACO's
-   webpack postcss-loader pipeline doesn't reliably run Tailwind v4's
-   filesystem content-scan (works fine standalone via plain postcss, not
-   under webpack on this setup), so Tailwind is compiled as a separate
-   pre-build step instead of inline in the webpack CSS pipeline. */
-@import "tailwindcss";
-@source "./**/*.{js,jsx,ts,tsx}";

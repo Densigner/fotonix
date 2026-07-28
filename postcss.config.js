@@ -1,12 +1,15 @@
-// Not actually used by the CRA/CRACO production build (that pipeline is
-// configured directly in craco.config.js) — kept only so editor tooling
-// (e.g. the Tailwind CSS IntelliSense extension) can still resolve a plain
-// PostCSS config for this project.
-const path = require('path');
-
 module.exports = {
   plugins: {
-    '@tailwindcss/postcss': { base: path.resolve(__dirname) },
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+// Temporarily disable Tailwind as a PostCSS plugin to avoid CRA PostCSS errors.
+// We keep this file so a full integration (CRACO or react-scripts upgrade) can
+// reuse it later. For now we rely on the Tailwind Play CDN in public/index.html.
+module.exports = {
+  plugins: {
+    // '@tailwindcss/postcss': {}, // keep for reference; enable when CRA pipeline is overridden
     autoprefixer: {},
   },
 };
