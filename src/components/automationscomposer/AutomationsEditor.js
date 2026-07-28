@@ -231,7 +231,7 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
                   col.map(nb => (
                     <div
                       key={nb.id}
-                      onClick={(e) => { e.stopPropagation(); onSelectAny && onSelectAny(nb.id); }}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelectAny && onSelectAny(nb.id); }}
                       className="relative group/nested cursor-pointer hover:ring-1 hover:ring-indigo-300 rounded"
                     >
                       {renderBlockPreviewEmail(nb)}
