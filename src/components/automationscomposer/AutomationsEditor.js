@@ -7,6 +7,7 @@ import SubscribeButtonBuilder from '../email/MailBuilder/SubscribeButtonBuilder'
 import MailBuilderOnboarding from '../email/MailBuilder/MailOnboard';
 import MailComposerDesign from '../email/MailBuilder/MailComposerDesign';
 import productsData from '../../data/productsData';
+import { starterTemplates } from '../email/MailBuilder/starterTemplates';
 
 // SideLitSignLanding.jsx — Email Builder with per-tenant defaults
 //
@@ -310,17 +311,17 @@ export default function EmailBuilderPage(props = {}) {
     return defaultTenants;
   });
 
-  // Mock templates stored per tenant; allow parent to supply templates
+  // Real starter templates (src/components/email/MailBuilder/starterTemplates.js)
+  // instead of the old mock/localStorage seed — that fallback chain meant
+  // this list was actually leftover browser-local test data from whoever
+  // last used this screen (junk titles like "saveme"/"ffsAI" persisted
+  // forever in this one browser's localStorage), or two hardcoded
+  // placeholder mocks on a fresh browser. Neither was ever real, shared
+  // content. Deliberately no longer reads/writes `localStorage['email.templates']`
+  // at all, so stale junk from before this fix can't reappear either.
   const [templates, setTemplatesLocal] = useState(() => {
     if (props.templates && props.templates.length) return props.templates;
-    const s = localStorage.getItem('email.templates');
-    if (s) try { return JSON.parse(s); } catch (e) {}
-    const t = [
-      { id: 'tpl_hero', title: 'Clear Hero', src: '/uploads/annouceTemplate.png', tenantId: 't1', owner: 'alice@fotonix.test', sharedWith: { users: [] }, createdAt: new Date().toISOString() },
-      { id: 'tpl_promo', title: 'Promo Strip', src: '/images/customDesign.png', tenantId: 't1', owner: 'bob@fotonix.test', sharedWith: { users: [] }, createdAt: new Date().toISOString() }
-    ];
-    localStorage.setItem('email.templates', JSON.stringify(t));
-    return t;
+    return starterTemplates.map(t => ({ ...t, tenantId: 't1', sharedWith: { users: [] }, createdAt: t.createdAt || new Date().toISOString() }));
   });
 
   // Expose a setTemplates that updates parent if provided
@@ -628,7 +629,7 @@ export default function EmailBuilderPage(props = {}) {
                           <img src={t.src} alt={(t.manifest && (t.manifest.formatName || t.manifest.brandName)) || t.title} style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 6 }} />
                           <div>
                             <div className="font-medium">{(t.manifest && (t.manifest.formatName || t.manifest.brandName)) || t.title}</div>
-                            <div className="text-sm text-slate-600">{t.manifest && t.manifest.tagline ? t.manifest.tagline : ''}</div>
+                            <div className="text-sm text-slate-600">{(t.manifest && t.manifest.tagline) || t.tagline || ''}</div>
                             <div className="text-xs text-slate-500 mt-1">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : ''} • Owner: {t.owner}</div>
                           </div>
                         </div>

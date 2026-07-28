@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ArrowLeft, Home, Palette, Save, Settings, Eye, Code, Smartphone, Monitor, Tablet, Mail } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
 import Header from '../shared/Header';
 import AutomationsEditor from './AutomationsEditor';
 import { getAutomationEmailTemplate } from '../../services/email-automation/EmailTemplates';
@@ -222,7 +223,7 @@ export default function AutomationsComposerPage() {
                 sendCampaignRef={sendCampaignRef}
                 templates={templates}
                 tenants={tenant ? [tenant] : []}
-                currentUser={{ email: 'you@example.com', tenantId: tenant?.id }}
+                currentUser={{ email: getAuth().currentUser?.email || 'you@example.com', tenantId: tenant?.id }}
                 initialTemplate={automationTemplate || template}
                 intent={campaignType && emailType ? 'automation-email' : intent}
                 campaignContext={campaignType && emailType ? {
