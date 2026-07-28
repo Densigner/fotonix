@@ -107,7 +107,6 @@ export default function AdvancedInboxScreen() {
     body: '',
     signature: null,
     priority: 0,
-    trackingEnabled: true,
     scheduleAt: null,
     attachments: [] // array of File objects, converted to base64 at send time
   });
@@ -767,7 +766,6 @@ export default function AdvancedInboxScreen() {
       body: '',
       signature: null,
       priority: 0,
-      trackingEnabled: true,
       scheduleAt: null,
       originalMessageId: null,
       attachments: []
@@ -890,7 +888,6 @@ export default function AdvancedInboxScreen() {
         text: composeData.body,
         html: composeData.body.replace(/\n/g, '<br/>'),
         priority: composeData.priority,
-        tracking_enabled: composeData.trackingEnabled,
         schedule_at: composeData.scheduleAt,
         signature_id: composeData.signature,
         attachments,
@@ -931,7 +928,6 @@ export default function AdvancedInboxScreen() {
         body: '',
         signature: signatures.find(s => s.is_default)?.id || null,
         priority: 0,
-        trackingEnabled: true,
         scheduleAt: null,
         attachments: []
       });
@@ -1758,15 +1754,6 @@ export default function AdvancedInboxScreen() {
                 isDarkMode ? "border-white/10" : "border-gray-200"
               )}>
                 <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={composeData.trackingEnabled}
-                      onChange={(e) => setComposeData(prev => ({ ...prev, trackingEnabled: e.target.checked }))}
-                    />
-                    Track opens
-                  </label>
-                  
                   <select
                     value={composeData.priority}
                     onChange={(e) => setComposeData(prev => ({ ...prev, priority: parseInt(e.target.value) }))}

@@ -42,6 +42,40 @@ function getTenantId(req) {
   return Number.isFinite(numeric) ? numeric : 1;
 }
 
+// Real open/click tracking for campaign (send-bulk) sends only — deliberately
+// not wired into single-send /send, which is used by the small one-to-one
+// inbox compose modal where per-open tracking isn't worth the intrusion.
+// This is a separate mechanism from routes/email/tracking.js (mounted at
+// /api/email/track/*), which is real too but wired to the dead "Email
+// Automation" feature's Firebase-backed tracking IDs, not real Postgres
+// email_messages rows — don't confuse the two.
+const TRACKING_BASE_URL = 'https://api.fotonix.co.uk';
+const TRACKING_PIXEL_GIF = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
+
+// Rewrites <a href> links to go through a click-redirect and/or appends a
+// 1x1 open-tracking pixel, both keyed by this specific recipient's own
+// email_messages row id. Either can be disabled independently, matching the
+// campaign UI's separate "Track Opens"/"Track Clicks" toggles.
+function injectTracking(html, messageId, { trackOpens = true, trackClicks = true } = {}) {
+  if (!html) return html;
+  let out = html;
+  if (trackClicks) {
+    out = out.replace(/<a\s+([^>]*?)href=(["'])([^"']+)\2([^>]*)>/gi, (match, pre, quote, url, post) => {
+      if (/^(mailto:|tel:|#)/i.test(url)) return match;
+      const trackedUrl = `${TRACKING_BASE_URL}/api/email/click/${messageId}?url=${encodeURIComponent(url)}`;
+      return `<a ${pre}href=${quote}${trackedUrl}${quote}${post}>`;
+    });
+  }
+  if (trackOpens) {
+    const pixel = `<img src="${TRACKING_BASE_URL}/api/email/open/${messageId}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" />`;
+    out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, `${pixel}</body>`) : out + pixel;
+  }
+  return out;
+}
+
 // Send individual email (UPDATED with business_email support and defensive checks)
 router.post('/send', async (req, res) => {
   try {
@@ -224,7 +258,7 @@ router.post('/send', async (req, res) => {
 router.post('/send-bulk', async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { recipients, subject, html, text, templateName, templateData, campaignId, fromEmail, fromName, replyTo, attachments: rawAttachments } = req.body;
+    const { recipients, subject, html, text, templateName, templateData, campaignId, fromEmail, fromName, replyTo, attachments: rawAttachments, trackOpens = true, trackClicks = true } = req.body;
 
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'recipients array is required' });
@@ -301,13 +335,16 @@ router.post('/send-bulk', async (req, res) => {
 
           const messageId = messageResult.rows[0].id;
 
-          // Send email
+          // Send email — tracking is injected only into what's actually
+          // mailed, not into the stored `html` column, so viewing this
+          // message later in the inbox shows the clean original.
+          const trackedHtml = injectTracking(finalHtml, messageId, { trackOpens, trackClicks });
           const info = await transport.sendMail({
             from: actualFrom,
             replyTo: actualReplyTo,
             to: recipient.email || recipient,
             subject: subject,
-            html: finalHtml,
+            html: trackedHtml,
             text: finalText,
             attachments: nodemailerAttachments,
             headers: {
@@ -375,6 +412,44 @@ router.post('/send-bulk', async (req, res) => {
       error: 'Internal server error',
       detail: error.message
     });
+  }
+});
+
+// Open-tracking pixel — hit by the recipient's mail client loading the
+// image injectTracking() embedded. Always returns the pixel even on error;
+// the recipient should never see a broken image because of a DB hiccup.
+router.get('/open/:messageId', async (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'image/gif',
+    'Content-Length': TRACKING_PIXEL_GIF.length,
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+  });
+  res.end(TRACKING_PIXEL_GIF);
+
+  try {
+    await query(
+      'UPDATE email_messages SET opened_at = COALESCE(opened_at, NOW()) WHERE id = $1',
+      [req.params.messageId]
+    );
+  } catch (error) {
+    console.error('Open tracking error:', error);
+  }
+});
+
+// Click-tracking redirect — links injectTracking() rewrote point here first,
+// then get redirected on to the real destination.
+router.get('/click/:messageId', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send('Missing url parameter');
+  res.redirect(302, url);
+
+  try {
+    await query(
+      'UPDATE email_messages SET clicked_at = COALESCE(clicked_at, NOW()) WHERE id = $1',
+      [req.params.messageId]
+    );
+  } catch (error) {
+    console.error('Click tracking error:', error);
   }
 });
 
@@ -640,14 +715,22 @@ router.delete('/messages/delete', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     const tenantId = getTenantId(req);
-    const { timeframe = '24h' } = req.query;
-    
-    let timeCondition = "created_at >= NOW() - INTERVAL '24 hours'";
-    if (timeframe === '7d') timeCondition = "created_at >= NOW() - INTERVAL '7 days'";
-    if (timeframe === '30d') timeCondition = "created_at >= NOW() - INTERVAL '30 days'";
+    const { timeframe = '24h', campaignId } = req.query;
+
+    // campaignId, when given, replaces the time window entirely - "how did
+    // this specific campaign do" regardless of when it was sent, which is
+    // what the campaign send UI actually wants right after a send completes.
+    let condition = "created_at >= NOW() - INTERVAL '24 hours'";
+    if (timeframe === '7d') condition = "created_at >= NOW() - INTERVAL '7 days'";
+    if (timeframe === '30d') condition = "created_at >= NOW() - INTERVAL '30 days'";
+    const params = [tenantId];
+    if (campaignId) {
+      params.push(String(campaignId));
+      condition = `meta->>'campaignId' = $${params.length}`;
+    }
 
     const stats = await query(`
-      SELECT 
+      SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'sent' THEN 1 END) as sent,
         COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
@@ -655,9 +738,9 @@ router.get('/stats', async (req, res) => {
         COUNT(CASE WHEN status = 'suppressed' THEN 1 END) as suppressed,
         COUNT(CASE WHEN opened_at IS NOT NULL THEN 1 END) as opened,
         COUNT(CASE WHEN clicked_at IS NOT NULL THEN 1 END) as clicked
-      FROM email_messages 
-      WHERE tenant_id = $1 AND ${timeCondition}
-    `, [tenantId]);
+      FROM email_messages
+      WHERE tenant_id = $1 AND ${condition}
+    `, params);
 
     const suppressions = await query(`
       SELECT reason, COUNT(*) as count

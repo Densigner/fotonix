@@ -60,6 +60,24 @@ export default function CampaignSendPage() {
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ sent: 0, total: 0, failed: 0 });
   const [sendComplete, setSendComplete] = useState(false);
+  const [campaignStats, setCampaignStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  // Real open/click counts for this campaign (opened_at/clicked_at get set
+  // when a recipient actually opens the email / clicks a link - see
+  // injectTracking() + the /open and /click routes in server/routes/email/emails.js).
+  // Fetched on demand rather than assumed, since a send just completing
+  // doesn't mean anyone's opened it yet.
+  const fetchCampaignStats = async () => {
+    setLoadingStats(true);
+    try {
+      const res = await fetch(`${API_URL}/api/email/stats?campaignId=${encodeURIComponent(templateId)}`);
+      const json = await res.json();
+      setCampaignStats(res.ok ? json.stats : null);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
 
   // Initialize business emails from navigation state immediately
   useEffect(() => {
@@ -454,6 +472,8 @@ export default function CampaignSendPage() {
           fromEmail: config.fromEmail,
           fromName: config.fromName,
           replyTo: config.replyTo,
+          trackOpens: config.trackOpens,
+          trackClicks: config.trackClicks,
         }),
       });
 
@@ -470,6 +490,7 @@ export default function CampaignSendPage() {
       setSendProgress({ sent, total: recipients.length, failed });
       setSendResults(results);
       setSendComplete(true);
+      fetchCampaignStats();
 
       // Update template status
       const finalSnapshot = await get(templateRef);
@@ -986,6 +1007,25 @@ export default function CampaignSendPage() {
                   <p className="text-xs text-green-600 mt-1">
                     {sendProgress.sent} of {sendProgress.total} emails sent
                   </p>
+                  <div className="mt-2 pt-2 border-t border-green-200 flex items-center justify-between">
+                    <div className="flex items-center gap-3 text-xs text-green-700">
+                      {campaignStats ? (
+                        <>
+                          <span>👁️ {campaignStats.opened} opened</span>
+                          <span>🔗 {campaignStats.clicked} clicked</span>
+                        </>
+                      ) : (
+                        <span className="text-green-600">No open/click data yet</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={fetchCampaignStats}
+                      disabled={loadingStats}
+                      className="text-xs text-green-700 underline hover:no-underline disabled:opacity-50"
+                    >
+                      {loadingStats ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
