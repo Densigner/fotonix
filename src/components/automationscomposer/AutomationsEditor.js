@@ -335,6 +335,20 @@ export default function EmailBuilderPage(props = {}) {
     return [...seeded, ...realPassedIn];
   });
 
+  // Firebase's "saved format" entries (mailbuilder/themes/{uid} - logo/colour
+  // presets from an unrelated feature, see the comment above) never carry
+  // real block content. The realtime listeners below used to call
+  // setTemplates(rawList) directly, fully REPLACING the list the moment
+  // Firebase responded - wiping out the starter templates a split second
+  // after they'd shown ("appears then disappears"). This keeps the starters
+  // pinned in place and only merges in genuinely usable (real .blocks)
+  // entries from whatever Firebase just returned.
+  const applyFetchedTemplates = (rawList) => setTemplates(prev => {
+    const starters = prev.filter(t => typeof t.id === 'string' && t.id.startsWith('starter_'));
+    const usable = (rawList || []).filter(t => Array.isArray(t.blocks) && t.blocks.length > 0);
+    return [...starters, ...usable];
+  });
+
   // Expose a setTemplates that updates parent if provided
   const setTemplates = (updater) => {
     if (typeof props.setTemplates === 'function') {
@@ -416,8 +430,8 @@ export default function EmailBuilderPage(props = {}) {
               }
               if (found.length) {
                 const out = found.map(f => ({ id: f.key, title: f.manifest.formatName || f.manifest.brandName || f.manifest.name || f.key, src: (f.manifest.logos && Array.isArray(f.manifest.logos) && f.manifest.logos[0] && (f.manifest.logos[0].downloadURL || f.manifest.logos[0].url)) || '/uploads/annouceTemplate.png', tenantId: uid, owner: uid, sharedWith: { users: [] }, createdAt: f.manifest.createdAt || Date.now(), manifest: f.manifest }));
-                // Replace templates with localStorage fallback results
-                setTemplates(out);
+                // Merge with localStorage fallback results (keeps starters)
+                applyFetchedTemplates(out);
                 try { setFbStatus(s => ({ ...s, db: false, message: 'used localStorage fallback' })); } catch(e) {}
                 return;
               }
@@ -444,8 +458,9 @@ export default function EmailBuilderPage(props = {}) {
             });
           });
           if (out.length) {
-            // Replace templates with fetched results (remove demo/filler templates)
-            setTemplates(out);
+            // Merge with fetched results (keeps starters; real .blocks templates,
+            // if any ever exist at this path, would be added alongside them)
+            applyFetchedTemplates(out);
           }
         });
         // remember listener for cleanup
@@ -474,8 +489,8 @@ export default function EmailBuilderPage(props = {}) {
             if (allOut.length) {
               // Assign these results to the current tenant when possible so they are visible
               const normalized = allOut.map(t => ({ ...t, tenantId: currentTenantId || t.tenantId, owner: (currentUser && currentUser.email) || t.owner || t.tenantId }));
-              // Replace templates with all-themes results
-              setTemplates(normalized);
+              // Merge with all-themes results (keeps starters)
+              applyFetchedTemplates(normalized);
               try { setFbStatus(s => ({ ...s, db: true, message: 'fetched all themes' })); } catch(e) {}
             }
             else {
@@ -496,8 +511,8 @@ export default function EmailBuilderPage(props = {}) {
                 }
                 if (found.length) {
                   const out2 = found.map(f => ({ id: f.key, title: f.manifest.formatName || f.manifest.brandName || f.manifest.name || f.key, src: (f.manifest.logos && Array.isArray(f.manifest.logos) && f.manifest.logos[0] && (f.manifest.logos[0].downloadURL || f.manifest.logos[0].url)) || '/uploads/annouceTemplate.png', tenantId: currentTenantId || f.userKey, owner: (currentUser && currentUser.email) || f.userKey, sharedWith: { users: [] }, createdAt: f.manifest.createdAt || Date.now(), manifest: f.manifest }));
-                  // Replace templates with localStorage all-themes fallback results
-                  setTemplates(out2);
+                  // Merge with localStorage all-themes fallback results (keeps starters)
+                  applyFetchedTemplates(out2);
                   try { setFbStatus(s => ({ ...s, db: false, message: 'used localStorage all-themes fallback' })); } catch(e) {}
                 }
               } catch (e) {}
