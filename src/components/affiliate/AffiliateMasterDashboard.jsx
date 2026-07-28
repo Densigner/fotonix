@@ -5,10 +5,13 @@ import { API_URL } from "../../config/environment";
 
 /**
  * AffiliateMasterDashboard
- * Shows total owed to affiliates, paid commissions, voids, and trends.
- * Track-only: no fund custody. Merchants pay affiliates externally.
+ * Shows one affiliate's own owed/paid/voided commissions and trend - despite
+ * the name, this was never a cross-affiliate "admin" view: /api/affiliates/stats
+ * and /attributions are both scoped server-side to a single `code`. Previously
+ * called with no `code` at all (always 400ed), so it never actually loaded
+ * real data - see src/Bible/affiliates/gotchas.md.
  */
-export default function AffiliateMasterDashboard() {
+export default function AffiliateMasterDashboard({ affiliateCode, apiBase = "" }) {
   const [stats, setStats] = useState(null);
   const [attributions, setAttributions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,20 +20,26 @@ export default function AffiliateMasterDashboard() {
   const fmtPct = (n) => `${n.toFixed(1)}%`;
 
   useEffect(() => {
+    if (!affiliateCode) {
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         setLoading(true);
+        const base = apiBase || API_URL;
+        const headers = { 'x-affiliate-code': affiliateCode };
         const [statsRes, attrRes] = await Promise.all([
-          fetch(`${API_URL}/api/affiliates/stats`).then((r) => r.json()),
-          fetch(`${API_URL}/api/affiliates/attributions`).then((r) => r.json()),
+          fetch(`${base}/api/affiliates/stats?code=${encodeURIComponent(affiliateCode)}`, { headers }).then((r) => r.json()),
+          fetch(`${base}/api/affiliates/attributions?code=${encodeURIComponent(affiliateCode)}`, { headers }).then((r) => r.json()),
         ]);
-        setStats(statsRes);
-        setAttributions(attrRes);
+        setStats(statsRes && !statsRes.error ? statsRes : null);
+        setAttributions(Array.isArray(attrRes) ? attrRes : []);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [affiliateCode, apiBase]);
 
   // Aggregate owed per affiliate
   const byAffiliate = useMemo(() => {

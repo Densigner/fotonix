@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AffiliateMasterDashboard from './AffiliateMasterDashboard';
 import { Link } from 'react-router-dom';
+import { API_URL } from '../../config/environment';
 import { Clipboard, Check, ExternalLink, TrendingUp, MousePointerClick, BadgeCheck, Filter, Store, Package, Mail, DollarSign } from "lucide-react";
 import {
   LineChart,
@@ -42,12 +43,20 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
         // mounted at /api/affiliates). It already returns the shape this dashboard
         // uses directly: { clicks, conversions, pendingCommissionCents,
         // approvedCommissionCents, currency, timeseries }
-        const statsRes = await fetch(`${apiBase || ''}/api/affiliates/stats?code=${encodeURIComponent(affiliateCode)}`, { headers });
+        // `apiBase || API_URL`, never a bare relative path — on fotonix.co.uk
+        // (the static frontend host) there's no reverse proxy for /api/*, so a
+        // relative fetch here silently hits the SPA's index.html fallback (a
+        // 200 OK with HTML, not JSON) instead of erroring. This previously
+        // made every affiliate's stats/attributions silently show all-zero
+        // in production, indistinguishable from "no clicks yet" - see
+        // src/Bible/emails/gotchas.md item 8 for the same bug class.
+        const base = apiBase || API_URL;
+        const statsRes = await fetch(`${base}/api/affiliates/stats?code=${encodeURIComponent(affiliateCode)}`, { headers });
         if (!statsRes.ok) throw new Error('Failed to load stats');
         const body = await statsRes.json();
 
         // Fetch per-order attributions (Commissions table) from the same live route
-        const attrsRes = await fetch(`${apiBase || ''}/api/affiliates/attributions?code=${encodeURIComponent(affiliateCode)}`, { headers });
+        const attrsRes = await fetch(`${base}/api/affiliates/attributions?code=${encodeURIComponent(affiliateCode)}`, { headers });
         const attrs = attrsRes.ok ? await attrsRes.json() : [];
 
         if (alive) {
@@ -90,7 +99,7 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
               <h3 className="text-lg font-semibold">Master Affiliate Dashboard</h3>
               <button onClick={() => setShowMaster(false)} className="text-sm text-zinc-500">Close</button>
             </div>
-            <AffiliateMasterDashboard />
+            <AffiliateMasterDashboard affiliateCode={affiliateCode} apiBase={apiBase} />
           </div>
         </div>
       )}
