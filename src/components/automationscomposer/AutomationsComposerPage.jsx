@@ -56,6 +56,12 @@ export default function AutomationsComposerPage() {
 
   const sendCampaignRef = useRef(null);
 
+  // Mirrors AutomationsEditor's campaign-sales gate so this button (a
+  // separate control that calls into the editor via sendCampaignRef) greys
+  // out in sync with the editor's own Send Campaign button rather than
+  // staying active while the real one is locked.
+  const [sendGate, setSendGate] = useState({ loading: true, unlocked: false, recentSales: 0 });
+
   // Provide a simple onClose that navigates back to dashboard
   const handleClose = () => {
     navigate(-1);
@@ -173,7 +179,9 @@ export default function AutomationsComposerPage() {
               
               <button
                 onClick={() => sendCampaignRef.current && sendCampaignRef.current()}
-                className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 text-white rounded-lg text-sm font-semibold hover:brightness-110 active:brightness-95 transition-all shadow-lg shadow-pink-500/25"
+                className={intent === 'new-template' || sendGate.unlocked
+                  ? "flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 text-white rounded-lg text-sm font-semibold hover:brightness-110 active:brightness-95 transition-all shadow-lg shadow-pink-500/25"
+                  : "flex items-center gap-2 px-4 py-1.5 bg-slate-300 text-slate-500 rounded-lg text-sm font-semibold cursor-not-allowed"}
               >
                 <Save className="w-4 h-4" />
                 {intent === 'new-template' ? 'Save Template' : 'Send Campaign'}
@@ -221,6 +229,7 @@ export default function AutomationsComposerPage() {
                 onClose={handleClose}
                 onSend={(templateId) => navigate(`/mailbuilder/send/${templateId}`)}
                 sendCampaignRef={sendCampaignRef}
+                onSendGateChange={setSendGate}
                 templates={templates}
                 tenants={tenant ? [tenant] : []}
                 currentUser={{ email: getAuth().currentUser?.email || 'you@example.com', tenantId: tenant?.id }}

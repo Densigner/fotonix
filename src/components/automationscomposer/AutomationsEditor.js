@@ -8,6 +8,16 @@ import MailBuilderOnboarding from '../email/MailBuilder/MailOnboard';
 import MailComposerDesign from '../email/MailBuilder/MailComposerDesign';
 import productsData from '../../data/productsData';
 import { starterTemplates } from '../email/MailBuilder/starterTemplates';
+import { API_URL } from '../../config/environment';
+
+// Minimum recent sales an affiliate needs to unlock/keep campaign sending —
+// checked as a rolling 30-day window so "3 to unlock" and "3/month to keep
+// it" collapse into one continuously-re-evaluated rule instead of separate
+// lifetime + calendar-month bookkeeping.
+const CAMPAIGN_SALES_REQUIRED = 3;
+const CAMPAIGN_SALES_WINDOW_DAYS = 30;
+const CAMPAIGN_GATE_ADMIN_EMAIL = 'joshmarsden28@gmail.com';
+const CAMPAIGN_GATE_CONTACT_EMAIL = 'josh@fotonix.co.uk';
 
 // SideLitSignLanding.jsx — Email Builder with per-tenant defaults
 //
@@ -750,6 +760,7 @@ export default function EmailBuilderPage(props = {}) {
             currentUser={currentUser}
             onSend={props.onSend}
             sendCampaignRef={props.sendCampaignRef}
+            onSendGateChange={props.onSendGateChange}
             onNext={(state) => {
               // capture composer snapshot and navigate to Design step
               try { setComposerState(state || {}); } catch (e) { console.debug('Failed to set composerState', e); }
@@ -1110,7 +1121,7 @@ function DropZone({ index, onDropType, onMoveBlock }) {
   );
 }
 
-function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [], setTemplates = null, selectedTemplateId = null, initialTemplate = null, intent = null, currentTenant, currentUser }) {
+function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, onSendGateChange, templates = [], setTemplates = null, selectedTemplateId = null, initialTemplate = null, intent = null, currentTenant, currentUser }) {
   // Start with an empty canvas — user will add blocks explicitly
   const [blocks, setBlocks] = useState(() => {
     // For automation templates, use initialTemplate blocks directly
@@ -1217,7 +1228,74 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
     
     fetchProducts();
   }, []);
-  
+
+  // Campaign-sending sales gate: affiliates need CAMPAIGN_SALES_REQUIRED real
+  // sales in the trailing CAMPAIGN_SALES_WINDOW_DAYS days to send campaigns
+  // (and keep needing it every month to retain access). Admin and non-
+  // affiliate accounts (no affiliateCode at all) are never gated.
+  const [salesGate, setSalesGate] = useState({ loading: true, unlocked: false, recentSales: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkSalesGate() {
+      try {
+        if (currentUser?.email === CAMPAIGN_GATE_ADMIN_EMAIL) {
+          if (!cancelled) setSalesGate({ loading: false, unlocked: true, recentSales: 0 });
+          return;
+        }
+        const user = auth.currentUser;
+        if (!user) {
+          if (!cancelled) setSalesGate({ loading: false, unlocked: true, recentSales: 0 });
+          return;
+        }
+
+        const { getDatabase, ref: dbRef, get } = await import('firebase/database');
+        const database = getDatabase();
+        const userSnap = await get(dbRef(database, `users/${user.uid}`));
+        const affiliateCode = userSnap.exists() ? userSnap.val().affiliateCode : null;
+
+        if (!affiliateCode) {
+          // Not an affiliate account (e.g. a regular member/seller) — gate doesn't apply.
+          if (!cancelled) setSalesGate({ loading: false, unlocked: true, recentSales: 0 });
+          return;
+        }
+
+        const res = await fetch(`${API_URL}/api/affiliates/attributions?code=${encodeURIComponent(affiliateCode)}`, {
+          headers: { 'x-affiliate-code': affiliateCode },
+        });
+        const attrs = await res.json();
+        const list = Array.isArray(attrs) ? attrs : [];
+        const cutoff = Date.now() - CAMPAIGN_SALES_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+        const recentSales = list.filter(a => a.status !== 'void' && new Date(a.date).getTime() >= cutoff).length;
+
+        if (!cancelled) setSalesGate({ loading: false, unlocked: recentSales >= CAMPAIGN_SALES_REQUIRED, recentSales });
+      } catch (e) {
+        console.warn('Sales gate check failed, defaulting to unlocked:', e);
+        if (!cancelled) setSalesGate({ loading: false, unlocked: true, recentSales: 0 });
+      }
+    }
+    checkSalesGate();
+    return () => { cancelled = true; };
+  }, [currentUser?.email]);
+
+  useEffect(() => {
+    if (typeof onSendGateChange === 'function') onSendGateChange(salesGate);
+  }, [salesGate, onSendGateChange]);
+
+  function explainSalesGate() {
+    if (salesGate.loading) {
+      alert('Still checking your sales history — try again in a moment.');
+      return;
+    }
+    alert(
+      `Campaign sending is locked.\n\n` +
+      `You need at least ${CAMPAIGN_SALES_REQUIRED} sales in the last ${CAMPAIGN_SALES_WINDOW_DAYS} days to send email campaigns ` +
+      `(you currently have ${salesGate.recentSales}). Once unlocked, you'll need to keep making at least ` +
+      `${CAMPAIGN_SALES_REQUIRED} sales every month to hold onto it.\n\n` +
+      `Keep sharing your affiliate link to get there. If you think this is wrong, email ${CAMPAIGN_GATE_CONTACT_EMAIL}.`
+    );
+  }
+
   // Debug helper: use dbgSetBlocks in place of setBlocks to trace updates and content
   function dbgSetBlocks(next) {
     if (typeof next === 'function') {
@@ -1595,6 +1673,10 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
   });
 
   async function sendCampaign() {
+    if (!salesGate.unlocked) {
+      explainSalesGate();
+      return;
+    }
     if (!subject.trim()) {
       alert('Please add an email subject before sending');
       return;
@@ -1687,7 +1769,10 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, templates = [],
             {typeof onSend === 'function' && (
               <button
                 onClick={sendCampaign}
-                className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 hover:brightness-110 text-white px-6 py-2 rounded-md font-semibold transition-all shadow-md shadow-pink-500/25"
+                title={salesGate.unlocked ? undefined : `Locked — ${CAMPAIGN_SALES_REQUIRED} sales in the last ${CAMPAIGN_SALES_WINDOW_DAYS} days required`}
+                className={salesGate.unlocked
+                  ? "bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 hover:brightness-110 text-white px-6 py-2 rounded-md font-semibold transition-all shadow-md shadow-pink-500/25"
+                  : "bg-slate-300 text-slate-500 px-6 py-2 rounded-md font-semibold cursor-not-allowed"}
               >
                 Send Campaign →
               </button>
