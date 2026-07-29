@@ -4,7 +4,6 @@ import {
   Search,
   UploadCloud,
   Download,
-  Wand2,
   Filter,
   MoreHorizontal,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   Heart,
   Trash2,
   CheckCircle2,
-  ArrowUpRight,
   Settings,
   UserRound,
   MessageCircle
@@ -28,7 +26,6 @@ import CommentModal from '../shared/CommentModal';
 // --- Utility styles for brand look ---
 const gradientBtn =
   "bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 text-white hover:brightness-110 active:brightness-95 transition-all shadow-lg shadow-pink-500/20";
-const neonAccent = "text-[#ff2d95]"; // neon pink accent for highlights
 const cardBase =
   "bg-neutral-50/80 dark:bg-neutral-900/60 border border-neutral-200/60 dark:border-neutral-800 rounded-2xl shadow-sm backdrop-blur";
 
@@ -384,7 +381,7 @@ export default function AccountPage() {
   return (
     <div className="min-h-[80vh] px-4 sm:px-6 lg:px-8 py-6">
       {/* Top: Profile + Quick stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <motion.div
           layout
           className={`${cardBase} p-5 flex items-center gap-4`}
@@ -433,23 +430,6 @@ export default function AccountPage() {
             </p>
             <p className="text-2xl font-bold">{uploads.reduce((a, b) => a + b.likes, 0)}</p>
           </div>
-        </motion.div>
-
-        <motion.div
-          layout
-          className={`${cardBase} p-5 flex items-center gap-3`}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <Wand2 className={`w-5 h-5 ${neonAccent}`} />
-          <div className="text-sm">
-            <p className="font-medium">Design with AI</p>
-            <p className="text-neutral-500">Generate new mirror patterns in a tap.</p>
-          </div>
-          <button className={`ml-auto px-3 py-2 rounded-xl text-sm ${gradientBtn}`}>
-            Try it
-            <ArrowUpRight className="inline w-4 h-4 ml-1" />
-          </button>
         </motion.div>
       </div>
 
