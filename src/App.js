@@ -729,7 +729,7 @@ function AppContent() {
         )}
 
         {currentPage === 'member-dashboard' && (
-          auth && auth.isAuthenticated && auth.currentUser ? (
+          auth && auth.isAuthenticated && auth.currentUser?.email === 'joshmarsden28@gmail.com' ? (
             <MembersDashboard />
           ) : (
             <div className="mx-auto max-w-3xl px-6 py-10">
@@ -740,7 +740,7 @@ function AppContent() {
         )}
 
         {currentPage === 'member-linker' && (
-          auth && auth.isAuthenticated && auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development') ? (
+          auth && auth.isAuthenticated && auth.currentUser?.email === 'joshmarsden28@gmail.com' ? (
             <MemberAffiliateLinker />
           ) : (
             <div className="mx-auto max-w-lg px-6 py-10">
