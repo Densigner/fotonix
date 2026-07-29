@@ -93,6 +93,20 @@ const sampleDownloads = [
   }
 ];
 
+// Maps to the mirror's BLE effect commands (lib/.../bleManager.sendColorToDevice
+// hexColor "7bff13XXffffffffbf", where XX is this index) — index order here
+// must stay in sync with that hex-command list on the mobile/firmware side.
+const EFFECT_MODES = [
+  'Dream',
+  'Horse Race',
+  'Hiding Colours',
+  'Full Colour Swap',
+  'Slow fill up',
+  'Quick swap',
+  'Moving Groups',
+  'All Colour Comets',
+];
+
 export default function AccountPage() {
   const { currentUser, userProfile, fetchUserProfile, isLoading } = useAuth();
   const [tab, setTab] = useState("uploads");
@@ -102,11 +116,15 @@ export default function AccountPage() {
   const [uploads, setUploads] = useState(sampleItems);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [pendingPattern, setPendingPattern] = useState(null);
+  // null = no effect selected — genuinely optional, omitted from the save
+  // entirely rather than written as some default index.
+  const [effectMode, setEffectMode] = useState(null);
   const [downloads] = useState(sampleDownloads);
   const fileRef = useRef(null);
   const justSavedRef = useRef(false);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
   const [selectedItemForComments, setSelectedItemForComments] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   function setModalVisible(v) {
     setShowCreateModal(v);
   }
@@ -262,7 +280,10 @@ export default function AccountPage() {
       comments: 0,
       updatedAt: new Date().toISOString().slice(0,10),
       preview: 'linear-gradient(135deg, #ff2d95, #7c3aed)',
-      metadata: { colors: p.colors, title: p.title, brightness: p.brightness, speed: p.speed }
+      metadata: { colors: p.colors, title: p.title, brightness: p.brightness, speed: p.speed },
+      // Optional — omitted entirely (not even as null) when no effect is
+      // selected, rather than writing a default index.
+      ...(effectMode !== null ? { effectMode } : {}),
     };
 
     try {
@@ -320,6 +341,8 @@ export default function AccountPage() {
           updatedAt: newItem.updatedAt,
           preview: newItem.preview,
           sourceUploadId: id,
+          // Optional — omitted entirely when no effect is selected.
+          ...(effectMode !== null ? { effectMode } : {}),
         };
         await promiseWithTimeout(
           firebase.database().ref(`communityPatterns/${id}`).set(communityPattern),
@@ -363,9 +386,55 @@ export default function AccountPage() {
         console.warn('handleSavePattern: DB read failed in finally, updating local state as fallback', e);
         setUploads(u => [newItem, ...u]);
       }
-      try { setModalVisible(false); setPendingPattern(null); } catch (e) { console.warn('handleSavePattern: modal close error (finally)', e); }
+      try { setModalVisible(false); setPendingPattern(null); setEffectMode(null); } catch (e) { console.warn('handleSavePattern: modal close error (finally)', e); }
       try { setSaving(false); } catch (e) { console.warn('handleSavePattern: setSaving(false) error', e); }
     }
+  }
+
+  // Deletes a pattern the current user owns. Always scoped to
+  // currentUser.uid (never item.ownerId or any other id from the item
+  // itself) — this screen only ever lists the logged-in user's own
+  // uploads/{uid} node, so there's no path here to target anyone else's
+  // data, but the code stays explicit about that regardless.
+  async function handleDeletePattern(item) {
+    if (!currentUser || deletingId) return;
+    if (!window.confirm(`Delete "${item.title}"? This can't be undone.`)) return;
+
+    setDeletingId(item.id);
+    try {
+      await promiseWithTimeout(
+        firebase.database().ref(`uploads/${currentUser.uid}/${item.id}`).remove(),
+        8000,
+        'db.remove upload'
+      );
+    } catch (e) {
+      console.warn('handleDeletePattern: failed to remove uploads entry', e);
+      alert('Failed to delete — please try again.');
+      setDeletingId(null);
+      return;
+    }
+
+    // Best-effort cleanup — don't block on these, the real delete above
+    // already succeeded.
+    try {
+      await promiseWithTimeout(
+        firebase.database().ref(`communityPatterns/${item.id}`).remove(),
+        8000,
+        'db.remove community'
+      );
+    } catch (e) {
+      console.warn('handleDeletePattern: failed to remove communityPatterns entry', e);
+    }
+    try {
+      await firebase.storage().ref(`uploads/${currentUser.uid}/${item.id}.png`).delete();
+    } catch (e) {
+      console.warn('handleDeletePattern: failed to remove storage image', e);
+    }
+
+    // Optimistic local removal — the realtime uploads listener will also
+    // reconcile this, but that can lag slightly.
+    setUploads(u => u.filter(x => x.id !== item.id));
+    setDeletingId(null);
   }
 
   // helper: convert dataUrl to Blob if needed
@@ -587,8 +656,12 @@ export default function AccountPage() {
                     <button className="px-3 py-2 rounded-xl text-sm bg-neutral-100 dark:bg-neutral-800">
                       <Star className="w-4 h-4 inline mr-1" /> Favourite
                     </button>
-                    <button className="px-3 py-2 rounded-xl text-sm bg-neutral-100 dark:bg-neutral-800">
-                      <Trash2 className="w-4 h-4 inline mr-1" /> Delete
+                    <button
+                      onClick={() => handleDeletePattern(item)}
+                      disabled={deletingId === item.id}
+                      className={`px-3 py-2 rounded-xl text-sm bg-neutral-100 dark:bg-neutral-800 ${deletingId === item.id ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      <Trash2 className="w-4 h-4 inline mr-1" /> {deletingId === item.id ? 'Deleting…' : 'Delete'}
                     </button>
                   </div>
                 </div>
@@ -686,10 +759,32 @@ export default function AccountPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">Create New Design</h3>
             <div className="flex items-center gap-2">
-              <button onClick={() => { setModalVisible(false); setPendingPattern(null); }} className="px-3 py-1 rounded-md border" disabled={saving}>Cancel</button>
+              <button onClick={() => { setModalVisible(false); setPendingPattern(null); setEffectMode(null); }} className="px-3 py-1 rounded-md border" disabled={saving}>Cancel</button>
               <button onClick={handleSavePattern} disabled={saving} className={`px-3 py-1 rounded-md ${gradientBtn} ${saving ? 'opacity-70 cursor-not-allowed' : ''}`}>
                 {saving ? 'Saving…' : 'Save Pattern'}
               </button>
+            </div>
+          </div>
+          <div className="mb-4">
+            <label className="text-sm font-medium block mb-2">Effect (optional)</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setEffectMode(null)}
+                className={`px-3 py-1.5 rounded-lg text-sm border ${effectMode === null ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-neutral-100 dark:text-neutral-900' : 'bg-white border-neutral-300 text-neutral-700'}`}
+              >
+                None
+              </button>
+              {EFFECT_MODES.map((label, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setEffectMode(idx)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border ${effectMode === idx ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-neutral-100 dark:text-neutral-900' : 'bg-white border-neutral-300 text-neutral-700'}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
           <div className="relative">

@@ -66,6 +66,20 @@ the whole `src/` tree, not a path-qualified string.
    Dart side. Flagged, not resolved, as of 2026-07-29 — confirm which side
    should handle it before assuming either is correct.
 
+   **`effectMode` (added 2026-07-29)** — optional integer 0-7, selected via
+   an "Effect (optional)" button row in the "Create New Design" modal
+   (`EFFECT_MODES` array in `Account.js`). Genuinely optional: omitted
+   entirely from both `uploads/{uid}/{itemId}` and `communityPatterns/{itemId}`
+   when no effect is picked (default "None"), never written as `null` or a
+   default index. Maps directly to the mirror's BLE effect commands
+   (`bleManager.sendColorToDevice(... hexColor: "7bff13XXffffffffbf" ...)`
+   on the mobile/firmware side, where `XX` is this index) — the array order
+   in `EFFECT_MODES` **must** stay in sync with that hex-command list:
+   ```
+   0 Dream · 1 Horse Race · 2 Hiding Colours · 3 Full Colour Swap ·
+   4 Slow fill up · 5 Quick swap · 6 Moving Groups · 7 All Colour Comets
+   ```
+
    - **Public by default, deliberately** — these are just light/mirror
      patterns, nothing sensitive, so there's no opt-in/visibility flag.
      Every save goes to both places.
