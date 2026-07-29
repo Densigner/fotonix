@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart, Mail } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_URL } from "../../config/environment";
@@ -78,6 +78,10 @@ export default function AffiliateSignupPage({ onSubmit }) {
   // Don't arm exit-intent once they've already signed up (success === true) —
   // there's nothing left to "capture" at that point.
   const { showExitIntent, hideExitIntent } = useExitIntent({ enabled: !success });
+
+  useEffect(() => {
+    if (showExitIntent) console.log('[exit-intent] fired — showing popup');
+  }, [showExitIntent]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
