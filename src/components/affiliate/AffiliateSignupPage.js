@@ -1,8 +1,41 @@
 import React, { useState } from "react";
-import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart } from "lucide-react";
+import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart, Mail } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_URL } from "../../config/environment";
 import firebase from 'firebase/compat/app';
+
+const AFFILIATE_FEATURES = [
+  {
+    icon: PoundSterling,
+    title: "10% Commission",
+    desc: "Real, tracked commissions on every sale you drive — no vague promises, a live dashboard shows exactly what you're owed.",
+  },
+  {
+    icon: Mail,
+    title: "Mail Campaign Builder",
+    desc: "A genuine drag-and-drop email builder — blocks, images, buttons, columns — plus your own real send/receive inbox.",
+  },
+  {
+    icon: Rocket,
+    title: "Funnel Builder",
+    desc: "Build multi-step sales funnels without touching code. Launch fast, iterate faster.",
+  },
+  {
+    icon: Globe,
+    title: "Your Own Storefront",
+    desc: "A branded shop page for your products, live the moment you publish it.",
+  },
+  {
+    icon: Users,
+    title: "Real-Time Analytics",
+    desc: "Clicks, conversions, and commissions — tracked live, not estimated after the fact.",
+  },
+  {
+    icon: Check,
+    title: "Free & Instant",
+    desc: "No cost to join, no waiting around — you're set up and promoting within minutes.",
+  },
+];
 
 // Short, speakable base derived from the signup email (e.g. "josh@x.com" -> "JOSH"),
 // so codes read out naturally in a video ("fotonix.co.uk slash JOSH42") instead of
@@ -130,12 +163,34 @@ export default function AffiliateSignupPage({ onSubmit }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-violet-50 to-white">
       <section className="mx-auto max-w-5xl px-6 py-16 text-center">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-violet-700 shadow-sm ring-1 ring-violet-200">
+          <Sparkles className="h-4 w-4" />
+          A full toolkit, not just a referral link
+        </div>
         <h1 className="mb-4 text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl">
           Earn <span className="bg-gradient-to-r from-violet-500 to-pink-500 bg-clip-text text-transparent">10% Commission</span> Selling Our Products
         </h1>
         <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
-          Join our affiliate program today and turn your influence into income. It’s free, simple, and designed to help you succeed.
+          Join our affiliate program today and turn your influence into income. It’s free, simple, and designed to help you succeed —
+          with real email campaigns, funnel builders, and a storefront of your own, not just a link to share.
         </p>
+      </section>
+
+      <section className="mx-auto max-w-5xl px-6 pb-16">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {AFFILIATE_FEATURES.map(({ icon: Icon, title, desc }) => (
+            <div
+              key={title}
+              className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 text-white">
+                <Icon className="h-5 w-5" />
+              </div>
+              <h3 className="mb-1 font-bold text-gray-900">{title}</h3>
+              <p className="text-sm text-gray-600">{desc}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="mx-auto max-w-lg px-6 py-6">
@@ -200,9 +255,14 @@ export default function AffiliateSignupPage({ onSubmit }) {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow transition hover:opacity-90 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow transition hover:opacity-90 disabled:opacity-50"
               >
-                {submitting ? "Creating…" : "Join the Program"}
+                {submitting ? "Creating…" : (
+                  <>
+                    Join the Program
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
             </form>
           )}
@@ -210,7 +270,11 @@ export default function AffiliateSignupPage({ onSubmit }) {
       </section>
 
       <footer className="py-10 text-center text-sm text-gray-500">
-        By signing up, you agree to our <a href="/affiliate-terms" className="text-gradient hover:underline">Affiliate Terms</a>.
+        <p className="mb-2 inline-flex items-center gap-1.5">
+          <Heart className="h-4 w-4 text-pink-400" />
+          Built for creators who want more than just a referral link.
+        </p>
+        <p>By signing up, you agree to our <a href="/affiliate-terms" className="text-gradient hover:underline">Affiliate Terms</a>.</p>
       </footer>
     </div>
   );
