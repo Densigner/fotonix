@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from 'react-router-dom';
+import { getAuth } from 'firebase/auth';
 import { API_URL } from '../../config/environment';
 import { Clipboard, Check, ExternalLink, TrendingUp, MousePointerClick, BadgeCheck, Filter, Store, Package, Mail, DollarSign } from "lucide-react";
+import { CAMPAIGN_GATE_ADMIN_EMAIL, computeCampaignSalesGate, campaignGateAlertMessage } from '../../utils/campaignSalesGate';
 import {
   LineChart,
   Line,
@@ -86,6 +88,16 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
   const currency = "GBP";
   const fmt = (cents) => (cents / 100).toLocaleString(undefined, { style: "currency", currency });
 
+  // First line of defence for the campaign-sales gate (see
+  // AutomationsEditor.js / src/utils/campaignSalesGate.js for the full
+  // rule) — reuses the attributions this dashboard already fetches for its
+  // own commissions table, so no extra request needed.
+  const isCampaignGateAdmin = getAuth().currentUser?.email === CAMPAIGN_GATE_ADMIN_EMAIL;
+  const salesGate = useMemo(
+    () => (isCampaignGateAdmin ? { unlocked: true, recentSales: 0 } : computeCampaignSalesGate(rows)),
+    [rows, isCampaignGateAdmin]
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -122,8 +134,17 @@ export default function AffiliateDashboard({ affiliateCode = "ALEX10", programUr
             Add Product
           </button>
           <button
-            onClick={() => window.location.hash = 'mail-campaign'}
-            className="inline-flex items-center gap-2 rounded-xl bg-green-600 hover:bg-green-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition"
+            onClick={() => {
+              if (!salesGate.unlocked) {
+                alert(campaignGateAlertMessage(salesGate.recentSales));
+                return;
+              }
+              window.location.hash = 'mail-campaign';
+            }}
+            title={salesGate.unlocked ? undefined : 'Locked — see alert for details'}
+            className={salesGate.unlocked
+              ? "inline-flex items-center gap-2 rounded-xl bg-green-600 hover:bg-green-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition"
+              : "inline-flex items-center gap-2 rounded-xl bg-gray-300 text-gray-500 px-4 py-2 text-sm font-semibold shadow-sm cursor-not-allowed"}
           >
             <Mail className="h-4 w-4" />
             Mail Campaign

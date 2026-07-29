@@ -9,15 +9,7 @@ import MailComposerDesign from '../email/MailBuilder/MailComposerDesign';
 import productsData from '../../data/productsData';
 import { starterTemplates } from '../email/MailBuilder/starterTemplates';
 import { API_URL } from '../../config/environment';
-
-// Minimum recent sales an affiliate needs to unlock/keep campaign sending —
-// checked as a rolling 30-day window so "3 to unlock" and "3/month to keep
-// it" collapse into one continuously-re-evaluated rule instead of separate
-// lifetime + calendar-month bookkeeping.
-const CAMPAIGN_SALES_REQUIRED = 3;
-const CAMPAIGN_SALES_WINDOW_DAYS = 30;
-const CAMPAIGN_GATE_ADMIN_EMAIL = 'joshmarsden28@gmail.com';
-const CAMPAIGN_GATE_CONTACT_EMAIL = 'josh@fotonix.co.uk';
+import { CAMPAIGN_SALES_REQUIRED, CAMPAIGN_SALES_WINDOW_DAYS, CAMPAIGN_GATE_ADMIN_EMAIL, computeCampaignSalesGate, campaignGateAlertMessage } from '../../utils/campaignSalesGate';
 
 // SideLitSignLanding.jsx — Email Builder with per-tenant defaults
 //
@@ -1264,11 +1256,9 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, onSendGateChang
           headers: { 'x-affiliate-code': affiliateCode },
         });
         const attrs = await res.json();
-        const list = Array.isArray(attrs) ? attrs : [];
-        const cutoff = Date.now() - CAMPAIGN_SALES_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-        const recentSales = list.filter(a => a.status !== 'void' && new Date(a.date).getTime() >= cutoff).length;
+        const gate = computeCampaignSalesGate(attrs);
 
-        if (!cancelled) setSalesGate({ loading: false, unlocked: recentSales >= CAMPAIGN_SALES_REQUIRED, recentSales });
+        if (!cancelled) setSalesGate({ loading: false, ...gate });
       } catch (e) {
         console.warn('Sales gate check failed, defaulting to unlocked:', e);
         if (!cancelled) setSalesGate({ loading: false, unlocked: true, recentSales: 0 });
@@ -1287,13 +1277,7 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, onSendGateChang
       alert('Still checking your sales history — try again in a moment.');
       return;
     }
-    alert(
-      `Campaign sending is locked.\n\n` +
-      `You need at least ${CAMPAIGN_SALES_REQUIRED} sales in the last ${CAMPAIGN_SALES_WINDOW_DAYS} days to send email campaigns ` +
-      `(you currently have ${salesGate.recentSales}). Once unlocked, you'll need to keep making at least ` +
-      `${CAMPAIGN_SALES_REQUIRED} sales every month to hold onto it.\n\n` +
-      `Keep sharing your affiliate link to get there. If you think this is wrong, email ${CAMPAIGN_GATE_CONTACT_EMAIL}.`
-    );
+    alert(campaignGateAlertMessage(salesGate.recentSales));
   }
 
   // Debug helper: use dbgSetBlocks in place of setBlocks to trace updates and content
