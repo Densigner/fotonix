@@ -6,6 +6,7 @@
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { Client } = require('pg');
+const admin = require('./firebase-admin');
 
 class CustomFirebaseEmailVerification {
   constructor() {
@@ -163,19 +164,27 @@ class CustomFirebaseEmailVerification {
         return { success: false, error: 'Verification token has expired' };
       }
 
+      // Flip the real Firebase Auth flag first — every gated page in the app
+      // checks auth.currentUser.emailVerified, not this Postgres table, so if
+      // this fails we must not mark our own table verified (that would leave
+      // the two permanently out of sync, with no way for the user to retry).
+      try {
+        await admin.auth().updateUser(verification.firebase_uid, {
+          emailVerified: true
+        });
+      } catch (adminErr) {
+        console.error('Failed to set emailVerified on Firebase user:', adminErr);
+        return { success: false, error: 'Failed to verify email — please try again or contact support' };
+      }
+
       // Mark as verified in your database
       await client.query(`
-        UPDATE user_email_verification 
-        SET is_verified = true, verified_at = NOW() 
+        UPDATE user_email_verification
+        SET is_verified = true, verified_at = NOW()
         WHERE verification_token = $1
       `, [token]);
 
-      // Update Firebase user as verified (skip for now - can be done from frontend)
-      // await admin.auth().updateUser(verification.firebase_uid, {
-      //   emailVerified: true
-      // });
-
-      return { 
+      return {
         success: true, 
         message: 'Email verified successfully',
         firebaseUid: verification.firebase_uid,
