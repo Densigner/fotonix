@@ -55,10 +55,9 @@ export default function AffiliateExitIntentPopup({ isOpen, onClose, apiBase }) {
             <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 text-white">
               <Mail className="h-6 w-6" />
             </div>
-            <h2 className="mb-2 text-xl font-bold text-gray-900">Not ready to sign up yet?</h2>
+            <h2 className="mb-2 text-xl font-bold text-gray-900">Thinking about it?</h2>
             <p className="mb-5 text-sm text-gray-600">
-              Leave your email and we'll follow up — no pressure, just a reminder about the 10% commission,
-              the mail campaign builder, and everything else once you're ready.
+              Drop your email below and you can come back to it whenever you're ready.
             </p>
             <form onSubmit={handleSubmit} className="space-y-3">
               <input
