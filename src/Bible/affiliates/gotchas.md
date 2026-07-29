@@ -393,3 +393,51 @@ original bug did.
 If you're asked to check this again: sign up a fresh affiliate, click the
 verification link in the real email (not "Resend"), and confirm the
 dashboard loads without needing the resend button.
+
+## A fully-built "lead magnet" that was entirely fabricated (found 2026-07-29)
+
+Asked to add exit-intent email capture to the affiliate signup page. A
+site-wide version already existed — `ExitIntentPopup.jsx` +
+`emailCapture.js` + `server/routes/affiliate/leads.js` — commented out in
+`App.js` as "TEMPORARILY DISABLED." Before reusing it, actually read it:
+
+- The popup promised a **"£10,000 Affiliate Revenue Playbook"** with
+  invented specifics — "1,247 downloads," a "4.9/5" rating, a named
+  testimonial from a "Sarah M., TechCorp" who does not exist, and a link to
+  a PDF (`/assets/lead-magnets/affiliate-revenue-playbook.pdf`) that was
+  never created.
+- The backend route's `POST /capture` called `db.query(...)` — but the `db`
+  it imported (`server/db.js`) is the flat-file `readJSON`/`writeJSON`
+  module used everywhere else in this codebase, which has no `query`
+  method at all. This would throw on the very first real request,
+  independent of the fake content — the whole feature was never actually
+  run, just written and shelved.
+- The `leads`/`lead_sources`/`daily_stats` Postgres tables it also expected
+  don't exist in production (verified via `information_schema.tables`).
+
+**Did not fix or resurrect this** — publishing fabricated statistics and a
+fake customer testimonial would be actively dishonest, not just a bug.
+Built a fresh, honest replacement instead (new `AffiliateExitIntentPopup.jsx`,
+real "leave your email, we'll follow up" copy, a new working
+`POST /api/affiliates/leads` following the working file's own flat-file
+pattern) and left the old trio disabled. See `architecture.md` and
+`routes.md`.
+
+**Takeaway**: "there's already a component/route for this" is not the same
+as "this works." Before wiring up or extending something that already
+exists but is disabled/unused, actually read what it does and check its
+claims (fake stats are a strong tell) and its wiring (does the module it
+imports actually have the method it calls?) before trusting it.
+
+## Campaign sales gate — three separate UI entry points, one shared source of truth (2026-07-29)
+
+First pass only gated the composer's own "Send Campaign" buttons
+(`AutomationsEditor.js` / `AutomationsComposerPage.jsx`). Follow-up request:
+"gate it on the affiliate dashboard first" — the green "Mail Campaign"
+button on `AffiliateDashboard.js` had no gate at all, so an affiliate could
+click straight past the composer's protection before ever reaching it.
+Extracted the threshold/window/messaging into `src/utils/campaignSalesGate.js`
+before adding the third copy, specifically to avoid the "same bug fixed
+twice, independently, in two files" pattern this codebase has hit more than
+once (see the `DATA_DIR` regression story earlier in this file). See
+`architecture.md` for the full breakdown of all three entry points.

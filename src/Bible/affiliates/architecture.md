@@ -150,14 +150,28 @@ Deliberate anti-abuse measure: an affiliate needs `CAMPAIGN_SALES_REQUIRED`
 `CAMPAIGN_SALES_WINDOW_DAYS` (30) days to send email campaigns, and has to
 keep clearing that bar every month to keep the ability — implemented as one
 continuously-re-evaluated rolling window, not separate lifetime + calendar-
-month tracking. Lives entirely in the frontend:
-`src/components/automationscomposer/AutomationsEditor.js`'s `ComposerPage`
-fetches `GET /api/affiliates/attributions?code=<their code>` (the same
-per-affiliate-scoped route `AffiliateMasterDashboard` uses), filters to the
-window, and reports the result upward via a new `onSendGateChange` prop so
-`AutomationsComposerPage.jsx`'s own separate "Send Campaign" button (a
-second control that calls the editor via `sendCampaignRef`, not the same
-button) greys out in sync.
+month tracking.
+
+Logic lives in one shared place, **`src/utils/campaignSalesGate.js`**
+(`computeCampaignSalesGate(attributions)` + `campaignGateAlertMessage(...)`
++ the threshold/window/admin-email/contact-email constants), specifically so
+the three separate UI entry points below can't drift out of sync with each
+other the way this codebase's other duplicated-logic bugs have (see
+`gotchas.md`):
+
+1. **`AffiliateDashboard.js`'s green "Mail Campaign" button** — the first
+   line of defence; reuses the attributions it already fetches for its own
+   commissions table (no extra request).
+2. **`AutomationsComposerPage.jsx`'s sticky top-bar "Send Campaign" button**
+   — a separate control that calls into the editor via `sendCampaignRef`,
+   greyed out via a new `onSendGateChange` callback prop.
+3. **`AutomationsEditor.js`'s `ComposerPage`'s own "Send Campaign" button**
+   — fetches `GET /api/affiliates/attributions?code=<their code>` itself
+   (the same per-affiliate-scoped route `AffiliateMasterDashboard` uses).
+
+All three grey out via `className` only, never the `disabled` attribute —
+a real `disabled` button doesn't fire `onClick` in the browser, which would
+kill the explanatory alert the whole feature depends on.
 
 **This is frontend-only** — `/api/affiliates/attributions` and `/send-bulk`
 themselves have no server-side enforcement of this rule. A technically
@@ -168,7 +182,24 @@ The platform admin (`joshmarsden28@gmail.com`) and any account with no
 `affiliateCode` on its `users/{uid}` profile (i.e. a regular member/seller,
 not an affiliate) are exempt entirely — the gate only applies to affiliates.
 
-Buttons are deliberately never given the `disabled` attribute — a real
-`disabled` button doesn't fire `onClick` in the browser, which would kill
-the explanatory alert the whole feature depends on. They're greyed via
-`className` only and stay clickable.
+## Signup page: feature grid + exit-intent capture (added 2026-07-29)
+
+`AffiliateSignupPage.js` was a bare headline + form — it imported 8
+lucide-react icons (`Check, ArrowRight, Users, PoundSterling, Globe, Rocket,
+Sparkles, Heart`) that were never actually used anywhere in the file,
+clear leftover scaffolding for a richer page that never got built. Built a
+6-card feature grid (10% Commission, Mail Campaign Builder, Funnel Builder,
+Your Own Storefront, Real-Time Analytics, Free & Instant) using those icons,
+plus a badge above the hero and an arrow on the CTA button.
+
+Also added a real exit-intent popup (`AffiliateExitIntentPopup.jsx`) that
+fires via the genuine, already-correct `src/hooks/useExitIntent.js` hook
+(mouse-to-top-edge, tab switch, `beforeunload` — shows once per browser tab
+session via `sessionStorage.exitIntentShown`, which is the single most
+common reason it "isn't firing" during testing — clear that key and reload
+to retest, or use a fresh incognito tab). Submits to a **new**
+`POST /api/affiliates/leads` in `affiliates.js` (flat-file `leads.json`,
+same pattern as the rest of that file) — **do not confuse this with the
+older, unrelated, still-broken `server/routes/affiliate/leads.js` mounted
+at `/api/leads`**, see `routes.md` and `gotchas.md` for why that one was
+deliberately left alone rather than reused.

@@ -62,6 +62,18 @@ Used by `src/components/admin/AdminAffiliateSettings.js` — this changes the
 rate for **future** clicks only, doesn't touch already-created click records
 (rate is snapshotted at click time, see `architecture.md`).
 
+### `POST /leads` (added 2026-07-29)
+Body: `{ email, source }`. No auth — runs on the public, logged-out signup
+page. Validates email format, dedupes by email, appends to flat-file
+`leads.json` (same `readJSON`/`writeJSON` pattern as everything else in this
+file). Backs `AffiliateExitIntentPopup.jsx`'s exit-intent capture on
+`AffiliateSignupPage.js` — see `architecture.md`.
+
+**Do not confuse this with `server/routes/affiliate/leads.js` below, mounted
+at `/api/leads` (different path, similar name, completely unrelated file).**
+That one is still broken and was deliberately left alone rather than fixed
+— see its entry below and `gotchas.md`.
+
 ---
 
 ## `server/routes/affiliate/clicks.js` — mounted at root (no prefix)
@@ -79,10 +91,19 @@ relative path here silently hits the frontend's own SPA fallback instead
 
 ## `server/routes/affiliate/leads.js` — mounted at `/api/leads`
 
-Separate feature (lead-magnet capture / gated downloads), not part of the
-core click-tracking pipeline. `POST /capture`, `POST /download-link`,
-`GET /stats`. Not covered in depth here — if you're working on referral
-clicks/commissions, you don't need this file.
+**Broken, disabled, do not wire back up as-is** (confirmed 2026-07-29, see
+`gotchas.md` for the full story). `POST /capture`, `POST /download-link`,
+`GET /stats` — built around a fabricated "£10,000 Affiliate Revenue
+Playbook" lead magnet (fake stats, a made-up testimonial, a PDF that
+doesn't exist), and `db.query(...)` calls a method that doesn't exist on
+`server/db.js` (the flat-file `readJSON`/`writeJSON` module — there is no
+Postgres client in there), so it throws on the very first real request
+regardless of the fake content. The `leads`/`lead_sources`/`daily_stats`
+tables it expects also don't exist in production. The consuming frontend
+(`ExitIntentPopup.jsx` site-wide, `emailCapture.js`) is commented out /
+"TEMPORARILY DISABLED" in `App.js` — leave it that way. If lead capture is
+ever needed elsewhere, write a fresh minimal route following the
+`POST /leads` pattern above instead of resurrecting this file.
 
 ---
 

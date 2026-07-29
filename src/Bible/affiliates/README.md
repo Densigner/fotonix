@@ -42,7 +42,13 @@ it's tracking only, you still pay affiliates manually (see
 - Affiliate's own dashboard: `src/components/affiliate/AffiliateDashboard.js`
   and its children (`AffiliateDashboardclick.jsx`, `AffiliateMasterDashboard.jsx`,
   `AffiliateProductsPanel.js`)
-- Self-signup: `src/components/affiliate/AffiliateSignupPage.js`
+- Self-signup: `src/components/affiliate/AffiliateSignupPage.js` (also has
+  the feature-grid marketing copy and `AffiliateExitIntentPopup.jsx` exit-
+  intent lead capture — see `architecture.md`)
+- Campaign-sending sales gate (3 sales / 30 days to send campaigns):
+  `src/utils/campaignSalesGate.js`, gating `AffiliateDashboard.js`,
+  `AutomationsComposerPage.jsx`, and `AutomationsEditor.js` — see
+  `architecture.md`
 - Seller/member's view of what they owe affiliates:
   `src/components/admin/MembersDashboard.jsx` (different audience, different
   backend route, different data source than the affiliate's own dashboard —
