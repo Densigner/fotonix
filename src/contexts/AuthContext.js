@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/database';
@@ -107,10 +107,14 @@ export const AuthProvider = ({ children }) => {
       const uid = res.user.uid;
       const snap = await realtime.ref(`users/${uid}`).once('value');
       if (!snap.exists()) {
-        const rtUser = { 
-          email: res.user.email, 
-          username: options.username || '',
-          createdAt: firebase.database.ServerValue.TIMESTAMP 
+        const rtUser = {
+          email: res.user.email,
+          // AffiliateSignupPage.js and CustomerSignup.js don't collect a
+          // username at all (only Signup.js's form does) — fall back to the
+          // email's local-part rather than storing '' forever, which showed
+          // as a literal "Unknown" author everywhere username is displayed.
+          username: options.username || (res.user.email ? res.user.email.split('@')[0] : ''),
+          createdAt: firebase.database.ServerValue.TIMESTAMP
         };
         await realtime.ref(`users/${uid}`).set(rtUser);
       }
@@ -202,7 +206,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const fetchUserProfile = async (uid) => {
+  // useCallback with an empty dep array so this keeps a stable identity across
+  // AuthProvider re-renders — components that put it in a useEffect dep array
+  // (e.g. Account.js's uploads listener) would otherwise tear down and
+  // re-subscribe on every single re-render of this provider, not just when
+  // the user actually changes.
+  const fetchUserProfile = useCallback(async (uid) => {
     try {
       const snap = await realtime.ref(`users/${uid}`).once('value');
       if (snap.exists()) {
@@ -218,7 +227,7 @@ export const AuthProvider = ({ children }) => {
       }
       console.error('Error fetching user profile from Realtime DB:', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {

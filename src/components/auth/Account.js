@@ -110,35 +110,12 @@ export default function AccountPage() {
   const justSavedRef = useRef(false);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
   const [selectedItemForComments, setSelectedItemForComments] = useState(null);
-  // wrapper to log modal visibility changes (helps debug unexpected opens/closes)
   function setModalVisible(v) {
-    try { 
-      console.log(`setModalVisible -> ${v} @ ${new Date().toISOString()}`);
-      if (v) console.trace('modal opened trace');
-    } catch (e) {}
     setShowCreateModal(v);
   }
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState(userProfile || null);
-
-  // Debug: log modal state transitions to help diagnose modal not dismissing
-  useEffect(() => {
-    try {
-      console.log(`debug: showCreateModal changed -> ${showCreateModal}`);
-      if (showCreateModal) {
-        // Check if the modal DOM node is present shortly after open
-        setTimeout(() => {
-          try {
-            const el = document.querySelector('[data-debug-modal]');
-            console.log('debug: modal DOM element present?', !!el, el);
-          } catch (e) {
-            console.warn('debug: error querying modal DOM', e);
-          }
-        }, 50);
-      }
-    } catch (e) {}
-  }, [showCreateModal]);
 
   const filteredUploads = useMemo(() => {
     let list = uploads.filter((i) =>
@@ -202,7 +179,6 @@ export default function AccountPage() {
             return;
           }
           const raw = snap.val();
-          console.log('debug: uploads listener raw data:', raw);
           const arr = typeof raw === 'object' && !Array.isArray(raw)
             ? Object.keys(raw).map(k => ({ id: k, ...raw[k] }))
             : Array.isArray(raw) ? raw.filter(Boolean) : [];
@@ -218,7 +194,6 @@ export default function AccountPage() {
             preview: it.preview || it.thumbnail || 'linear-gradient(135deg, #ff2d95, #7c3aed)',
             metadata: it.metadata || it
           }));
-          console.log('debug: normalized uploads:', normalized);
           setUploads(normalized.reverse());
         };
         uploadsRef.on('value', onVal);
@@ -272,7 +247,6 @@ export default function AccountPage() {
       return;
     }
 
-    console.log('handleSavePattern: start');
     setSaving(true);
     // safety timeout: log if operation takes too long (don't auto-clear saving anymore)
     const safetyTimeout = setTimeout(() => {
@@ -295,7 +269,6 @@ export default function AccountPage() {
     };
 
     try {
-  console.log('handleSavePattern: generating PNG and uploading...');
       // generate PNG from colors (fallback to white cells if absent)
       const colors = Array.isArray(p.colors) && p.colors.length ? p.colors : Array.from({ length: 25 }, () => '#ffffff');
       const { blob, dataUrl } = await hexGridToPng(colors, { cols: 5, cell: 64, gap: 2, padding: 8, bg: '#0b0b0b' });
@@ -305,28 +278,24 @@ export default function AccountPage() {
       const snapshot = await storageRef.put(blob || dataUrlToBlob(dataUrl));
       const downloadURL = await snapshot.ref.getDownloadURL();
       newItem.preview = downloadURL;
-  console.log('handleSavePattern: upload complete, downloadURL=', downloadURL);
       // Optimistic UX: close the modal now so the UI feels responsive even if DB writes/read stall
       try {
         justSavedRef.current = true;
         setModalVisible(false);
         setPendingPattern(null);
         setTimeout(() => { justSavedRef.current = false; }, 700);
-        console.log('handleSavePattern: optimistic modal close after upload');
       } catch (e) {}
       // persist metadata to Realtime DB so the listener picks it up
-  try {
-  console.log('handleSavePattern: persisting to Realtime DB...');
-  // Use a timed wrapper so DB write can't hang the UI forever
-  await promiseWithTimeout(firebase.database().ref(`uploads/${currentUser.uid}/${id}`).set(newItem), 8000, 'db.set');
-  console.log('handleSavePattern: persisted upload to Realtime DB');
+      try {
+        // Use a timed wrapper so DB write can't hang the UI forever
+        await promiseWithTimeout(firebase.database().ref(`uploads/${currentUser.uid}/${id}`).set(newItem), 8000, 'db.set');
         // Close modal immediately on successful persist so the UI feels responsive
-        try { console.log('handleSavePattern: attempting to close modal (success path)'); setModalVisible(false); setPendingPattern(null); console.log('handleSavePattern: modal close attempted (success path)'); } catch (e) { console.warn('handleSavePattern: modal close error (success path)', e); }
+        try { setModalVisible(false); setPendingPattern(null); } catch (e) { console.warn('handleSavePattern: modal close error (success path)', e); }
       } catch (dbErr) {
         console.warn('handleSavePattern: failed to persist upload to Realtime DB', dbErr);
       }
     } catch (err) {
-  console.warn('Pattern image generation/upload failed, falling back to inline preview', err);
+      console.warn('Pattern image generation/upload failed, falling back to inline preview', err);
       // fallback to data URL if generation succeeded partially
       try {
         if (typeof window !== 'undefined' && window.document) {
@@ -334,41 +303,33 @@ export default function AccountPage() {
           const { dataUrl } = await hexGridToPng(colors, { cols: 5, cell: 64, gap: 2, padding: 8, bg: '#0b0b0b' });
           newItem.preview = dataUrl;
           // Close modal on fallback too — we have a preview to show
-          try { console.log('handleSavePattern: attempting to close modal (fallback path)'); setModalVisible(false); setPendingPattern(null); console.log('handleSavePattern: modal close attempted (fallback path)'); } catch (e) { console.warn('handleSavePattern: modal close error (fallback path)', e); }
+          try { setModalVisible(false); setPendingPattern(null); } catch (e) { console.warn('handleSavePattern: modal close error (fallback path)', e); }
         }
       } catch (e) {
         // keep default preview
         console.warn('handleSavePattern: fallback dataUrl generation failed', e);
       }
     } finally {
-  console.log('handleSavePattern: entering finally');
-  clearTimeout(safetyTimeout);
-  console.log('handleSavePattern: cleared safetyTimeout');
+      clearTimeout(safetyTimeout);
       // briefly mark that we've just saved to avoid accidental immediate re-open
       try {
         justSavedRef.current = true;
         setTimeout(() => { justSavedRef.current = false; }, 700);
       } catch (e) {}
-      console.log('handleSavePattern: justSavedRef set true');
       // If no realtime listener is active, update local state immediately for responsiveness
       // else the DB listener will update the uploads list
       try {
-        console.log('handleSavePattern: checking DB presence for user uploads...');
         // Guard reads with a timeout as well in case the DB URL/region mismatch causes stalls
         const snapTest = await promiseWithTimeout(firebase.database().ref(`uploads/${currentUser.uid}`).once('value'), 8000, 'db.once');
         if (!snapTest.exists()) {
-          console.log('handleSavePattern: DB empty, updating local uploads');
           setUploads(u => [newItem, ...u]);
-        } else {
-          console.log('handleSavePattern: DB had uploads, deferring to listener');
         }
       } catch (e) {
         console.warn('handleSavePattern: DB read failed in finally, updating local state as fallback', e);
         setUploads(u => [newItem, ...u]);
       }
-      try { console.log('handleSavePattern: attempting to close modal (finally)'); setModalVisible(false); setPendingPattern(null); console.log('handleSavePattern: modal close attempted (finally)'); } catch (e) { console.warn('handleSavePattern: modal close error (finally)', e); }
+      try { setModalVisible(false); setPendingPattern(null); } catch (e) { console.warn('handleSavePattern: modal close error (finally)', e); }
       try { setSaving(false); } catch (e) { console.warn('handleSavePattern: setSaving(false) error', e); }
-      console.log('handleSavePattern: finished, saving cleared');
     }
   }
 
@@ -580,7 +541,7 @@ export default function AccountPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="font-semibold leading-tight">{item.title}</h3>
-                      <p className="text-sm text-neutral-500">by {userProfile?.username || currentUser?.displayName || 'Unknown'}</p>
+                      <p className="text-sm text-neutral-500">by {userProfile?.username || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Unknown'}</p>
                     </div>
                     <button className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
                       <MoreHorizontal className="w-5 h-5" />
@@ -593,10 +554,9 @@ export default function AccountPage() {
                     <span className="flex items-center gap-1">
                       <Heart className="w-4 h-4" /> {item.likes}
                     </span>
-                    <span className="flex items-center gap-1 cursor-pointer hover:text-neutral-800 dark:hover:text-neutral-200" onClick={() => { 
-                      console.log('Opening comments for pattern:', item.id, item);
-                      setSelectedItemForComments(item); 
-                      setCommentModalOpen(true); 
+                    <span className="flex items-center gap-1 cursor-pointer hover:text-neutral-800 dark:hover:text-neutral-200" onClick={() => {
+                      setSelectedItemForComments(item);
+                      setCommentModalOpen(true);
                     }}>
                       <MessageCircle className="w-4 h-4" /> {item.comments || 0}
                     </span>
@@ -737,10 +697,9 @@ export default function AccountPage() {
       patternId={selectedItemForComments?.id}
       onSubmitComment={async (text) => {
         if (!selectedItemForComments || !currentUser) return;
-        
-        console.log('Submitting comment for pattern:', selectedItemForComments.id, 'pattern data:', selectedItemForComments);
+
         const db = firebase.database();
-        
+
         // Get username from user profile
         let username = 'Anonymous';
         try {
@@ -751,7 +710,7 @@ export default function AccountPage() {
           console.warn('Error fetching username for comment submission:', error);
           username = currentUser.displayName || 'Anonymous';
         }
-        
+
         const commentId = Math.random().toString(36).slice(2, 9);
         const commentData = {
           id: commentId,
@@ -760,24 +719,18 @@ export default function AccountPage() {
           text: text,
           createdAt: Date.now()
         };
-        
-        console.log('Saving comment data:', commentData);
+
         // Save comment to comments/{patternId}/{commentId}
         await db.ref(`comments/${selectedItemForComments.id}/${commentId}`).set(commentData);
-        console.log('Comment saved to Firebase');
-        
+
         // Update comment count by counting actual comments
         const commentsRef = db.ref(`comments/${selectedItemForComments.id}`);
         const commentsSnapshot = await commentsRef.once('value');
         const commentCount = commentsSnapshot.exists() ? Object.keys(commentsSnapshot.val()).length : 0;
-        console.log('Actual comment count after save:', commentCount);
-        
+
         // Update the pattern's comment count
         const patternRef = db.ref(`uploads/${currentUser.uid}/${selectedItemForComments.id}/comments`);
         await patternRef.set(commentCount);
-        console.log('Comment count updated to:', commentCount);
-        
-        console.log('Comment saved:', commentData);
       }}
     />
 
