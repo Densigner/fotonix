@@ -3,6 +3,8 @@ import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart
 import { useAuth } from "../../contexts/AuthContext";
 import { API_URL } from "../../config/environment";
 import firebase from 'firebase/compat/app';
+import { useExitIntent } from "../../hooks/useExitIntent";
+import AffiliateExitIntentPopup from "./AffiliateExitIntentPopup";
 
 const AFFILIATE_FEATURES = [
   {
@@ -72,6 +74,10 @@ export default function AffiliateSignupPage({ onSubmit }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
   const [affiliateCode, setAffiliateCode] = useState(null);
+
+  // Don't arm exit-intent once they've already signed up (success === true) —
+  // there's nothing left to "capture" at that point.
+  const { showExitIntent, hideExitIntent } = useExitIntent({ enabled: !success });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -276,6 +282,8 @@ export default function AffiliateSignupPage({ onSubmit }) {
         </p>
         <p>By signing up, you agree to our <a href="/affiliate-terms" className="text-gradient hover:underline">Affiliate Terms</a>.</p>
       </footer>
+
+      <AffiliateExitIntentPopup isOpen={showExitIntent} onClose={hideExitIntent} apiBase={API_URL} />
     </div>
   );
 }

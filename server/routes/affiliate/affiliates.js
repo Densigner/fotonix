@@ -137,4 +137,27 @@ router.post('/settings', (req, res) => {
   }
 });
 
+// POST /api/affiliates/leads — capture an email from the signup page's
+// exit-intent popup (people who started leaving before signing up). No
+// auth required — this runs on the public, logged-out signup page.
+router.post('/leads', (req, res) => {
+  try {
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const source = String((req.body && req.body.source) || 'unknown');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email required' });
+    }
+
+    const leads = readJSON('leads.json', []);
+    if (!leads.some(l => l.email === email)) {
+      leads.push({ email, source, createdAt: new Date().toISOString() });
+      writeJSON('leads.json', leads);
+    }
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('affiliates/leads error', e);
+    return res.status(500).json({ error: String(e) });
+  }
+});
+
 module.exports = router;
