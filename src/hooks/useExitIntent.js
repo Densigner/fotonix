@@ -25,24 +25,27 @@ export const useExitIntent = (options = {}) => {
     // Check if we've already shown the popup in this session
     const hasShownInSession = sessionStorage.getItem('exitIntentShown');
     if (showOnce && hasShownInSession) {
+      console.log('[exit-intent] already shown this session — skipping. Run sessionStorage.removeItem("exitIntentShown") in the console and reload to retest.');
       setHasShown(true);
       return;
     }
+    console.log('[exit-intent] armed — listening for mouse-to-top, tab switch, and unload');
 
     // Track time on page
     const startTime = Date.now();
-    
+
     const handleMouseMove = (e) => {
       timeOnPage.current = Date.now() - startTime;
-      
+
       // Only trigger if user has been on page for minimum delay
       if (timeOnPage.current < delay) return;
-      
+
       // Only trigger if we haven't shown popup yet
       if (hasShown) return;
-      
+
       // Detect mouse movement toward top of screen (exit intent)
       if (e.clientY <= sensitivity && e.clientY >= 0) {
+        console.log('[exit-intent] mousemove trigger, clientY=', e.clientY);
         setShowExitIntent(true);
         setHasShown(true);
         if (showOnce) {
@@ -53,18 +56,20 @@ export const useExitIntent = (options = {}) => {
 
     const handleMouseLeave = (e) => {
       timeOnPage.current = Date.now() - startTime;
-      
+      console.log('[exit-intent] mouseleave event, clientY=', e.clientY, 'timeOnPage=', timeOnPage.current, 'delay=', delay, 'hasShown=', hasShown);
+
       // Only trigger if user has been on page for minimum delay
       if (timeOnPage.current < delay) return;
-      
+
       // Only trigger if we haven't shown popup yet
       if (hasShown) return;
-      
+
       // Check if mouse left the viewport through the top
       if (e.clientY <= 0) {
         isMouseOut.current = true;
         setTimeout(() => {
           if (isMouseOut.current) {
+            console.log('[exit-intent] mouseleave trigger confirmed');
             setShowExitIntent(true);
             setHasShown(true);
             if (showOnce) {
