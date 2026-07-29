@@ -354,3 +354,42 @@ source is `readJSON`/`writeJSON` against `DATA_DIR`, and it's ever returning
 suspiciously empty results, check `DATA_DIR`'s resolved path against
 `server/data/` directly before assuming the underlying data is actually
 missing.
+
+## Email verification was a dead end for every new affiliate (fixed 2026-07-29)
+
+`AffiliateSignupPage.js` sends a **custom** verification email (own token,
+own Postgres table `user_email_verification`, own VPS SMTP send) rather than
+using Firebase's built-in one. Clicking that link hit the backend's
+`/api/auth/verify-email?token=...`, which marked our own table verified —
+but the line that would also flip Firebase Auth's real `emailVerified` flag
+(`server/CustomFirebaseEmailVerification.js`'s `verifyEmailToken()`) was
+commented out: `// Update Firebase user as verified (skip for now - can be
+done from frontend)`. It was never done from the frontend either.
+
+`App.js` gates essentially every affiliate page (`affiliates`,
+`affiliate-shop-builder`, `affiliate-add-product`, `store-builder`, etc. —
+~9 separate checks) on `auth.currentUser.emailVerified`, which only gets
+set by Firebase's *own* verification flow: clicking a Firebase-hosted link
+lands back on `?mode=verifyEmail&oobCode=...`, which `App.js` catches and
+calls `auth.applyActionCode(oobCode)` on — this path works correctly, but
+it's only reachable via the "Resend verification email" button (which sends
+a second, different-looking email through Firebase's native template), not
+the email every affiliate actually receives at signup.
+
+**Net effect**: every affiliate who did exactly what their signup email
+told them to do — click the link — landed back on "Verify your email...
+please check your inbox and click the link," forever. Confirmed via
+`AuthContext.js`'s own comment ("if verification happened server-side...
+via Firebase Admin") assuming the Admin SDK call already happened, when it
+didn't.
+
+**Fix**: `verifyEmailToken()` now calls
+`admin.auth().updateUser(firebase_uid, { emailVerified: true })` (using the
+already-initialized `server/firebase-admin.js`) *before* marking our own
+table verified, and only marks our table verified if that succeeds — so a
+partial failure can't leave the two permanently out of sync the way the
+original bug did.
+
+If you're asked to check this again: sign up a fresh affiliate, click the
+verification link in the real email (not "Resend"), and confirm the
+dashboard loads without needing the resend button.
