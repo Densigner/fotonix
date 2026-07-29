@@ -142,3 +142,33 @@ a later rate change doesn't retroactively change historical commissions):
 3. Otherwise, the program-wide default (`affiliateSettings.json`'s
    `programDefaultCommissionPct`, editable via `AdminAffiliateSettings.js` →
    `POST /api/affiliates/settings`).
+
+## Campaign-sending sales gate (added 2026-07-29)
+
+Deliberate anti-abuse measure: an affiliate needs `CAMPAIGN_SALES_REQUIRED`
+(3) real sales (`status !== 'void'`) in the trailing
+`CAMPAIGN_SALES_WINDOW_DAYS` (30) days to send email campaigns, and has to
+keep clearing that bar every month to keep the ability — implemented as one
+continuously-re-evaluated rolling window, not separate lifetime + calendar-
+month tracking. Lives entirely in the frontend:
+`src/components/automationscomposer/AutomationsEditor.js`'s `ComposerPage`
+fetches `GET /api/affiliates/attributions?code=<their code>` (the same
+per-affiliate-scoped route `AffiliateMasterDashboard` uses), filters to the
+window, and reports the result upward via a new `onSendGateChange` prop so
+`AutomationsComposerPage.jsx`'s own separate "Send Campaign" button (a
+second control that calls the editor via `sendCampaignRef`, not the same
+button) greys out in sync.
+
+**This is frontend-only** — `/api/affiliates/attributions` and `/send-bulk`
+themselves have no server-side enforcement of this rule. A technically
+determined affiliate could still call `/send-bulk` directly. Fine for now,
+but worth knowing if this is ever reported bypassed.
+
+The platform admin (`joshmarsden28@gmail.com`) and any account with no
+`affiliateCode` on its `users/{uid}` profile (i.e. a regular member/seller,
+not an affiliate) are exempt entirely — the gate only applies to affiliates.
+
+Buttons are deliberately never given the `disabled` attribute — a real
+`disabled` button doesn't fire `onClick` in the browser, which would kill
+the explanatory alert the whole feature depends on. They're greyed via
+`className` only and stay clickable.
