@@ -441,3 +441,32 @@ before adding the third copy, specifically to avoid the "same bug fixed
 twice, independently, in two files" pattern this codebase has hit more than
 once (see the `DATA_DIR` regression story earlier in this file). See
 `architecture.md` for the full breakdown of all three entry points.
+
+## Hidden nav link ≠ protected route: member-dashboard was reachable by any affiliate (found 2026-07-29)
+
+A logged-in affiliate reported seeing `MembersDashboard.jsx`'s "What You
+Owe (by Affiliate)" panel — a cross-affiliate commission + PayPal-email
+breakdown meant only for the seller/admin — and asked "has it got me
+logged in as someone else?" It hadn't; something worse. `Header.js`'s
+"Member Dashboard" nav link was already correctly hidden behind `isMember`
+(the `currentUser?.email === 'joshmarsden28@gmail.com'` check used
+throughout this codebase), but `App.js`'s actual `currentPage ===
+'member-dashboard'` route only required `auth.isAuthenticated &&
+auth.currentUser` — no admin check at all. Hiding the link isn't access
+control; anyone logged in could reach the full seller admin panel (Store
+Builder, Mail Campaign, Email Automation, Master Dashboard, Funnel
+Builder, the works) just by navigating to `#member-dashboard` directly.
+Confirmed live with the test affiliate account before fixing.
+
+`member-linker` (`MemberAffiliateLinker` — lets a seller set custom
+per-affiliate commission rates on tracked links) had the identical gap,
+gated only by `emailVerified`. Same fix, same pattern.
+
+**Takeaway, and worth actively re-checking**: a hidden nav link says
+nothing about whether the route behind it is actually protected. Any
+`currentPage === 'x'` block in `App.js` that renders seller/admin-only
+content should be audited for whether its own gate condition includes the
+admin email check, independent of whether the link that leads to it is
+hidden elsewhere. This is exactly the same class of "nav link hidden, page
+still open" gap in two different features found on the same page section
+— check for siblings whenever one turns up.
