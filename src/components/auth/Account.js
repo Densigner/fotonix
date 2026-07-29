@@ -303,8 +303,29 @@ export default function AccountPage() {
       // above, which already succeeded.
       try {
         const ownerUsername = userProfile?.username || currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Unknown');
+        // Shape matches the mobile app's lib/patterns/community_pattern.dart
+        // CommunityPattern class exactly — colors/brightness/speed are
+        // top-level here (not nested under a "metadata" object the way
+        // uploads/{uid}/{id} stores them), and the JSON key is "preview"
+        // (Dart's `previewUrl` field reads from that key), not "previewUrl".
+        const communityPattern = {
+          id,
+          ownerId: currentUser.uid,
+          ownerUsername,
+          title: newItem.title,
+          colorway: newItem.colorway,
+          colors: Array.isArray(p.colors) && p.colors.length ? p.colors : Array.from({ length: 25 }, () => '#ffffff'),
+          brightness: p.brightness,
+          speed: p.speed,
+          downloads: newItem.downloads,
+          likes: newItem.likes,
+          comments: newItem.comments,
+          updatedAt: newItem.updatedAt,
+          preview: newItem.preview,
+          sourceUploadId: id,
+        };
         await promiseWithTimeout(
-          firebase.database().ref(`communityPatterns/${id}`).set({ ...newItem, ownerId: currentUser.uid, ownerUsername }),
+          firebase.database().ref(`communityPatterns/${id}`).set(communityPattern),
           8000,
           'db.set community'
         );

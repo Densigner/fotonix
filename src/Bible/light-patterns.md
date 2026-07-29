@@ -38,13 +38,33 @@ the whole `src/` tree, not a path-qualified string.
 
 2. **`communityPatterns/{itemId}`** (added 2026-07-29) — top-level,
    **not** per-user, written by the same `handleSavePattern()` right after
-   the `uploads/{uid}/{itemId}` write succeeds. Same shape as above plus
-   `ownerId` (the creator's uid) and `ownerUsername`. This is what the
-   **mobile app's Library screen** reads to show a logged-in user *other
-   people's* patterns, not just their own — before this was added, nothing
-   ever wrote to `communityPatterns` at all, so the mobile Library always
+   the `uploads/{uid}/{itemId}` write succeeds. This is what the **mobile
+   app's Library screen** reads to show a logged-in user *other people's*
+   patterns, not just their own — before this was added, nothing ever
+   wrote to `communityPatterns` at all, so the mobile Library always
    showed "No shared patterns yet" (the correct empty state for genuinely
    no data, not a bug in the mobile app itself).
+
+   **This is a deliberately different, flatter shape than `uploads/{uid}`
+   above** — built to match the mobile app's `lib/patterns/
+   community_pattern.dart` `CommunityPattern` class field-for-field, not
+   reused/spread from `newItem` (which nests `colors`/`brightness`/`speed`
+   under a `metadata` object that Dart side doesn't have):
+   ```
+   { id, ownerId, ownerUsername, title, colorway,
+     colors,       // top-level here, NOT nested under metadata
+     brightness,   // top-level here, NOT nested under metadata
+     speed,        // top-level here, NOT nested under metadata
+     downloads, likes, comments, updatedAt,
+     preview,      // JSON key is "preview" — Dart's `previewUrl` field
+                   // reads from this key, don't rename it to "previewUrl"
+     sourceUploadId  // == id, traces back to uploads/{uid}/{id} }
+   ```
+   `colors` is written **with** a leading `#` (`'#ffffff'`), matching this
+   codebase's convention everywhere else — the Dart class comment says
+   "6-hex-digit strings, RRGGBB" (no `#`), which may need stripping on the
+   Dart side. Flagged, not resolved, as of 2026-07-29 — confirm which side
+   should handle it before assuming either is correct.
 
    - **Public by default, deliberately** — these are just light/mirror
      patterns, nothing sensitive, so there's no opt-in/visibility flag.
