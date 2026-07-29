@@ -294,6 +294,23 @@ export default function AccountPage() {
       } catch (dbErr) {
         console.warn('handleSavePattern: failed to persist upload to Realtime DB', dbErr);
       }
+
+      // Patterns are public by default (light patterns, nothing sensitive) —
+      // mirror the same item into a top-level communityPatterns/{id} node so
+      // the mobile app's Library screen (which browses everyone's patterns,
+      // not just the logged-in user's own uploads/{uid}) has something real
+      // to read. Best-effort: don't let a failure here undo the real save
+      // above, which already succeeded.
+      try {
+        const ownerUsername = userProfile?.username || currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Unknown');
+        await promiseWithTimeout(
+          firebase.database().ref(`communityPatterns/${id}`).set({ ...newItem, ownerId: currentUser.uid, ownerUsername }),
+          8000,
+          'db.set community'
+        );
+      } catch (communityErr) {
+        console.warn('handleSavePattern: failed to persist to communityPatterns', communityErr);
+      }
     } catch (err) {
       console.warn('Pattern image generation/upload failed, falling back to inline preview', err);
       // fallback to data URL if generation succeeded partially
