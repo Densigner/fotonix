@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart, Mail } from "lucide-react";
+import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart, Mail, Wand2, Palette } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_URL } from "../../config/environment";
 import firebase from 'firebase/compat/app';
@@ -11,6 +11,16 @@ const AFFILIATE_FEATURES = [
     icon: PoundSterling,
     title: "10% Commission",
     desc: "Real, tracked commissions on every sale you drive — no vague promises, a live dashboard shows exactly what you're owed.",
+  },
+  {
+    icon: Wand2,
+    title: "Design Your Own Products",
+    desc: "Not just reselling a fixed catalogue — build genuinely custom products with our real designer tools and sell them under your own link.",
+  },
+  {
+    icon: Palette,
+    title: "Customers Design Their Own, Too",
+    desc: "Every customer you send our way can fully customise their own design from scratch — nobody's stuck picking from a generic template.",
   },
   {
     icon: Mail,
@@ -182,7 +192,8 @@ export default function AffiliateSignupPage({ onSubmit }) {
         </h1>
         <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
           Join our affiliate program today and turn your influence into income. It’s free, simple, and designed to help you succeed —
-          with real email campaigns, funnel builders, and a storefront of your own, not just a link to share.
+          design and sell your own custom products, send customers who get to fully customise their own design, and back it all
+          with real email campaigns, funnel builders, and a storefront of your own — not just a link to share.
         </p>
       </section>
 
