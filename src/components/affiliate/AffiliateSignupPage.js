@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart, Mail, Wand2, Palette } from "lucide-react";
+import { Check, ArrowRight, Users, PoundSterling, Globe, Rocket, Sparkles, Heart, Mail, Wand2, Palette, Wallet } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { API_URL } from "../../config/environment";
 import firebase from 'firebase/compat/app';
@@ -11,6 +11,11 @@ const AFFILIATE_FEATURES = [
     icon: PoundSterling,
     title: "10% Commission",
     desc: "Real, tracked commissions on every sale you drive — no vague promises, a live dashboard shows exactly what you're owed.",
+  },
+  {
+    icon: Wallet,
+    title: "No Minimum Payout",
+    desc: "Owed £2 or £2,000, it's yours — no minimum balance to hit before you get paid, unlike most affiliate programs.",
   },
   {
     icon: Wand2,
