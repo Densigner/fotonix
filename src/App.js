@@ -3,13 +3,9 @@ import './App.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import useAffiliateRef from './hooks/useAffiliateRef';
 import Header from './components/shared/Header';
-import Hero from './components/landing/Hero';
 import HeroWithSlider from './components/landing/HeroWithSlider';
-import HeroRedesign from './components/landing/HeroRedesign';
-import Products from './components/products/Products';
+import MainLandingPage from './components/landing/MainLandingPage';
 import InfoBar from './components/shared/InfoBar';
-// ProductFeaturesSlider removed per request
-import TestimonialsSlider from './components/landing/TestimonialsSlider';
 import Footer from './components/landing/Footer';
 import About from './components/landing/About';
 import ProductPage from './components/products/ProductPageClean';
@@ -138,7 +134,6 @@ function AppContent() {
     showOnce: true,
     enabled: !auth?.isAuthenticated // Only show to non-authenticated users
   });
-  const [useModernSliders, setUseModernSliders] = useState(true); // Toggle for modern sliders
   const [selectedProduct, setSelectedProduct] = useState(null); // Store selected product
   const [searchResults, setSearchResults] = useState([]);
   const [showCreateProductModal, setShowCreateProductModal] = useState(false);
@@ -192,12 +187,6 @@ function AppContent() {
     
     handleEmailVerification();
   }, [auth]);
-
-  const handleProductSelect = (product) => {
-    // Allow users to access product design without login
-    setSelectedProduct(product);
-    setCurrentPage('product');
-  };
 
   const handleBackToHome = () => {
     setCurrentPage('home');
@@ -525,12 +514,7 @@ function AppContent() {
         
         {/* Main Content Pages */}
         {currentPage === 'home' && (
-          <>
-            {useModernSliders ? <HeroRedesign /> : <Hero />}
-            <InfoBar />
-            <Products onProductSelect={handleProductSelect} />
-            {useModernSliders && <TestimonialsSlider />}
-          </>
+          <MainLandingPage />
         )}
         
         {currentPage === 'about' && (

@@ -9,6 +9,8 @@
 # uploads (user files - too large for GitHub)
 /uploads
 uploads/
+/raw-uploads
+raw-uploads/
 
 # testing
 /coverage
