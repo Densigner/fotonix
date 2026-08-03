@@ -1,7 +1,7 @@
 {
   "files": {
     "main.css": "/static/css/main.982de7b3.css",
-    "main.js": "/static/js/main.af23574d.js",
+    "main.js": "/static/js/main.158291c7.js",
     "static/js/250.8cbca79a.chunk.js": "/static/js/250.8cbca79a.chunk.js",
     "static/js/27.ae5e9750.chunk.js": "/static/js/27.ae5e9750.chunk.js",
     "static/js/721.8aaaf544.chunk.js": "/static/js/721.8aaaf544.chunk.js",
@@ -26,10 +26,13 @@
     "static/media/empowerwoman.png": "/static/media/empowerwoman.90b6f9d52e024460cba7.png",
     "static/media/thelogo.png": "/static/media/thelogo.8567c65aa697775a11b4.png",
     "static/media/thelogobABY.png": "/static/media/thelogobABY.6a8b8f4df36bf9463200.png",
+    "static/media/affiliate-hero.jpg": "/static/media/affiliate-hero.c63449e18f83254dcc35.jpg",
+    "static/media/IBMPlexSans-Regular.woff2": "/static/media/IBMPlexSans-Regular.b33a81b76947ac354369.woff2",
+    "static/media/BebasNeue-Regular.woff2": "/static/media/BebasNeue-Regular.73eeab1715ee2cd16fc6.woff2",
     "index.html": "/index.html",
     "static/media/er.svg": "/static/media/er.519f0072c798131f85a952ca38941b81.svg",
     "main.982de7b3.css.map": "/static/css/main.982de7b3.css.map",
-    "main.af23574d.js.map": "/static/js/main.af23574d.js.map",
+    "main.158291c7.js.map": "/static/js/main.158291c7.js.map",
     "250.8cbca79a.chunk.js.map": "/static/js/250.8cbca79a.chunk.js.map",
     "27.ae5e9750.chunk.js.map": "/static/js/27.ae5e9750.chunk.js.map",
     "721.8aaaf544.chunk.js.map": "/static/js/721.8aaaf544.chunk.js.map",
@@ -47,6 +50,6 @@
   },
   "entrypoints": [
     "static/css/main.982de7b3.css",
-    "static/js/main.af23574d.js"
+    "static/js/main.158291c7.js"
   ]
 }

@@ -33,30 +33,30 @@ export default function AffiliateExitIntentPopup({ isOpen, onClose, apiBase }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="relative w-full max-w-md rounded-2xl border border-[#2a2740] bg-[#14131f] p-8 shadow-2xl">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-gray-400 transition hover:text-gray-600"
+          className="absolute right-4 top-4 text-[#6e6a8c] transition hover:text-[#f5f3ff]"
         >
           <X className="h-5 w-5" />
         </button>
 
         {status === 'done' ? (
           <div className="text-center">
-            <div className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
-              <Mail className="h-6 w-6 text-green-600" />
+            <div className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#00f5d4]/10">
+              <Mail className="h-6 w-6 text-[#00f5d4]" />
             </div>
-            <h2 className="mb-2 text-xl font-bold text-gray-900">You're on the list</h2>
-            <p className="text-sm text-gray-600">We'll drop you a note — no spam, just a follow-up whenever you're ready.</p>
+            <h2 className="mb-2 text-xl font-bold text-[#f5f3ff]">You're on the list</h2>
+            <p className="text-sm text-[#a8a3c0]">We'll drop you a note — no spam, just a follow-up whenever you're ready.</p>
           </div>
         ) : (
           <>
             <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 text-white">
               <Mail className="h-6 w-6" />
             </div>
-            <h2 className="mb-2 text-xl font-bold text-gray-900">Thinking about it?</h2>
-            <p className="mb-5 text-sm text-gray-600">
+            <h2 className="mb-2 text-xl font-bold text-[#f5f3ff]">Thinking about it?</h2>
+            <p className="mb-5 text-sm text-[#a8a3c0]">
               Drop your email below and you can come back to it whenever you're ready.
             </p>
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -66,10 +66,10 @@ export default function AffiliateExitIntentPopup({ isOpen, onClose, apiBase }) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm text-black focus:border-violet-500 focus:outline-none focus:ring-violet-500"
+                className="w-full rounded-lg border border-[#2a2740] bg-white/[0.03] px-4 py-3 text-sm text-[#f5f3ff] placeholder:text-[#6e6a8c] focus:border-[#00f5d4] focus:outline-none"
               />
               {status === 'error' && (
-                <p className="text-xs text-red-600">Something went wrong — please try again.</p>
+                <p className="text-xs text-pink-400">Something went wrong — please try again.</p>
               )}
               <button
                 type="submit"
