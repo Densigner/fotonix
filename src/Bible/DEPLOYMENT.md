@@ -2,8 +2,8 @@
 
 There is no CI/CD here. Every deploy this whole project has had is manual,
 over SSH, following the exact steps below. Read this before touching
-anything in `affiliates/` or `emails/` — those files assume you already know
-this part.
+anything in `affiliates/`, `emails/`, or `products/` — those files assume
+you already know this part.
 
 ## The two hosting locations — don't mix them up
 
