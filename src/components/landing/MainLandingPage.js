@@ -25,6 +25,14 @@ const DESK_ACRYLIC_SIZES = [
   { label: 'XL · 30 × 40 cm', price: '£69.99' },
 ];
 
+// Priced off the £29.99 / 30x30cm rate (~£0.0333/cm²) at common panel sizes.
+const WALL_ACRYLIC_SIZES = [
+  { label: '20 × 30 cm', price: '£19.99' },
+  { label: '30 × 30 cm', price: '£29.99' },
+  { label: '30 × 40 cm', price: '£39.99' },
+  { label: '30 × 50 cm', price: '£49.99' },
+];
+
 const FAQS = [
   ['Can I choose any shape for my mirror?', "Yes — outline whatever shape you want and we'll cut the mirror to match, with professional edge polishing included."],
   ['Does the mirror fog up in the bathroom?', 'No — the LED Lumina Mirror uses anti-fog technology, so it stays clear even in a steamy bathroom.'],
@@ -60,6 +68,7 @@ export default function MainLandingPage() {
   const [openFaq, setOpenFaq] = useState(0);
   const [luminaSize, setLuminaSize] = useState(0);
   const [deskAcrylicSize, setDeskAcrylicSize] = useState(0);
+  const [wallAcrylicSize, setWallAcrylicSize] = useState(1);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [quoteForm, setQuoteForm] = useState({ name: '', email: '', phone: '', description: '' });
   const [quoteSubmitted, setQuoteSubmitted] = useState(false);
@@ -467,13 +476,26 @@ export default function MainLandingPage() {
         <div className="mlp-wall-media" />
         <div className="mlp-wrap">
           <div className="mlp-banner-card mlp-align-right">
-            <span className="mlp-banner-badge violet">Wall Mounted · Fixed 30×30cm</span>
+            <span className="mlp-banner-badge violet">Wall Mounted</span>
             <span className="mlp-eyebrow">Made By A Real Customer</span>
             <div className="mlp-sku">{wallAcrylic.sku}</div>
             <h2>{wallAcrylic.name}</h2>
-            <p className="mlp-desc">This "Studio Vibes" podcast sign is mounted flush on the wall — a fixed square panel, edge-lit, not cut to shape like the desk sign above.</p>
+            <p className="mlp-desc">This "Studio Vibes" podcast sign is mounted flush on the wall — a square or rectangular panel, edge-lit, not cut to shape like the desk sign above.</p>
+            <div className="mlp-size-row">
+              {WALL_ACRYLIC_SIZES.map((s, i) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  className="mlp-size-pill"
+                  data-active={wallAcrylicSize === i}
+                  onClick={() => setWallAcrylicSize(i)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
             <div className="mlp-banner-foot">
-              <span className="mlp-price">{wallAcrylic.price}</span>
+              <span className="mlp-price">{WALL_ACRYLIC_SIZES[wallAcrylicSize].price}</span>
               <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(wallAcrylic); }}>Start Designing →</a>
             </div>
           </div>
