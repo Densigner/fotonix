@@ -8,6 +8,7 @@ import cutmirrorBanner from './image/cutmirror-banner.jpg';
 import luminaMainPhoto from './image/lumina-main.jpg';
 import luminaBgVideo from './image/lumina-bg.mp4';
 import luminaBgPoster from './image/lumina-bg-poster.jpg';
+import wallAcrylicBanner from './image/wall-acrylic-banner.jpg';
 
 const HERO_GRID_PALETTE = ['#00f5d4', '#7b2cbf', '#ff2d95', '#8b5cf6', '#ec4899', '#4f46e5'];
 
@@ -198,8 +199,8 @@ export default function MainLandingPage() {
         .mlp-banner-badge.cyan { background: rgba(0,245,212,0.12); color: var(--cyan); border: 1px solid rgba(0,245,212,0.35); }
         .mlp-banner-badge.violet { background: rgba(139,92,246,0.14); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.4); }
 
-        .mlp-lumina-banner, .mlp-acrylic-banner, .mlp-mirror-banner { position: relative; min-height: 480px; display: flex; align-items: center; overflow: hidden; }
-        .mlp-lumina-banner, .mlp-mirror-banner { justify-content: flex-end; }
+        .mlp-lumina-banner, .mlp-acrylic-banner, .mlp-mirror-banner, .mlp-wall-banner { position: relative; min-height: 480px; display: flex; align-items: center; overflow: hidden; }
+        .mlp-lumina-banner, .mlp-mirror-banner, .mlp-wall-banner { justify-content: flex-end; }
 
         .mlp-lumina-media { position: absolute; inset: 0; overflow: hidden; background: #05050a; }
         .mlp-lumina-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 38%; }
@@ -226,6 +227,14 @@ export default function MainLandingPage() {
             url(${cutmirrorBanner});
           background-size: cover; background-position: center 40%;
         }
+        .mlp-wall-media {
+          position: absolute; inset: 0;
+          background-image:
+            linear-gradient(270deg, rgba(10,10,18,0.9) 0%, rgba(10,10,18,0.62) 40%, rgba(10,10,18,0.18) 72%, rgba(10,10,18,0.4) 100%),
+            linear-gradient(0deg, rgba(10,10,18,0.55) 0%, rgba(10,10,18,0.05) 25%, rgba(10,10,18,0.05) 75%, rgba(10,10,18,0.55) 100%),
+            url(${wallAcrylicBanner});
+          background-size: cover; background-position: center 32%;
+        }
 
         .mlp-banner-card {
           position: relative; z-index: 1; max-width: 460px; margin: 0 24px;
@@ -233,14 +242,6 @@ export default function MainLandingPage() {
           border: 1px solid var(--line); border-radius: 20px;
           padding: 32px 36px; box-shadow: 0 30px 60px -30px rgba(0,0,0,0.7);
         }
-        .mlp-plain-card {
-          max-width: 620px; margin: 0 auto; text-align: center;
-          background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
-          padding: 40px 44px; box-shadow: 0 30px 60px -30px rgba(0,0,0,0.5);
-        }
-        .mlp-plain-card .mlp-sku { justify-content: center; }
-        .mlp-plain-card p.mlp-desc { margin-left: auto; margin-right: auto; }
-        .mlp-plain-card .mlp-banner-foot { justify-content: center; }
         .mlp-banner-card.mlp-align-right { margin: 0 24px 0 auto; text-align: right; }
         .mlp-banner-card.mlp-align-right .mlp-eyebrow { flex-direction: row-reverse; }
         .mlp-banner-card .mlp-sku { font-size: 11px; letter-spacing: 0.08em; color: var(--ink-softer); text-transform: uppercase; margin: 16px 0 8px; font-family: var(--body); font-weight: 600; }
@@ -261,7 +262,7 @@ export default function MainLandingPage() {
         .mlp-video-link svg { flex-shrink: 0; }
 
         @media (max-width: 720px) {
-          .mlp-lumina-banner, .mlp-acrylic-banner, .mlp-mirror-banner { min-height: 420px; justify-content: flex-start; }
+          .mlp-lumina-banner, .mlp-acrylic-banner, .mlp-mirror-banner, .mlp-wall-banner { min-height: 420px; justify-content: flex-start; }
           .mlp-banner-card { padding: 28px 24px; margin: 0 16px; }
           .mlp-banner-card.mlp-align-right { text-align: left; margin: 0 16px; }
           .mlp-banner-card.mlp-align-right .mlp-eyebrow { flex-direction: row; }
@@ -462,13 +463,15 @@ export default function MainLandingPage() {
         </div>
       </section>
 
-      <section id="wall-acrylic" style={{ paddingTop: 0 }}>
+      <section id="wall-acrylic" className="mlp-wall-banner">
+        <div className="mlp-wall-media" />
         <div className="mlp-wrap">
-          <div className="mlp-plain-card">
+          <div className="mlp-banner-card mlp-align-right">
             <span className="mlp-banner-badge violet">Wall Mounted · Fixed 30×30cm</span>
+            <span className="mlp-eyebrow">Made By A Real Customer</span>
             <div className="mlp-sku">{wallAcrylic.sku}</div>
             <h2>{wallAcrylic.name}</h2>
-            <p className="mlp-desc">A fixed-size square panel, side-lit and mounted flat on the wall — not cut to shape like the desk sign above. Real photography of this one is coming soon.</p>
+            <p className="mlp-desc">This "Studio Vibes" podcast sign is mounted flush on the wall — a fixed square panel, edge-lit, not cut to shape like the desk sign above.</p>
             <div className="mlp-banner-foot">
               <span className="mlp-price">{wallAcrylic.price}</span>
               <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(wallAcrylic); }}>Start Designing →</a>
