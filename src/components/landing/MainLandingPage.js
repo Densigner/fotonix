@@ -70,7 +70,6 @@ export default function MainLandingPage() {
   const lumina = products[0];
   const wallAcrylic = products[1];
   const customMirror = products[2];
-  const stencil = products[3];
   const deskAcrylic = products[4];
 
   const goToProduct = (product, sizeKey) => {
@@ -190,11 +189,6 @@ export default function MainLandingPage() {
         .mlp-quicklink:hover { border-color: var(--cyan); transform: translateY(-1px); }
         .mlp-qdot { width: 6px; height: 6px; border-radius: 50%; }
 
-        .mlp-stencil-teaser { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-top: 22px; padding: 18px 24px; border: 1px dashed var(--line); border-radius: 14px; background: rgba(255,255,255,0.02); }
-        .mlp-stencil-teaser p { margin: 0; font-size: 14px; color: var(--ink-soft); }
-        .mlp-stencil-teaser p b { color: var(--paper); }
-        .mlp-stencil-teaser a { flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--cyan); text-decoration: none; white-space: nowrap; }
-        .mlp-stencil-teaser a:hover { text-decoration: underline; }
 
         .mlp-banner-badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 5px 12px; border-radius: 999px; margin-bottom: 16px; }
         .mlp-banner-badge.cyan { background: rgba(0,245,212,0.12); color: var(--cyan); border: 1px solid rgba(0,245,212,0.35); }
@@ -376,7 +370,7 @@ export default function MainLandingPage() {
         <div className="mlp-wrap">
           <div className="mlp-section-head">
             <span className="mlp-eyebrow">Shop</span>
-            <h2>Five ways to light up your space</h2>
+            <h2>Four ways to light up your space</h2>
             <p>Real products, real prices — jump straight to any of them.</p>
           </div>
 
@@ -385,11 +379,6 @@ export default function MainLandingPage() {
             <a className="mlp-quicklink" href="#acrylic-banner"><span className="mlp-qdot" style={{ background: '#ec4899' }} />Acrylic Sign (Desk)</a>
             <a className="mlp-quicklink" href="#wall-acrylic"><span className="mlp-qdot" style={{ background: '#f5f3ff' }} />Acrylic Panel (Wall)</a>
             <a className="mlp-quicklink" href="#mirror-banner"><span className="mlp-qdot" style={{ background: '#8b5cf6' }} />Custom Shape Mirror</a>
-          </div>
-
-          <div className="mlp-stencil-teaser">
-            <p>Also selling the <b>Stencil Generator</b> ({stencil.price}) — upload any photo, get a printable stencil. It gets its own dedicated page rather than sitting in this grid.</p>
-            <a href="/tools/stencil-generator">Try the Stencil Generator →</a>
           </div>
         </div>
       </section>
