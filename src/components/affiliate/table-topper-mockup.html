@@ -1,0 +1,661 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Edge-Lit Table Topper — Live Mockup</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --ink: #0a0a0f; --panel: #131218; --line: #262530;
+    --cyan: #22D3EE; --paper: #f1f0f5; --soft: #9b98a8; --softer: #64616f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ink); color: var(--paper);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 56px 24px 80px; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cyan); }
+  h1 { font-size: 30px; margin: 12px 0 10px; letter-spacing: -0.01em; }
+  .lede { color: var(--soft); font-size: 15px; line-height: 1.6; max-width: 60ch; margin: 0 0 40px; }
+
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 32px; align-items: start; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  .field { margin-bottom: 22px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--soft); margin-bottom: 8px; }
+  .field input[type="text"] {
+    width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 9px;
+    color: var(--paper); padding: 10px 12px; font-size: 14px;
+  }
+  .field input[type="text"]:focus { outline: none; border-color: var(--cyan); }
+  .field input[type="range"] { width: 100%; accent-color: var(--cyan); }
+  .row-label { display: flex; justify-content: space-between; align-items: baseline; }
+  .row-label span { font-size: 11.5px; color: var(--softer); font-variant-numeric: tabular-nums; }
+
+  .icon-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .icon-btn {
+    flex: 1; min-width: 64px; padding: 10px 6px; border-radius: 9px; border: 1px solid var(--line);
+    background: rgba(255,255,255,0.03); color: var(--soft); cursor: pointer; font-size: 20px; text-align: center;
+  }
+  .icon-btn[data-active="true"] { border-color: var(--cyan); background: rgba(34,211,238,0.1); color: var(--paper); }
+  .icon-btn:focus-visible, .swatch:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+  .swatch-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch { width: 30px; height: 30px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.25); cursor: pointer; padding: 0; }
+  .swatch[data-active="true"] { outline: 2px solid #fff; outline-offset: 2px; }
+
+  .stand-preview { display: flex; flex-direction: column; align-items: center; }
+  .canvas-frame {
+    width: 100%; max-width: 420px; aspect-ratio: 4/5; border-radius: 18px; overflow: hidden; isolation: isolate;
+    background: #05050a;
+    box-shadow: 0 30px 70px -25px rgba(0,0,0,0.7);
+  }
+  .canvas-frame canvas { width: 100%; height: 100%; display: block; }
+  .caption { margin-top: 16px; font-size: 12.5px; color: var(--softer); text-align: center; max-width: 340px; line-height: 1.5; }
+</style>
+
+<div class="wrap">
+  <span class="eyebrow">Live Mockup</span>
+  <h1>Edge-Lit Table Topper</h1>
+  <p class="lede">
+    Cut to the exact shape of your design and edge-lit, so the cut line and the
+    engraving carry the light while the rest of the sheet stays clear. Type your
+    text below and see it rendered live.
+  </p>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="field">
+        <label for="text-input">Design text</label>
+        <input id="text-input" type="text" value="STUDIO" maxlength="16" />
+      </div>
+
+      <div class="field">
+        <label>Icon</label>
+        <div class="icon-row" id="icon-row"></div>
+      </div>
+
+      <div class="field">
+        <label>LED colour</label>
+        <div class="swatch-row" id="swatch-row"></div>
+      </div>
+
+      <div class="field">
+        <div class="row-label">
+          <label for="tilt-input">Viewing angle</label>
+          <span id="tilt-readout">13°</span>
+        </div>
+        <input id="tilt-input" type="range" min="0" max="26" value="13" step="1" />
+      </div>
+    </div>
+
+    <div class="stand-preview">
+      <div class="canvas-frame"><canvas id="mockup-canvas"></canvas></div>
+      <p class="caption">Live render — cut line follows the actual shape of your design, with a uniform 3&nbsp;mm margin all the way round.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------ *
+   * Scene constants. Everything is in device pixels on an 840x1050
+   * canvas; CSS scales the whole thing down, which gives us a free 2x
+   * supersample.
+   * ------------------------------------------------------------------ */
+  const W = 840, H = 1050;
+  const FOCAL   = 2000;          // perspective focal length
+  const PIVOT_X = W / 2;         // vertical axis the sign rotates about
+  const EYE_Y   = H * 0.30;      // horizon: verticals converge toward this
+
+  const MARGIN  = 26;            // uniform acrylic cut margin around artwork
+  const EDGE_W  = 9;             // width of the bright polished cut-edge band
+  const PADD    = MARGIN + 8;    // fixed padding so both dilations stay aligned
+  const BLOOM   = 96;            // room around the panel for its outer bloom
+  const THICK   = 26;            // sheet thickness (slightly exaggerated)
+
+  const TABLE_Y      = 700;
+  const PANEL_BOTTOM = 900;      // the sheet rests directly on the table
+
+  const COLORS = ["#22D3EE", "#34D399", "#A78BFA", "#F472B6", "#F59E0B", "#EF4444", "#FFFFFF"];
+  const ICONS = [
+    { key: "none",  label: "—" },
+    { key: "star",  label: "★" },
+    { key: "heart", label: "♥" },
+  ];
+
+  let TILT = 13 * Math.PI / 180, COS = Math.cos(TILT), SIN = Math.sin(TILT);
+
+  /* ------------------------------------------------------------------ *
+   * Small helpers
+   * ------------------------------------------------------------------ */
+  function cv(w, h) {
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.ceil(w));
+    c.height = Math.max(1, Math.ceil(h));
+    return c;
+  }
+  function hexToRgb(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec((hex || "").trim());
+    return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) }
+             : { r: 255, g: 255, b: 255 };
+  }
+  function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
+  function mixWhite(c, t) {
+    return { r: Math.round(c.r + (255 - c.r) * t),
+             g: Math.round(c.g + (255 - c.g) * t),
+             b: Math.round(c.b + (255 - c.b) * t) };
+  }
+
+  /* Fill a silhouette with a flat colour (source-in keeps only pixels
+     that already had alpha). */
+  function tint(src, color, alpha) {
+    const o = cv(src.width, src.height), c = o.getContext("2d");
+    c.drawImage(src, 0, 0);
+    c.globalCompositeOperation = "source-in";
+    c.globalAlpha = alpha == null ? 1 : alpha;
+    c.fillStyle = color;
+    c.fillRect(0, 0, o.width, o.height);
+    return o;
+  }
+  function blurCopy(src, amt) {
+    const o = cv(src.width, src.height), c = o.getContext("2d");
+    c.filter = "blur(" + amt + "px)";
+    c.drawImage(src, 0, 0);
+    return o;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * UNIFORM DILATION — the cut line.
+   *
+   * Stamps the artwork around a circle of radius r, which is the
+   * Minkowski sum of the shape with a disc: an exactly uniform outward
+   * offset, identical on every part of the outline regardless of how
+   * long the text is or where it sits. Pure drawImage blits — no pixel
+   * reads, no contour tracing, no marching squares.
+   *
+   * `pad` is passed in rather than derived from r so that two dilations
+   * at different radii come back the same size and perfectly aligned,
+   * which is what lets us subtract one from the other below.
+   * ------------------------------------------------------------------ */
+  function dilate(src, r, pad) {
+    const o = cv(src.width + pad * 2, src.height + pad * 2);
+    const c = o.getContext("2d");
+    if (r > 0.5) {
+      const n1 = Math.max(40, Math.ceil(r * 5));
+      for (let i = 0; i < n1; i++) {
+        const a = (i / n1) * Math.PI * 2;
+        c.drawImage(src, pad + Math.cos(a) * r, pad + Math.sin(a) * r);
+      }
+      const n2 = Math.max(20, Math.ceil(r * 2.5));
+      for (let i = 0; i < n2; i++) {
+        const a = (i / n2) * Math.PI * 2 + 0.37;
+        c.drawImage(src, pad + Math.cos(a) * r * 0.5, pad + Math.sin(a) * r * 0.5);
+      }
+    }
+    c.drawImage(src, pad, pad);
+    return o;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Projection. Rotation about the vertical axis through PIVOT_X, then a
+   * simple pinhole divide.
+   * ------------------------------------------------------------------ */
+  function proj(u, d, y) {
+    const x = u * COS - d * SIN;
+    const z = u * SIN + d * COS;
+    const s = FOCAL / (FOCAL + z);
+    return [PIVOT_X + x * s, EYE_Y + (y - EYE_Y) * s, s];
+  }
+
+  /* Blit a flat offscreen canvas through the projection as vertical
+     strips. Gives real keystone rather than an affine skew. */
+  function warpBlit(dctx, src, topY, depth, op, alpha) {
+    const w = src.width, h = src.height, cx = w / 2, step = 2;
+    dctx.save();
+    dctx.globalCompositeOperation = op || "source-over";
+    if (alpha != null) dctx.globalAlpha = alpha;
+    for (let i = 0; i < w; i += step) {
+      const a = proj(i - cx, depth, topY);
+      const b = proj(i + step - cx, depth, topY);
+      const dw = Math.max(1, b[0] - a[0]) + 0.7;
+      dctx.drawImage(src, i, 0, step, h, a[0], a[1], dw, h * a[2]);
+    }
+    dctx.restore();
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Icons as point lists, so we can fit them to an exact box and know
+   * their true bounds. The gap between icon and text has to stay under
+   * 2 x MARGIN or the dilation won't bridge it and the icon becomes a
+   * separate floating chip of acrylic.
+   * ------------------------------------------------------------------ */
+  function starPoints() {
+    const p = [];
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? 1 : 0.42;
+      const a = (Math.PI / 5) * i - Math.PI / 2;
+      p.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    return p;
+  }
+  function heartPoints() {
+    const p = [];
+    for (let i = 0; i <= 72; i++) {
+      const t = (i / 72) * Math.PI * 2;
+      const st = Math.sin(t);
+      p.push([16 * st * st * st,
+              -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))]);
+    }
+    return p;
+  }
+  function bounds(pts) {
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+    for (const p of pts) {
+      if (p[0] < mnx) mnx = p[0]; if (p[0] > mxx) mxx = p[0];
+      if (p[1] < mny) mny = p[1]; if (p[1] > mxy) mxy = p[1];
+    }
+    return { mnx, mny, w: mxx - mnx, h: mxy - mny };
+  }
+  function fillFitted(g, pts, x0, y0, w, h) {
+    const b = bounds(pts), sx = w / b.w, sy = h / b.h;
+    g.beginPath();
+    pts.forEach((p, i) => {
+      const x = x0 + (p[0] - b.mnx) * sx, y = y0 + (p[1] - b.mny) * sy;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    });
+    g.closePath();
+    g.fill();
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Artwork: white glyphs on transparent, cropped tight to their own
+   * bounding box.
+   * ------------------------------------------------------------------ */
+  function makeArtwork(text, iconKey) {
+    const t = ((text || "").trim() || "STUDIO");
+    const face = s => `700 ${s}px "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
+    const meas = cv(8, 8).getContext("2d");
+    // actualBoundingBoxLeft/Right are measured relative to whatever
+    // textAlign is set to *right now* — has to match the "center" used
+    // when the text is actually drawn below, or the bounding box (and
+    // therefore the crop) is computed for the wrong anchor point and
+    // clips the left side of the text.
+    meas.textAlign = "center";
+
+    let fs = 200;
+    meas.font = face(fs);
+    while (meas.measureText(t).width > 880 && fs > 44) { fs -= 4; meas.font = face(fs); }
+
+    const m = meas.measureText(t);
+    const abl = m.actualBoundingBoxLeft   != null ? m.actualBoundingBoxLeft   : m.width / 2;
+    const abr = m.actualBoundingBoxRight  != null ? m.actualBoundingBoxRight  : m.width / 2;
+    const asc = m.actualBoundingBoxAscent != null ? m.actualBoundingBoxAscent : fs * 0.72;
+    const dsc = m.actualBoundingBoxDescent!= null ? m.actualBoundingBoxDescent: fs * 0.2;
+
+    const hasIcon = iconKey === "star" || iconKey === "heart";
+    const pts = hasIcon ? (iconKey === "star" ? starPoints() : heartPoints()) : null;
+
+    let left = -abl, right = abr, top = -asc, bottom = dsc;
+    let iconBox = null;
+    if (hasIcon) {
+      const nb = bounds(pts);
+      const ih = fs * 0.86, iw = ih * (nb.w / nb.h);
+      const gap = 20;                       // < 2 x MARGIN, so the cut bridges it
+      const iy = top - gap - ih;
+      iconBox = { x: -iw / 2, y: iy, w: iw, h: ih };
+      top = iy;
+      left = Math.min(left, -iw / 2);
+      right = Math.max(right, iw / 2);
+    }
+
+    const pad = 6;
+    const c = cv(right - left + pad * 2, bottom - top + pad * 2);
+    const g = c.getContext("2d");
+    g.translate(-left + pad, -top + pad);
+    g.fillStyle = "#ffffff";
+    g.textAlign = "center";
+    g.textBaseline = "alphabetic";
+    g.font = face(fs);
+    g.fillText(t, 0, 0);
+    if (hasIcon) fillFitted(g, pts, iconBox.x, iconBox.y, iconBox.w, iconBox.h);
+    return c;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Shape build. Cached per text/icon change.
+   * ------------------------------------------------------------------ */
+  let shape = null;
+
+  function buildShape(text, iconKey) {
+    const art = makeArtwork(text, iconKey);
+    const sc = Math.min(600 / art.width, 470 / art.height, 1.7);
+    const artS = cv(art.width * sc, art.height * sc);
+    artS.getContext("2d").drawImage(art, 0, 0, artS.width, artS.height);
+
+    // Two uniform dilations at the same padding, so subtracting the
+    // inner from the outer leaves a band of exactly EDGE_W everywhere.
+    const outer = blurCopy(dilate(artS, MARGIN, PADD), 1.1);
+    const inner = blurCopy(dilate(artS, MARGIN - EDGE_W, PADD), 1.1);
+
+    const ring = cv(outer.width, outer.height);
+    const rc = ring.getContext("2d");
+    rc.drawImage(outer, 0, 0);
+    rc.globalCompositeOperation = "destination-out";
+    rc.drawImage(inner, 0, 0);
+
+    return { artS, outer, ring, mw: outer.width, mh: outer.height };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Panel. Two flat layers, composited differently:
+   *
+   *   body — what the acrylic does to the background behind it
+   *          (source-over: transmitted light REPLACES the wall)
+   *   glow — what the LEDs emit
+   *          (lighter: emitted light ADDS to what is behind it)
+   *
+   * Everything emissive is derived from the RING and the ENGRAVING,
+   * never from the filled silhouette. In a real sheet the two faces are
+   * parallel, so total internal reflection keeps light travelling
+   * inside until it reaches a cut or engraved surface. The blank field
+   * is clear glass, not a light source — building the bloom from the
+   * filled shape is what floods it with colour.
+   * ------------------------------------------------------------------ */
+  function buildPanel(rgb, bgSnap, sx, sy) {
+    const cw = shape.mw + BLOOM * 2, ch = shape.mh + BLOOM * 2;
+    const ox = BLOOM, oy = BLOOM;                 // panel origin inside layer
+    const ax = BLOOM + PADD, ay = BLOOM + PADD;   // artwork origin inside layer
+    const hot = mixWhite(rgb, 0.45);
+
+    /* ---- body: clear glass ----------------------------------------- */
+    const body = cv(cw, ch), b = body.getContext("2d");
+    const zoom = 1.05, dx = 7, dy = 5;
+    const swid = cw / zoom, shgt = ch / zoom;
+    b.filter = "blur(2.5px)";
+    b.drawImage(bgSnap,
+      sx + (cw - swid) / 2 + dx, sy + (ch - shgt) / 2 + dy, swid, shgt,
+      0, 0, cw, ch);
+    b.filter = "none";
+    b.globalCompositeOperation = "destination-in";
+    b.drawImage(shape.outer, ox, oy);
+
+    // Cast of the acrylic itself: a faint cool tint and a touch of
+    // absorption. No LED colour here — an unlit field stays unlit.
+    b.globalCompositeOperation = "source-atop";
+    b.globalAlpha = 0.10; b.fillStyle = "#b9dcee"; b.fillRect(0, 0, cw, ch);
+    b.globalAlpha = 0.08; b.fillStyle = "#000000"; b.fillRect(0, 0, cw, ch);
+    b.globalAlpha = 1;
+
+    /* ---- glow: edges and engraving only ---------------------------- */
+    const glow = cv(cw, ch), g = glow.getContext("2d");
+
+    // Sheet thickness. The visible side face is the brightest part of
+    // the object — light exits at every cut surface.
+    const off = THICK * SIN;
+    if (off > 0.6) {
+      const edgeT = tint(shape.outer, rgba(hot, 0.55), 1);
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) g.drawImage(edgeT, ox - (off * i) / steps, oy);
+      g.globalCompositeOperation = "destination-out";  // keep only the sliver
+      g.drawImage(shape.outer, ox, oy);
+      g.globalCompositeOperation = "source-over";
+    }
+
+    g.globalCompositeOperation = "lighter";
+
+    // Bloom in the air around the sign — from the RING, so it hugs the
+    // perimeter and falls off both ways instead of filling the face.
+    const ringGlow = tint(shape.ring, rgba(rgb, 1), 1);
+    g.filter = "blur(58px)"; g.globalAlpha = 0.30; g.drawImage(ringGlow, ox, oy);
+    g.filter = "blur(22px)"; g.globalAlpha = 0.34; g.drawImage(ringGlow, ox, oy);
+
+    // The polished cut edge itself.
+    const ringT = tint(shape.ring, rgba(hot, 1), 1);
+    g.filter = "blur(6px)";   g.globalAlpha = 0.50; g.drawImage(ringT, ox, oy);
+    g.filter = "blur(1.2px)"; g.globalAlpha = 0.98; g.drawImage(ringT, ox, oy);
+
+    // Engraved artwork: frosted white where the laser has broken the
+    // face. Tight bloom only — engraving scatters a few mm, not across
+    // the whole sheet.
+    const coreT = tint(shape.artS, "#ffffff", 1);
+    g.filter = "blur(9px)";  g.globalAlpha = 0.16; g.drawImage(tint(shape.artS, rgba(rgb, 1), 1), ax, ay);
+    g.filter = "blur(2.4px)"; g.globalAlpha = 0.40; g.drawImage(coreT, ax, ay);
+    g.filter = "none";        g.globalAlpha = 0.92; g.drawImage(coreT, ax, ay);
+    g.globalAlpha = 1;
+
+    // LEDs enter at the bottom cut edge, so there is a little genuine
+    // spill into the first few mm of the sheet — and nowhere else.
+    const feed = cv(cw, ch), fc = feed.getContext("2d");
+    const fg = fc.createLinearGradient(0, oy + shape.mh, 0, oy + shape.mh - 64);
+    fg.addColorStop(0, rgba(hot, 0.55));
+    fg.addColorStop(1, rgba(hot, 0));
+    fc.fillStyle = fg; fc.fillRect(0, 0, cw, ch);
+    fc.globalCompositeOperation = "destination-in";
+    fc.drawImage(shape.outer, ox, oy);
+    g.globalAlpha = 0.55; g.drawImage(blurCopy(feed, 5), 0, 0); g.globalAlpha = 1;
+
+    // Surface sheen. This is reflection, not emission — with the field
+    // now dark it is the main thing telling you there is a solid sheet
+    // there at all, so it carries more weight than before.
+    const sheen = cv(cw, ch), s = sheen.getContext("2d");
+    const gr = s.createLinearGradient(ox, oy + shape.mh, ox + shape.mw, oy);
+    gr.addColorStop(0.00, "rgba(255,255,255,0)");
+    gr.addColorStop(0.30, "rgba(255,255,255,0)");
+    gr.addColorStop(0.41, "rgba(255,255,255,0.10)");
+    gr.addColorStop(0.49, "rgba(255,255,255,0.19)");
+    gr.addColorStop(0.57, "rgba(255,255,255,0.09)");
+    gr.addColorStop(0.66, "rgba(255,255,255,0)");
+    gr.addColorStop(0.72, "rgba(255,255,255,0.17)");
+    gr.addColorStop(0.76, "rgba(255,255,255,0)");
+    gr.addColorStop(1.00, "rgba(255,255,255,0)");
+    s.fillStyle = gr; s.fillRect(0, 0, cw, ch);
+    s.globalCompositeOperation = "destination-in";
+    s.drawImage(shape.outer, ox, oy);
+    g.drawImage(sheen, 0, 0);
+
+    // Vertical falloff: light enters the bottom edge and attenuates on
+    // the way up.
+    g.globalCompositeOperation = "destination-in";
+    const fall = g.createLinearGradient(0, oy + shape.mh, 0, oy - 20);
+    fall.addColorStop(0, "rgba(0,0,0,1)");
+    fall.addColorStop(0.5, "rgba(0,0,0,0.80)");
+    fall.addColorStop(1, "rgba(0,0,0,0.54)");
+    g.fillStyle = fall; g.fillRect(0, 0, cw, ch);
+
+    return { body, glow, cw, ch };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Scene
+   * ------------------------------------------------------------------ */
+  const canvas = document.getElementById("mockup-canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  const bgSnap = cv(W, H);
+  const bgCtx = bgSnap.getContext("2d");
+
+  let colorIdx = 0, iconKey = "star";
+
+  function drawRoom(rgb, panelTop, panelW) {
+    const wall = ctx.createLinearGradient(0, 0, 0, TABLE_Y);
+    wall.addColorStop(0, "#05050a");
+    wall.addColorStop(0.72, "#0b0c13");
+    wall.addColorStop(1, "#12131c");
+    ctx.fillStyle = wall; ctx.fillRect(0, 0, W, TABLE_Y);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const cy = (panelTop + PANEL_BOTTOM) / 2;
+    const halo = ctx.createRadialGradient(W / 2, cy, 20, W / 2, cy, Math.max(panelW, 460) * 1.15);
+    halo.addColorStop(0, rgba(rgb, 0.15));
+    halo.addColorStop(0.5, rgba(rgb, 0.05));
+    halo.addColorStop(1, rgba(rgb, 0));
+    ctx.fillStyle = halo; ctx.fillRect(0, 0, W, TABLE_Y + 160);
+    ctx.restore();
+
+    const tbl = ctx.createLinearGradient(0, TABLE_Y, 0, H);
+    tbl.addColorStop(0, "#171821");
+    tbl.addColorStop(0.35, "#0e0f16");
+    tbl.addColorStop(1, "#050509");
+    ctx.fillStyle = tbl; ctx.fillRect(0, TABLE_Y, W, H - TABLE_Y);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const graze = ctx.createLinearGradient(W * 0.1, TABLE_Y, W * 0.95, H);
+    graze.addColorStop(0, "rgba(255,255,255,0.035)");
+    graze.addColorStop(0.5, "rgba(255,255,255,0.008)");
+    graze.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = graze; ctx.fillRect(0, TABLE_Y, W, H - TABLE_Y);
+    ctx.restore();
+  }
+
+  function drawContactShadow(panelW) {
+    ctx.save();
+    ctx.filter = "blur(20px)";
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 2, panelW * 0.52, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = "blur(6px)";
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 1, panelW * 0.46, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = "none";
+    ctx.restore();
+  }
+
+  function drawTableLight(rgb, panelW) {
+    // Pool of LED colour on the table, plus a hot caustic directly
+    // under the bottom cut edge where the light exits.
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    ctx.filter = "blur(46px)";
+    ctx.globalAlpha = 0.30;
+    ctx.fillStyle = rgba(rgb, 1);
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 16, W * 0.42, 96, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.filter = "blur(16px)";
+    ctx.globalAlpha = 0.34;
+    ctx.fillStyle = rgba(mixWhite(rgb, 0.4), 1);
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 10, panelW * 0.44, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.filter = "none";
+    ctx.restore();
+  }
+
+  function render() {
+    if (!shape) return;
+
+    const rgb = hexToRgb(COLORS[colorIdx % COLORS.length]);
+    const cw = shape.mw + BLOOM * 2, ch = shape.mh + BLOOM * 2;
+    const layerTop = PANEL_BOTTOM - shape.mh - BLOOM;
+    const layerLeft = W / 2 - cw / 2;
+    const panelTop = PANEL_BOTTOM - shape.mh;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // 1. Everything behind the glass, so there is something to refract.
+    drawRoom(rgb, panelTop, shape.mw);
+    drawContactShadow(shape.mw);
+    drawTableLight(rgb, shape.mw);
+
+    bgCtx.clearRect(0, 0, W, H);
+    bgCtx.drawImage(canvas, 0, 0);
+
+    // 2. Reflection in the table, drawn before the sign itself.
+    const p = buildPanel(rgb, bgSnap, layerLeft, layerTop);
+    const k = 0.42;
+    const refl = cv(cw, ch), rc = refl.getContext("2d");
+    rc.translate(0, ch); rc.scale(1, -1);
+    rc.drawImage(p.glow, 0, 0);
+    rc.setTransform(1, 0, 0, 1, 0, 0);
+    rc.globalCompositeOperation = "destination-in";
+    const rg = rc.createLinearGradient(0, BLOOM, 0, ch);
+    rg.addColorStop(0, "rgba(0,0,0,0.30)");
+    rg.addColorStop(1, "rgba(0,0,0,0)");
+    rc.fillStyle = rg; rc.fillRect(0, 0, cw, ch);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.filter = "blur(4px)";
+    ctx.drawImage(refl, layerLeft, PANEL_BOTTOM - BLOOM * k, cw, ch * k);
+    ctx.filter = "none";
+    ctx.restore();
+
+    // 3. The sign.
+    warpBlit(ctx, p.body, layerTop, 0, "source-over");
+    warpBlit(ctx, p.glow, layerTop, 0, "lighter");
+
+    // 4. Vignette
+    const vig = ctx.createRadialGradient(W / 2, H * 0.52, H * 0.22, W / 2, H * 0.52, H * 0.72);
+    vig.addColorStop(0, "rgba(0,0,0,0)");
+    vig.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+  }
+
+  function regenerate() {
+    shape = buildShape(document.getElementById("text-input").value, iconKey);
+    render();
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Controls
+   * ------------------------------------------------------------------ */
+  const textInput = document.getElementById("text-input");
+  const tiltInput = document.getElementById("tilt-input");
+  const tiltOut = document.getElementById("tilt-readout");
+
+  ICONS.forEach((ic) => {
+    const b = document.createElement("button");
+    b.className = "icon-btn";
+    b.textContent = ic.label;
+    b.setAttribute("data-active", String(ic.key === iconKey));
+    b.addEventListener("click", () => {
+      iconKey = ic.key;
+      document.querySelectorAll(".icon-btn").forEach((btn, i) =>
+        btn.setAttribute("data-active", String(ICONS[i].key === iconKey)));
+      regenerate();
+    });
+    document.getElementById("icon-row").appendChild(b);
+  });
+
+  COLORS.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "swatch";
+    b.style.background = c;
+    b.setAttribute("aria-label", "LED colour " + (i + 1));
+    b.setAttribute("data-active", String(i === colorIdx));
+    b.addEventListener("click", () => {
+      colorIdx = i;
+      document.querySelectorAll(".swatch").forEach((btn, j) =>
+        btn.setAttribute("data-active", String(j === colorIdx)));
+      render();
+    });
+    document.getElementById("swatch-row").appendChild(b);
+  });
+
+  tiltInput.addEventListener("input", () => {
+    const deg = Number(tiltInput.value);
+    tiltOut.textContent = deg + "°";
+    TILT = deg * Math.PI / 180; COS = Math.cos(TILT); SIN = Math.sin(TILT);
+    render();
+  });
+
+  textInput.addEventListener("input", regenerate);
+
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(regenerate);
+  regenerate();
+})();
+</script>

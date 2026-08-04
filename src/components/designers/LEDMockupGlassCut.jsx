@@ -1,40 +1,420 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
+/**
+ * LEDMockupGlassCut
+ *
+ * Cut-to-shape edge-lit acrylic mockup — the design is cut tight to its own
+ * outline (uniform dilation, not a rectangle plate) and rendered on a tilted,
+ * reflective table with a real glass/acrylic look (transmitted "body" layer
+ * separate from an emissive "glow" layer, a visible sheet-thickness edge, a
+ * table reflection, contact shadow, and a surface sheen).
+ *
+ * Ported from a standalone canvas prototype (table-topper-mockup.html) that
+ * was built specifically to fix two problems with the previous version of
+ * this component: a hand-rolled marching-squares contour tracer that (a)
+ * produced a visibly jagged pixel edge and (b) could hang the tab for
+ * 20-30s on more complex artwork. This version's "cut" is built entirely
+ * from `drawImage` blits stamped around a circle (a true Minkowski-sum
+ * dilation) — no pixel reads, no contour tracing, no risk of a runaway loop.
+ *
+ * Same prop shape as LEDMockupGlass so the two are drop-in replacements for
+ * each other at existing call sites.
+ */
 export default function LEDMockupGlassCut({
   src,
   colors = ["#22D3EE", "#34D399", "#A78BFA", "#F472B6", "#F59E0B", "#EF4444", "#FFFFFF"],
   initialIndex = 0,
   title = "LED Preview",
-  expandPx = 200,         // acrylic expansion around design before cutting
-  ringThicknessPx = 10,  // visible LED ring thickness
-  maxArtWidth = 260      // scales PNG inside the mockup
+  tiltDeg = 13,
 }) {
   const [idx, setIdx] = useState(initialIndex);
-  const color = colors[idx % colors.length];
   const canvasRef = useRef(null);
-  const work = useRef(document.createElement("canvas"));
+  const bgSnapRef = useRef(null);
+  const shapeRef = useRef(null);
 
-  const rgb = useMemo(() => hexToRgb(color), [color]);
+  const color = colors[idx % colors.length];
+
+  // ---- one-time constants (scene geometry) ---------------------------------
+  const W = 840, H = 1050;
+  const FOCAL = 2000;
+  const PIVOT_X = W / 2;
+  const EYE_Y = H * 0.30;
+  const MARGIN = 26;
+  const EDGE_W = 9;
+  const PADD = MARGIN + 8;
+  const BLOOM = 96;
+  const THICK = 26;
+  const TABLE_Y = 700;
+  const PANEL_BOTTOM = 900;
 
   useEffect(() => {
     let cancelled = false;
-    const cnv = canvasRef.current;
-    const W = 360, H = 440;
-    cnv.width = W; cnv.height = H;
-    const ctx = cnv.getContext("2d");
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = W; canvas.height = H;
+    if (!bgSnapRef.current) bgSnapRef.current = cv(W, H);
+
+    if (!src) {
+      shapeRef.current = null;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, W, H);
+      return;
+    }
 
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
       if (cancelled) return;
-      drawScene(ctx, W, H, img);
+      shapeRef.current = buildShape(img);
+      renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg);
     };
-    img.onerror = () => drawScene(ctx, W, H, null);
-    img.src = src || "";
+    img.onerror = () => { shapeRef.current = null; };
+    img.src = src;
 
     return () => { cancelled = true; };
-  }, [src, rgb, expandPx, ringThicknessPx, maxArtWidth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !shapeRef.current) return;
+    renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [color, tiltDeg]);
+
+  // ==== geometry / drawing pipeline ==========================================
+  // (module-scope-independent — reads only the constants above and its args,
+  // so it can't accidentally depend on stale React state)
+
+  function cv(w, h) {
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.ceil(w));
+    c.height = Math.max(1, Math.ceil(h));
+    return c;
+  }
+  function hexToRgb(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec((hex || "").trim());
+    return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) }
+             : { r: 255, g: 255, b: 255 };
+  }
+  function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
+  function mixWhite(c, t) {
+    return { r: Math.round(c.r + (255 - c.r) * t),
+             g: Math.round(c.g + (255 - c.g) * t),
+             b: Math.round(c.b + (255 - c.b) * t) };
+  }
+
+  function tint(source, colorStr, alpha) {
+    const o = cv(source.width, source.height), c = o.getContext("2d");
+    c.drawImage(source, 0, 0);
+    c.globalCompositeOperation = "source-in";
+    c.globalAlpha = alpha == null ? 1 : alpha;
+    c.fillStyle = colorStr;
+    c.fillRect(0, 0, o.width, o.height);
+    return o;
+  }
+  function blurCopy(source, amt) {
+    const o = cv(source.width, source.height), c = o.getContext("2d");
+    c.filter = "blur(" + amt + "px)";
+    c.drawImage(source, 0, 0);
+    return o;
+  }
+
+  // Real design uploads/drawings arrive as a full-canvas PNG with a lot of
+  // transparent margin — crop to the actual drawn content's tight alpha
+  // bounding box first (one getImageData pass, on image load only, not
+  // per-frame) so the dilation below scales sensibly regardless of how much
+  // empty space the source canvas had.
+  function cropToTightAlpha(img, pad) {
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const probe = cv(iw, ih);
+    const pctx = probe.getContext("2d", { willReadFrequently: true });
+    pctx.drawImage(img, 0, 0, iw, ih);
+    const data = pctx.getImageData(0, 0, iw, ih).data;
+    let minX = iw, minY = ih, maxX = -1, maxY = -1;
+    for (let y = 0; y < ih; y++) {
+      const row = y * iw;
+      for (let x = 0; x < iw; x++) {
+        if (data[(row + x) * 4 + 3] > 10) {
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < minX) return probe; // fully transparent — nothing drawn yet
+    const p = pad == null ? 6 : pad;
+    const cw = maxX - minX + 1, ch = maxY - minY + 1;
+    const out = cv(cw + p * 2, ch + p * 2);
+    out.getContext("2d").drawImage(probe, minX, minY, cw, ch, p, p, cw, ch);
+    return out;
+  }
+
+  // UNIFORM DILATION — the cut line. Stamps the artwork around a circle of
+  // radius r (a Minkowski sum with a disc): an exactly uniform outward
+  // offset on every part of the outline regardless of shape complexity.
+  // Pure drawImage blits, no pixel reads, no contour tracing.
+  function dilate(source, r, pad) {
+    const o = cv(source.width + pad * 2, source.height + pad * 2);
+    const c = o.getContext("2d");
+    if (r > 0.5) {
+      const n1 = Math.max(40, Math.ceil(r * 5));
+      for (let i = 0; i < n1; i++) {
+        const a = (i / n1) * Math.PI * 2;
+        c.drawImage(source, pad + Math.cos(a) * r, pad + Math.sin(a) * r);
+      }
+      const n2 = Math.max(20, Math.ceil(r * 2.5));
+      for (let i = 0; i < n2; i++) {
+        const a = (i / n2) * Math.PI * 2 + 0.37;
+        c.drawImage(source, pad + Math.cos(a) * r * 0.5, pad + Math.sin(a) * r * 0.5);
+      }
+    }
+    c.drawImage(source, pad, pad);
+    return o;
+  }
+
+  function buildShape(img) {
+    const art = cropToTightAlpha(img, 6);
+    const sc = Math.min(600 / art.width, 470 / art.height, 1.7);
+    const artS = cv(art.width * sc, art.height * sc);
+    artS.getContext("2d").drawImage(art, 0, 0, artS.width, artS.height);
+
+    const outer = blurCopy(dilate(artS, MARGIN, PADD), 1.1);
+    const inner = blurCopy(dilate(artS, MARGIN - EDGE_W, PADD), 1.1);
+
+    const ring = cv(outer.width, outer.height);
+    const rc = ring.getContext("2d");
+    rc.drawImage(outer, 0, 0);
+    rc.globalCompositeOperation = "destination-out";
+    rc.drawImage(inner, 0, 0);
+
+    return { artS, outer, ring, mw: outer.width, mh: outer.height };
+  }
+
+  function buildPanel(shape, rgb, bgSnap, sx, sy) {
+    const cw = shape.mw + BLOOM * 2, ch = shape.mh + BLOOM * 2;
+    const ox = BLOOM, oy = BLOOM;
+    const ax = BLOOM + PADD, ay = BLOOM + PADD;
+    const hot = mixWhite(rgb, 0.45);
+    const sinTilt = Math.sin(tiltDeg * Math.PI / 180);
+
+    // ---- body: clear glass (transmitted light replaces the background) ----
+    const body = cv(cw, ch), b = body.getContext("2d");
+    const zoom = 1.05, dx = 7, dy = 5;
+    const swid = cw / zoom, shgt = ch / zoom;
+    b.filter = "blur(2.5px)";
+    b.drawImage(bgSnap,
+      sx + (cw - swid) / 2 + dx, sy + (ch - shgt) / 2 + dy, swid, shgt,
+      0, 0, cw, ch);
+    b.filter = "none";
+    b.globalCompositeOperation = "destination-in";
+    b.drawImage(shape.outer, ox, oy);
+    b.globalCompositeOperation = "source-atop";
+    b.globalAlpha = 0.10; b.fillStyle = "#b9dcee"; b.fillRect(0, 0, cw, ch);
+    b.globalAlpha = 0.08; b.fillStyle = "#000000"; b.fillRect(0, 0, cw, ch);
+    b.globalAlpha = 1;
+
+    // ---- glow: edges and engraving only (emitted light adds) ----
+    const glow = cv(cw, ch), g = glow.getContext("2d");
+
+    const off = THICK * sinTilt;
+    if (off > 0.6) {
+      const edgeT = tint(shape.outer, rgba(hot, 0.55), 1);
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) g.drawImage(edgeT, ox - (off * i) / steps, oy);
+      g.globalCompositeOperation = "destination-out";
+      g.drawImage(shape.outer, ox, oy);
+      g.globalCompositeOperation = "source-over";
+    }
+
+    g.globalCompositeOperation = "lighter";
+
+    const ringGlow = tint(shape.ring, rgba(rgb, 1), 1);
+    g.filter = "blur(58px)"; g.globalAlpha = 0.30; g.drawImage(ringGlow, ox, oy);
+    g.filter = "blur(22px)"; g.globalAlpha = 0.34; g.drawImage(ringGlow, ox, oy);
+
+    const ringT = tint(shape.ring, rgba(hot, 1), 1);
+    g.filter = "blur(6px)";   g.globalAlpha = 0.50; g.drawImage(ringT, ox, oy);
+    g.filter = "blur(1.2px)"; g.globalAlpha = 0.98; g.drawImage(ringT, ox, oy);
+
+    const coreT = tint(shape.artS, "#ffffff", 1);
+    g.filter = "blur(9px)";   g.globalAlpha = 0.16; g.drawImage(tint(shape.artS, rgba(rgb, 1), 1), ax, ay);
+    g.filter = "blur(2.4px)"; g.globalAlpha = 0.40; g.drawImage(coreT, ax, ay);
+    g.filter = "none";        g.globalAlpha = 0.92; g.drawImage(coreT, ax, ay);
+    g.globalAlpha = 1;
+
+    const feed = cv(cw, ch), fc = feed.getContext("2d");
+    const fg = fc.createLinearGradient(0, oy + shape.mh, 0, oy + shape.mh - 64);
+    fg.addColorStop(0, rgba(hot, 0.55));
+    fg.addColorStop(1, rgba(hot, 0));
+    fc.fillStyle = fg; fc.fillRect(0, 0, cw, ch);
+    fc.globalCompositeOperation = "destination-in";
+    fc.drawImage(shape.outer, ox, oy);
+    g.globalAlpha = 0.55; g.drawImage(blurCopy(feed, 5), 0, 0); g.globalAlpha = 1;
+
+    const sheen = cv(cw, ch), s = sheen.getContext("2d");
+    const gr = s.createLinearGradient(ox, oy + shape.mh, ox + shape.mw, oy);
+    gr.addColorStop(0.00, "rgba(255,255,255,0)");
+    gr.addColorStop(0.30, "rgba(255,255,255,0)");
+    gr.addColorStop(0.41, "rgba(255,255,255,0.10)");
+    gr.addColorStop(0.49, "rgba(255,255,255,0.19)");
+    gr.addColorStop(0.57, "rgba(255,255,255,0.09)");
+    gr.addColorStop(0.66, "rgba(255,255,255,0)");
+    gr.addColorStop(0.72, "rgba(255,255,255,0.17)");
+    gr.addColorStop(0.76, "rgba(255,255,255,0)");
+    gr.addColorStop(1.00, "rgba(255,255,255,0)");
+    s.fillStyle = gr; s.fillRect(0, 0, cw, ch);
+    s.globalCompositeOperation = "destination-in";
+    s.drawImage(shape.outer, ox, oy);
+    g.drawImage(sheen, 0, 0);
+
+    g.globalCompositeOperation = "destination-in";
+    const fall = g.createLinearGradient(0, oy + shape.mh, 0, oy - 20);
+    fall.addColorStop(0, "rgba(0,0,0,1)");
+    fall.addColorStop(0.5, "rgba(0,0,0,0.80)");
+    fall.addColorStop(1, "rgba(0,0,0,0.54)");
+    g.fillStyle = fall; g.fillRect(0, 0, cw, ch);
+
+    return { body, glow, cw, ch };
+  }
+
+  function drawRoom(ctx, rgb, panelTop, panelW) {
+    const wall = ctx.createLinearGradient(0, 0, 0, TABLE_Y);
+    wall.addColorStop(0, "#05050a");
+    wall.addColorStop(0.72, "#0b0c13");
+    wall.addColorStop(1, "#12131c");
+    ctx.fillStyle = wall; ctx.fillRect(0, 0, W, TABLE_Y);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const cy = (panelTop + PANEL_BOTTOM) / 2;
+    const halo = ctx.createRadialGradient(W / 2, cy, 20, W / 2, cy, Math.max(panelW, 460) * 1.15);
+    halo.addColorStop(0, rgba(rgb, 0.15));
+    halo.addColorStop(0.5, rgba(rgb, 0.05));
+    halo.addColorStop(1, rgba(rgb, 0));
+    ctx.fillStyle = halo; ctx.fillRect(0, 0, W, TABLE_Y + 160);
+    ctx.restore();
+
+    const tbl = ctx.createLinearGradient(0, TABLE_Y, 0, H);
+    tbl.addColorStop(0, "#171821");
+    tbl.addColorStop(0.35, "#0e0f16");
+    tbl.addColorStop(1, "#050509");
+    ctx.fillStyle = tbl; ctx.fillRect(0, TABLE_Y, W, H - TABLE_Y);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const graze = ctx.createLinearGradient(W * 0.1, TABLE_Y, W * 0.95, H);
+    graze.addColorStop(0, "rgba(255,255,255,0.035)");
+    graze.addColorStop(0.5, "rgba(255,255,255,0.008)");
+    graze.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = graze; ctx.fillRect(0, TABLE_Y, W, H - TABLE_Y);
+    ctx.restore();
+  }
+
+  function drawContactShadow(ctx, panelW) {
+    ctx.save();
+    ctx.filter = "blur(20px)";
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 2, panelW * 0.52, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = "blur(6px)";
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 1, panelW * 0.46, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = "none";
+    ctx.restore();
+  }
+
+  function drawTableLight(ctx, rgb, panelW) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.filter = "blur(46px)";
+    ctx.globalAlpha = 0.30;
+    ctx.fillStyle = rgba(rgb, 1);
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 16, W * 0.42, 96, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = "blur(16px)";
+    ctx.globalAlpha = 0.34;
+    ctx.fillStyle = rgba(mixWhite(rgb, 0.4), 1);
+    ctx.beginPath();
+    ctx.ellipse(W / 2, PANEL_BOTTOM + 10, panelW * 0.44, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = "none";
+    ctx.restore();
+  }
+
+  function renderScene(canvas, bgSnap, shape, rgb, tiltDegNow) {
+    if (!shape) return;
+    const ctx = canvas.getContext("2d");
+    const tilt = tiltDegNow * Math.PI / 180, cosT = Math.cos(tilt), sinT = Math.sin(tilt);
+
+    function proj(u, d, y) {
+      const x = u * cosT - d * sinT;
+      const z = u * sinT + d * cosT;
+      const s = FOCAL / (FOCAL + z);
+      return [PIVOT_X + x * s, EYE_Y + (y - EYE_Y) * s, s];
+    }
+    function warpBlit(dctx, source, topY, depth, op, alpha) {
+      const w = source.width, h = source.height, cx = w / 2, step = 2;
+      dctx.save();
+      dctx.globalCompositeOperation = op || "source-over";
+      if (alpha != null) dctx.globalAlpha = alpha;
+      for (let i = 0; i < w; i += step) {
+        const a = proj(i - cx, depth, topY);
+        const bpt = proj(i + step - cx, depth, topY);
+        const dw = Math.max(1, bpt[0] - a[0]) + 0.7;
+        dctx.drawImage(source, i, 0, step, h, a[0], a[1], dw, h * a[2]);
+      }
+      dctx.restore();
+    }
+
+    const cw = shape.mw + BLOOM * 2, ch = shape.mh + BLOOM * 2;
+    const layerTop = PANEL_BOTTOM - shape.mh - BLOOM;
+    const layerLeft = W / 2 - cw / 2;
+    const panelTop = PANEL_BOTTOM - shape.mh;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    drawRoom(ctx, rgb, panelTop, shape.mw);
+    drawContactShadow(ctx, shape.mw);
+    drawTableLight(ctx, rgb, shape.mw);
+
+    const bgCtx = bgSnap.getContext("2d");
+    bgCtx.clearRect(0, 0, W, H);
+    bgCtx.drawImage(canvas, 0, 0);
+
+    const p = buildPanel(shape, rgb, bgSnap, layerLeft, layerTop);
+    const k = 0.42;
+    const refl = cv(cw, ch), rc = refl.getContext("2d");
+    rc.translate(0, ch); rc.scale(1, -1);
+    rc.drawImage(p.glow, 0, 0);
+    rc.setTransform(1, 0, 0, 1, 0, 0);
+    rc.globalCompositeOperation = "destination-in";
+    const rg = rc.createLinearGradient(0, BLOOM, 0, ch);
+    rg.addColorStop(0, "rgba(0,0,0,0.30)");
+    rg.addColorStop(1, "rgba(0,0,0,0)");
+    rc.fillStyle = rg; rc.fillRect(0, 0, cw, ch);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.filter = "blur(4px)";
+    ctx.drawImage(refl, layerLeft, PANEL_BOTTOM - BLOOM * k, cw, ch * k);
+    ctx.filter = "none";
+    ctx.restore();
+
+    warpBlit(ctx, p.body, layerTop, 0, "source-over");
+    warpBlit(ctx, p.glow, layerTop, 0, "lighter");
+
+    const vig = ctx.createRadialGradient(W / 2, H * 0.52, H * 0.22, W / 2, H * 0.52, H * 0.72);
+    vig.addColorStop(0, "rgba(0,0,0,0)");
+    vig.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+  }
+
+  // ==== markup (matches LEDMockupGlass's wrapper so it's a drop-in swap) ====
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-2xl ring-1 ring-black/5">
       <div className="flex items-center justify-between mb-3">
@@ -42,11 +422,12 @@ export default function LEDMockupGlassCut({
         <div className="flex gap-1">
           {colors.map((c, i) => (
             <button
-              key={c+i}
+              key={c + i}
               onClick={() => setIdx(i)}
+              aria-label={`Set colour ${c}`}
               className="h-5 w-5 rounded-full ring-1 ring-black/20"
               style={{ background: c }}
-              aria-label={`Set color ${c}`}
+              title={c}
             />
           ))}
         </div>
@@ -54,11 +435,7 @@ export default function LEDMockupGlassCut({
 
       <div
         className="relative w-full rounded-xl overflow-hidden"
-        style={{
-          aspectRatio: "4/5",
-          isolation: "isolate",
-          background: "radial-gradient(ellipse at bottom, rgba(0,0,0,.35) 0%, rgba(0,0,0,.85) 70%)"
-        }}
+        style={{ aspectRatio: "4/5", isolation: "isolate", background: "#05050a" }}
       >
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       </div>
@@ -66,316 +443,12 @@ export default function LEDMockupGlassCut({
       <div className="mt-3 flex items-center justify-between">
         <button
           className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm"
-          onClick={() => setIdx(i => (i+1)%colors.length)}
+          onClick={() => setIdx((i) => (i + 1) % colors.length)}
         >
           Next color
         </button>
-        <div className="text-xs text-slate-400">Tip: transparent PNG gives the cleanest edge.</div>
+        <div className="text-xs text-slate-400">Cut tight to your design's own shape.</div>
       </div>
     </div>
   );
-
-  // ============ draw pipeline ===============================================
-
-  function drawScene(ctx, W, H, img) {
-    ctx.clearRect(0,0,W,H);
-
-    // table/ground
-    const tableH = Math.round(H * 0.28);
-    const tableY = H - tableH;
-    const g = ctx.createLinearGradient(0, tableY, 0, H);
-    g.addColorStop(0, "rgba(20,20,20,0.6)");
-    g.addColorStop(1, "rgba(0,0,0,0.95)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, tableY, W, tableH);
-
-    // base
-    drawBase(ctx, W, H, tableY, rgb);
-
-    if (!img) return;
-
-    // scale & place artwork
-    const scale = Math.min(1, maxArtWidth / img.width);
-    const artW = Math.max(1, Math.round(img.width * scale));
-    const artH = Math.max(1, Math.round(img.height * scale));
-    const plateBottom = tableY + 2;
-    const artX = Math.round(W/2 - artW/2);
-    const artY = Math.round(plateBottom - artH - 24);
-
-    // build alpha mask of the artwork
-    const { mask, w, h } = getAlphaMask(img, artW, artH);
-
-    // OUTER acrylic silhouette (dilated alpha)
-    const outer = dilate(mask, w, h, Math.max(1, Math.round(expandPx)));
-
-    // RING = dilate(expand) – dilate(expand - thickness)
-    const innerForRing = dilate(mask, w, h, Math.max(0, Math.round(Math.max(0, expandPx - ringThicknessPx))));
-    const ringMask = subtract(outer, innerForRing);
-
-    // Ambient wall glow
-    drawAmbient(ctx, W, H, tableY, rgb);
-
-    // Trace the OUTER silhouette to polygons and render **glass plate cut to shape**
-    const contours = traceContours(outer, w, h, 1); // array of paths [{x,y}...]
-    drawGlassSilhouette(ctx, contours, artX, artY, rgb);
-
-    // LED ring on the edge
-    drawRing(ctx, ringMask, w, h, artX, artY, rgb);
-
-    // Illuminated artwork (white core + slight color tint + bloom)
-    drawLitArtwork(ctx, img, artX, artY, artW, artH, rgb);
-  }
-
-  // ============ visuals =======================================================
-
-  function drawAmbient(ctx, W, H, tableY, rgb) {
-    ctx.save();
-    ctx.globalAlpha = 0.22;
-    ctx.filter = "blur(40px)";
-    ctx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
-    const gw = Math.round(W*0.78), gh = Math.round(H*0.36);
-    ctx.beginPath();
-    ctx.ellipse(W/2, tableY - gh*0.1, gw/2, gh/2, 0, 0, Math.PI*2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawBase(ctx, W, H, tableY, rgb) {
-    ctx.save();
-    const bw = Math.round(W * 0.78);
-    const bh = Math.round(H * 0.12);
-    const bx = Math.round((W - bw)/2);
-    const by = H - bh;
-
-    roundRect(ctx, bx, by-2, bw, bh, 26);
-    ctx.fillStyle = "#0B0F14"; ctx.fill();
-
-    ctx.beginPath();
-    ellipse(ctx, W/2, by-6, bw*0.43, bh*0.22);
-    ctx.fillStyle = "#0B0F14"; ctx.fill();
-
-    const rg = ctx.createRadialGradient(W/2, by-10, 12, W/2, by-10, bw*0.5);
-    rg.addColorStop(0, "rgba(255,255,255,0.06)");
-    rg.addColorStop(1, "rgba(255,255,255,0.0)");
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = rg;
-    ctx.beginPath(); ellipse(ctx, W/2, by-6, bw*0.43, bh*0.22); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // slot
-    const sw = Math.round(bw * 0.42);
-    roundRect(ctx, Math.round(W/2 - sw/2), by-12, sw, 6, 3);
-    ctx.fillStyle = "#05070A"; ctx.fill();
-
-    // LED indicator
-    ctx.beginPath();
-    ctx.arc(bx + bw - 35, by + Math.round(bh*0.55), 4, 0, Math.PI*2);
-    ctx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
-    ctx.globalAlpha = .9; ctx.fill(); ctx.globalAlpha = 1;
-    ctx.restore();
-  }
-
-  function drawGlassSilhouette(ctx, contours, offsetX, offsetY, rgb) {
-    if (!contours.length) return;
-    ctx.save();
-
-    // Base translucent fill
-    ctx.globalAlpha = 0.10;
-    ctx.fillStyle = "#FFFFFF";
-    ctx.beginPath();
-    contours.forEach(path => {
-      if (!path.length) return;
-      ctx.moveTo(offsetX + path[0].x, offsetY + path[0].y);
-      for (let i=1;i<path.length;i++) ctx.lineTo(offsetX + path[i].x, offsetY + path[i].y);
-      ctx.closePath();
-    });
-    ctx.fill();
-
-    // Outer rim (LED tint)
-    ctx.globalAlpha = 0.20;
-    ctx.strokeStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    contours.forEach(path => {
-      if (!path.length) return;
-      ctx.moveTo(offsetX + path[0].x, offsetY + path[0].y);
-      for (let i=1;i<path.length;i++) ctx.lineTo(offsetX + path[i].x, offsetY + path[i].y);
-      ctx.closePath();
-    });
-    ctx.stroke();
-
-    // Inner highlight (gives “edge thickness”)
-    ctx.globalAlpha = 0.22;
-    ctx.strokeStyle = "rgba(255,255,255,0.85)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    contours.forEach(path => {
-      if (!path.length) return;
-      // inset by 1px visually by offsetting along normal is heavy; cheap trick:
-      // just stroke again with lighter alpha.
-      ctx.moveTo(offsetX + path[0].x, offsetY + path[0].y);
-      for (let i=1;i<path.length;i++) ctx.lineTo(offsetX + path[i].x, offsetY + path[i].y);
-      ctx.closePath();
-    });
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  function drawRing(ctx, ringMask, w, h, x, y, rgb) {
-    const img = new ImageData(w, h);
-    for (let i=0, j=0; i<ringMask.length; i++, j+=4) {
-      if (ringMask[i]) {
-        img.data[j+0] = rgb.r; img.data[j+1] = rgb.g; img.data[j+2] = rgb.b; img.data[j+3] = 255;
-      }
-    }
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.filter = "blur(6px)";
-    ctx.putImageData(img, x, y);
-    ctx.filter = "none";
-    ctx.globalAlpha = 0.9;
-    ctx.putImageData(img, x, y);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
-    ctx.restore();
-  }
-
-  function drawLitArtwork(ctx, img, x, y, w, h, rgb) {
-    ctx.save();
-    // bloom
-    ctx.globalCompositeOperation = "lighter";
-    ctx.shadowColor = `rgba(${rgb.r},${rgb.g},${rgb.b},0.85)`;
-    ctx.shadowBlur = 18;
-    ctx.globalAlpha = 0.65;
-    ctx.drawImage(img, x, y, w, h);
-
-    // white core + subtle tint
-    const t = work.current; t.width = w; t.height = h;
-    const tctx = t.getContext("2d");
-    tctx.clearRect(0,0,w,h);
-    tctx.drawImage(img, 0, 0, w, h);
-    tctx.globalCompositeOperation = "source-in";
-    tctx.fillStyle = "#FFFFFF"; tctx.fillRect(0,0,w,h);
-    tctx.globalCompositeOperation = "source-atop";
-    tctx.globalAlpha = 0.15;
-    tctx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
-    tctx.fillRect(0,0,w,h);
-
-    ctx.shadowBlur = 0;
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-    ctx.drawImage(t, x, y);
-    ctx.restore();
-  }
-
-  // ============ mask + contour utils =========================================
-
-  function getAlphaMask(img, w, h) {
-    const cv = work.current;
-    cv.width = w; cv.height = h;
-    const c = cv.getContext("2d", { willReadFrequently: true });
-    c.clearRect(0,0,w,h);
-    c.drawImage(img, 0, 0, w, h);
-    const d = c.getImageData(0,0,w,h).data;
-    const mask = new Uint8Array(w*h);
-    for (let i=0, p=0; i<d.length; i+=4, p++) mask[p] = d[i+3] > 8 ? 1 : 0;
-    return { mask, w, h };
-  }
-
-  function dilate(src, w, h, R) {
-    if (R <= 0) return src.slice();
-    const dst = new Uint8Array(src.length);
-    for (let y=0; y<h; y++) {
-      for (let x=0; x<w; x++) {
-        let on = 0;
-        for (let j=-R; j<=R && !on; j++) {
-          const yy = y+j; if (yy<0||yy>=h) continue;
-          const yoff = yy*w;
-          for (let i=-R; i<=R; i++) {
-            const xx = x+i; if (xx<0||xx>=w) continue;
-            if (src[yoff+xx]) { on = 1; break; }
-          }
-        }
-        dst[y*w + x] = on;
-      }
-    }
-    return dst;
-  }
-  function subtract(a, b) {
-    const out = new Uint8Array(a.length);
-    for (let i = 0; i < a.length; i++) out[i] = a[i] && !b[i] ? 1 : 0;
-    return out;
-  }
-
-  // Marching-squares style border trace (clockwise) → list of polylines
-  function traceContours(mask, w, h, step=1) {
-    const res = [];
-    const seen = new Uint8Array(mask.length);
-    const inside = (x,y) => x>=0&&y>=0&&x<w&&y<h && mask[y*w+x];
-    for (let y=0; y<h; y+=step) {
-      for (let x=0; x<w; x+=step) {
-        const idx = y*w+x;
-        if (!inside(x,y) || seen[idx]) continue;
-
-        // walk boundary
-        let cx=x, cy=y, dir=0, guard=0;
-        const poly = [];
-        do {
-          if (++guard > w*h*2) break;
-          seen[cy*w+cx]=1;
-          poly.push({x:cx, y:cy});
-
-          const leftDir = (dir+3)&3;
-          const fw = dir===0?[step,0]:dir===1?[0,step]:dir===2?[-step,0]:[0,-step];
-          const lf = leftDir===0?[step,0]:leftDir===1?[0,step]:leftDir===2?[-step,0]:[0,-step];
-
-          const lx = clamp(cx+lf[0],0,w-1);
-          const ly = clamp(cy+lf[1],0,h-1);
-          const fx = clamp(cx+fw[0],0,w-1);
-          const fy = clamp(cy+fw[1],0,h-1);
-
-          if (inside(lx,ly)) dir = leftDir;
-          else if (!inside(fx,fy)) dir = (dir+1)&3;
-          else { cx = fx; cy = fy; }
-        } while (!(Math.abs(cx-x)<=step && Math.abs(cy-y)<=step && dir===0));
-
-        if (poly.length>8) res.push(simplify(poly, 0.75));
-      }
-    }
-    return res;
-  }
-
-  // RDP-ish simplifier for nicer edges
-  function simplify(pts, tol=0.75) {
-    if (pts.length<3) return pts;
-    const out=[pts[0]];
-    for (let i=1;i<pts.length-1;i++) {
-      const a=out[out.length-1], b=pts[i], c=pts[i+1];
-      const area = Math.abs((a.x*(b.y-c.y)+b.x*(c.y-a.y)+c.x*(a.y-b.y))/2);
-      if (area > tol) out.push(b);
-    }
-    out.push(pts[pts.length-1]);
-    return out;
-  }
-
-  // ============ tiny drawing utils ===========================================
-
-  function roundRect(ctx, x,y,w,h,r=8) {
-    const rr = Math.max(0, Math.min(r, Math.min(w,h)/2));
-    ctx.beginPath();
-    ctx.moveTo(x+rr,y);
-    ctx.lineTo(x+w-rr,y);
-    ctx.quadraticCurveTo(x+w,y,x+w,y+rr);
-    ctx.lineTo(x+w,y+h-rr);
-    ctx.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);
-    ctx.lineTo(x+rr,y+h);
-    ctx.quadraticCurveTo(x,y+h,x,y+h-rr);
-    ctx.lineTo(x,y+rr);
-    ctx.quadraticCurveTo(x,y,x+rr,y);
-    ctx.closePath();
-  }
-  function ellipse(ctx,cx,cy,rx,ry){ctx.save();ctx.translate(cx,cy);ctx.scale(rx,ry);ctx.arc(0,0,1,0,Math.PI*2);ctx.restore();}
-  function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
-  function hexToRgb(hex){const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||"");return m?{r:parseInt(m[1],16),g:parseInt(m[2],16),b:parseInt(m[3],16)}:{r:255,g:255,b:255};}
 }

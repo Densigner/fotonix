@@ -6,13 +6,14 @@ import PreviewModalGlass from './PreviewModalGlass';
 import PayPalSDKLoader from '../payments/PayPalSDKLoader';
 import PayPalButton from '../payments/PayPalButton';
 import LEDMockupGlass from '../designers/LEDMockupGlass';
+import LEDMockupGlassCut from '../designers/LEDMockupGlassCut';
 import ImageSlider from '../shared/ImageSlider';
 import { API_URL } from '../../config/environment';
 import { ref as dbRef, set } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { findAcrylicSize, WALL_ACRYLIC_SIZES, DEFAULT_WALL_ACRYLIC_SIZE_KEY, priceToAmount } from '../../data/acrylicSizes';
+import { findAcrylicSize, WALL_ACRYLIC_SIZES, DEFAULT_WALL_ACRYLIC_SIZE_KEY, priceToAmount, isDeskAcrylicSize } from '../../data/acrylicSizes';
 
 // Resolves the ?size= query param set by the landing page into a real
 // { label, price } pair, falling back to the standard 30x30cm wall panel
@@ -1472,14 +1473,21 @@ export default function ProductPage() {
                       <div className="p-4 rounded-lg bg-white/80 border border-white/10 shadow flex flex-col">
                         {/* LED Preview showing how design will look */}
                         <div className="w-full flex justify-center mb-4">
-                          <LEDMockupGlass
-                            src={mockSrc || previewDataUrl}
-                            title="Your Design Preview"
-                            ringExpandPx={14}
-                            ringThicknessPx={10}
-                            platePaddingPx={18}
-                            maxArtWidth={200}
-                          />
+                          {isDeskAcrylicSize(selectedSize.key) ? (
+                            <LEDMockupGlassCut
+                              src={mockSrc || previewDataUrl}
+                              title="Your Design Preview"
+                            />
+                          ) : (
+                            <LEDMockupGlass
+                              src={mockSrc || previewDataUrl}
+                              title="Your Design Preview"
+                              ringExpandPx={14}
+                              ringThicknessPx={10}
+                              platePaddingPx={18}
+                              maxArtWidth={200}
+                            />
+                          )}
                         </div>
                         <div className="flex-1">
                           <h4 className="font-medium text-slate-900">Side-Lit Acrylic Lamp — {selectedSize.label}</h4>
@@ -1554,14 +1562,18 @@ export default function ProductPage() {
           {/* Right: Upload + Fonts + AI */}
           <aside className="lg:col-span-1 space-y-6">
             {/* NEW: Live LED mock-ups */}
-            <LEDMockupGlass
-              src={mockSrc}
-              title="Lamp Preview"
-              ringExpandPx={14}
-              ringThicknessPx={10}
-              platePaddingPx={18}
-              maxArtWidth={260}
-            />
+            {isDeskAcrylicSize(selectedSize.key) ? (
+              <LEDMockupGlassCut src={mockSrc} title="Lamp Preview" />
+            ) : (
+              <LEDMockupGlass
+                src={mockSrc}
+                title="Lamp Preview"
+                ringExpandPx={14}
+                ringThicknessPx={10}
+                platePaddingPx={18}
+                maxArtWidth={260}
+              />
+            )}
 
             {/* Preview thumbnail removed; left Preview & Share button restored */}
 

@@ -29,6 +29,13 @@ export function findAcrylicSize(sizeKey) {
   );
 }
 
+// The desk sign is cut to its own shape; the wall panel is a fixed
+// rectangle — used to decide which mockup preview (cut-to-shape vs plate)
+// the shared designer page should show for the currently-selected size.
+export function isDeskAcrylicSize(sizeKey) {
+  return DESK_ACRYLIC_SIZES.some((s) => s.key === sizeKey);
+}
+
 // "£39.99" -> "39.99", for PayPal amount props etc.
 export function priceToAmount(priceString) {
   return (priceString || '').replace(/[^0-9.]/g, '');
