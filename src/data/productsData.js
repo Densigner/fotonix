@@ -42,6 +42,16 @@ const products = [
     sku: "FTX-STENCIL-001",
     link: "tools/stencil-generator",
     fullWidth: true
+  },
+  {
+    id: 5,
+    name: "Side-lit Acrylic Sign - Desk Mounted",
+    description: "Cut to your own shape and mounted on a weighted base — not a fixed square panel. Perfect for logos, names, and desk or shelf display, from small nameplates to statement pieces.",
+    price: "From £24.99",
+    imagePlaceholder: "/images/products/EdgeLit.png",
+    category: "acrylic-signs",
+    sku: "FTX-ACRYL-DESK-001",
+    link: "affiliate-product-accryl"
   }
 ];
 

@@ -17,6 +17,13 @@ const LUMINA_SIZES = [
   { label: '30 × 50 cm', price: '£69.99' },
 ];
 
+const DESK_ACRYLIC_SIZES = [
+  { label: 'Small · ~6 × 10 cm', price: '£24.99' },
+  { label: 'Medium · ~12 × 18 cm', price: '£34.99' },
+  { label: 'Large · ~20 × 28 cm', price: '£49.99' },
+  { label: 'XL · 30 × 40 cm', price: '£69.99' },
+];
+
 const FAQS = [
   ['Can I choose any shape for my mirror?', "Yes — outline whatever shape you want and we'll cut the mirror to match, with professional edge polishing included."],
   ['Does the mirror fog up in the bathroom?', 'No — the LED Lumina Mirror uses anti-fog technology, so it stays clear even in a steamy bathroom.'],
@@ -51,6 +58,7 @@ function FaqItem({ q, a, isOpen, onToggle }) {
 export default function MainLandingPage() {
   const [openFaq, setOpenFaq] = useState(0);
   const [luminaSize, setLuminaSize] = useState(0);
+  const [deskAcrylicSize, setDeskAcrylicSize] = useState(0);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [quoteForm, setQuoteForm] = useState({ name: '', email: '', phone: '', description: '' });
   const [quoteSubmitted, setQuoteSubmitted] = useState(false);
@@ -64,9 +72,10 @@ export default function MainLandingPage() {
   );
 
   const lumina = products[0];
-  const acrylic = products[1];
+  const wallAcrylic = products[1];
   const customMirror = products[2];
   const stencil = products[3];
+  const deskAcrylic = products[4];
 
   const goToProduct = (product) => {
     if (product.isCustomQuote) {
@@ -224,6 +233,14 @@ export default function MainLandingPage() {
           border: 1px solid var(--line); border-radius: 20px;
           padding: 32px 36px; box-shadow: 0 30px 60px -30px rgba(0,0,0,0.7);
         }
+        .mlp-plain-card {
+          max-width: 620px; margin: 0 auto; text-align: center;
+          background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+          padding: 40px 44px; box-shadow: 0 30px 60px -30px rgba(0,0,0,0.5);
+        }
+        .mlp-plain-card .mlp-sku { justify-content: center; }
+        .mlp-plain-card p.mlp-desc { margin-left: auto; margin-right: auto; }
+        .mlp-plain-card .mlp-banner-foot { justify-content: center; }
         .mlp-banner-card.mlp-align-right { margin: 0 24px 0 auto; text-align: right; }
         .mlp-banner-card.mlp-align-right .mlp-eyebrow { flex-direction: row-reverse; }
         .mlp-banner-card .mlp-sku { font-size: 11px; letter-spacing: 0.08em; color: var(--ink-softer); text-transform: uppercase; margin: 16px 0 8px; font-family: var(--body); font-weight: 600; }
@@ -357,13 +374,14 @@ export default function MainLandingPage() {
         <div className="mlp-wrap">
           <div className="mlp-section-head">
             <span className="mlp-eyebrow">Shop</span>
-            <h2>Four ways to light up your space</h2>
+            <h2>Five ways to light up your space</h2>
             <p>Real products, real prices — jump straight to any of them.</p>
           </div>
 
           <div className="mlp-quicklinks">
             <a className="mlp-quicklink" href="#lumina-banner"><span className="mlp-qdot" style={{ background: '#00f5d4' }} />{lumina.name.split(' - ')[0].split(' — ')[0]}</a>
-            <a className="mlp-quicklink" href="#acrylic-banner"><span className="mlp-qdot" style={{ background: '#ec4899' }} />Acrylic Designer</a>
+            <a className="mlp-quicklink" href="#acrylic-banner"><span className="mlp-qdot" style={{ background: '#ec4899' }} />Acrylic Sign (Desk)</a>
+            <a className="mlp-quicklink" href="#wall-acrylic"><span className="mlp-qdot" style={{ background: '#f5f3ff' }} />Acrylic Panel (Wall)</a>
             <a className="mlp-quicklink" href="#mirror-banner"><span className="mlp-qdot" style={{ background: '#8b5cf6' }} />Custom Shape Mirror</a>
           </div>
 
@@ -418,14 +436,42 @@ export default function MainLandingPage() {
         <div className="mlp-acrylic-media" />
         <div className="mlp-wrap">
           <div className="mlp-banner-card">
-            <span className="mlp-banner-badge cyan">Customisable</span>
+            <span className="mlp-banner-badge cyan">Cut To Shape · Desk Mounted</span>
             <span className="mlp-eyebrow">Made By A Real Customer</span>
-            <div className="mlp-sku">{acrylic.sku}</div>
-            <h2>{acrylic.name}</h2>
-            <p className="mlp-desc">This "Glow Gossip" podcast sign was designed and lit entirely through our tool — your own logo, name, or wording, edge-lit and glowing on your desk or wall.</p>
+            <div className="mlp-sku">{deskAcrylic.sku}</div>
+            <h2>{deskAcrylic.name}</h2>
+            <p className="mlp-desc">This "Glow Gossip" podcast sign was designed and lit entirely through our tool — your own logo, name, or wording, cut to shape and mounted on a weighted base for your desk or shelf.</p>
+            <div className="mlp-size-row">
+              {DESK_ACRYLIC_SIZES.map((s, i) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  className="mlp-size-pill"
+                  data-active={deskAcrylicSize === i}
+                  onClick={() => setDeskAcrylicSize(i)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
             <div className="mlp-banner-foot">
-              <span className="mlp-price">{acrylic.price}</span>
-              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(acrylic); }}>Start Designing →</a>
+              <span className="mlp-price">{DESK_ACRYLIC_SIZES[deskAcrylicSize].price}</span>
+              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(deskAcrylic); }}>Start Designing →</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="wall-acrylic" style={{ paddingTop: 0 }}>
+        <div className="mlp-wrap">
+          <div className="mlp-plain-card">
+            <span className="mlp-banner-badge violet">Wall Mounted · Fixed 30×30cm</span>
+            <div className="mlp-sku">{wallAcrylic.sku}</div>
+            <h2>{wallAcrylic.name}</h2>
+            <p className="mlp-desc">A fixed-size square panel, side-lit and mounted flat on the wall — not cut to shape like the desk sign above. Real photography of this one is coming soon.</p>
+            <div className="mlp-banner-foot">
+              <span className="mlp-price">{wallAcrylic.price}</span>
+              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(wallAcrylic); }}>Start Designing →</a>
             </div>
           </div>
         </div>
