@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import products from '../../data/productsData';
+import { WALL_ACRYLIC_SIZES, DESK_ACRYLIC_SIZES } from '../../data/acrylicSizes';
 import bebasFontUrl from '../affiliate/fonts/BebasNeue-Regular.woff2';
 import plexFontUrl from '../affiliate/fonts/IBMPlexSans-Regular.woff2';
 import heroImage from '../affiliate/image/affiliate-hero.jpg';
@@ -16,21 +17,6 @@ const LUMINA_SIZES = [
   { label: '15 × 20 cm', price: '£29.99' },
   { label: '20 × 30 cm', price: '£44.99' },
   { label: '30 × 50 cm', price: '£69.99' },
-];
-
-const DESK_ACRYLIC_SIZES = [
-  { label: 'Small · ~6 × 10 cm', price: '£24.99' },
-  { label: 'Medium · ~12 × 18 cm', price: '£34.99' },
-  { label: 'Large · ~20 × 28 cm', price: '£49.99' },
-  { label: 'XL · 30 × 40 cm', price: '£69.99' },
-];
-
-// Priced off the £29.99 / 30x30cm rate (~£0.0333/cm²) at common panel sizes.
-const WALL_ACRYLIC_SIZES = [
-  { label: '20 × 30 cm', price: '£19.99' },
-  { label: '30 × 30 cm', price: '£29.99' },
-  { label: '30 × 40 cm', price: '£39.99' },
-  { label: '30 × 50 cm', price: '£49.99' },
 ];
 
 const FAQS = [
@@ -87,14 +73,20 @@ export default function MainLandingPage() {
   const stencil = products[3];
   const deskAcrylic = products[4];
 
-  const goToProduct = (product) => {
+  const goToProduct = (product, sizeKey) => {
     if (product.isCustomQuote) {
       setShowQuoteModal(true);
       return;
     }
     const href = computeProductHref(product);
     if (href) {
-      window.location.href = href;
+      // The acrylic designer route is shared by both acrylic products and
+      // reads ?size= to show the size/price actually picked on this page,
+      // rather than always showing its old hardcoded 30x30cm default.
+      const finalHref = sizeKey
+        ? `/?size=${encodeURIComponent(sizeKey)}${href.startsWith('/#') ? href.slice(1) : href}`
+        : href;
+      window.location.href = finalHref;
       setTimeout(() => window.scrollTo(0, 0), 50);
     }
   };
@@ -466,7 +458,7 @@ export default function MainLandingPage() {
             </div>
             <div className="mlp-banner-foot">
               <span className="mlp-price">{DESK_ACRYLIC_SIZES[deskAcrylicSize].price}</span>
-              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(deskAcrylic); }}>Start Designing →</a>
+              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(deskAcrylic, DESK_ACRYLIC_SIZES[deskAcrylicSize].key); }}>Start Designing →</a>
             </div>
           </div>
         </div>
@@ -496,7 +488,7 @@ export default function MainLandingPage() {
             </div>
             <div className="mlp-banner-foot">
               <span className="mlp-price">{WALL_ACRYLIC_SIZES[wallAcrylicSize].price}</span>
-              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(wallAcrylic); }}>Start Designing →</a>
+              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(wallAcrylic, WALL_ACRYLIC_SIZES[wallAcrylicSize].key); }}>Start Designing →</a>
             </div>
           </div>
         </div>

@@ -12,6 +12,19 @@ import { ref as dbRef, set } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { findAcrylicSize, WALL_ACRYLIC_SIZES, DEFAULT_WALL_ACRYLIC_SIZE_KEY, priceToAmount } from '../../data/acrylicSizes';
+
+// Resolves the ?size= query param set by the landing page into a real
+// { label, price } pair, falling back to the standard 30x30cm wall panel
+// for anyone landing here directly without a size chosen upstream.
+function resolveAcrylicSize() {
+  if (typeof window === 'undefined') {
+    return WALL_ACRYLIC_SIZES.find((s) => s.key === DEFAULT_WALL_ACRYLIC_SIZE_KEY);
+  }
+  const params = new URLSearchParams(window.location.search);
+  const found = findAcrylicSize(params.get('size'));
+  return found || WALL_ACRYLIC_SIZES.find((s) => s.key === DEFAULT_WALL_ACRYLIC_SIZE_KEY);
+}
 
 // ============================================
 // Acrylic Reviews Section Component
@@ -118,10 +131,10 @@ function AcrylicReviewsSection() {
 
 // Inline fallback header so the file compiles even if ./Header is missing.
 // Replace <AppHeader /> with your own Header component later if desired.
-const AppHeader = () => (
+const AppHeader = ({ sizeLabel }) => (
   <header className="sticky top-0 z-30 w-full border-b border-white/10 bg-slate-900/70 backdrop-blur">
     <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-      <div className="text-xl font-semibold tracking-tight text-slate-100">Fotonix — Side-lit Acrylic Designer 30cm X 30cm</div>
+      <div className="text-xl font-semibold tracking-tight text-slate-100">Fotonix — Side-lit Acrylic Designer {sizeLabel}</div>
       <div className="text-slate-300 text-xs">Beta</div>
     </div>
   </header>
@@ -196,6 +209,7 @@ export default function ProductPage() {
   const { user, currentUser } = useAuth();
   const canvasRef = useRef(null);
   const fabricCanvasRef = useRef(null);
+  const [selectedSize] = useState(resolveAcrylicSize);
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [ready, setReady] = useState(false);
@@ -254,14 +268,14 @@ export default function ProductPage() {
         paypalOrderId: paypalDetails?.id || paypalDetails?.orderID || null,
         paypalStatus: paypalDetails?.status || 'COMPLETED',
         pricing: {
-          total: '34.99',
-          subtotal: '34.99',
+          total: priceToAmount(selectedSize.price),
+          subtotal: priceToAmount(selectedSize.price),
           deliveryFee: '0.00',
           currency: 'GBP'
         },
         designImageUrl,
         metadata: {
-          productSize: '30cm x 30cm',
+          productSize: selectedSize.label,
           productDescription: 'Premium laser-engraved acrylic with RGB LED base',
           appControlled: true, // Indicates product is app-controlled
           appLink: 'https://fotonix.co.uk/app' // Link to the control app
@@ -1387,7 +1401,7 @@ export default function ProductPage() {
           </div>
         </div>
       )}
-      <AppHeader />
+      <AppHeader sizeLabel={selectedSize.label} />
       {/* Ensure PayPal SDK is injected when this page mounts */}
       <PayPalSDKLoader onLoad={() => { /* PayPal SDK loaded */ }} />
 
@@ -1468,15 +1482,15 @@ export default function ProductPage() {
                           />
                         </div>
                         <div className="flex-1">
-                          <h4 className="font-medium text-slate-900">Side-Lit Acrylic Lamp</h4>
+                          <h4 className="font-medium text-slate-900">Side-Lit Acrylic Lamp — {selectedSize.label}</h4>
                           <p className="text-sm text-slate-600">Premium laser-engraved acrylic with LED base. Your design illuminated beautifully.</p>
-                          <div className="mt-3 text-2xl font-bold text-slate-900">£34.99</div>
+                          <div className="mt-3 text-2xl font-bold text-slate-900">{selectedSize.price}</div>
                         </div>
                         {/* Product summary — shown above the PayPal button */}
                         <div className="mt-4 p-3 rounded bg-white/90 text-slate-900 border border-white/10">
-                          <div className="text-base font-semibold">Side-Lit Acrylic Lamp</div>
+                          <div className="text-base font-semibold">Side-Lit Acrylic Lamp — {selectedSize.label}</div>
                           <div className="text-sm text-slate-600 mt-1">Custom engraved acrylic with RGB LED base</div>
-                          <div className="mt-2 text-xl font-bold">£34.99</div>
+                          <div className="mt-2 text-xl font-bold">{selectedSize.price}</div>
                         </div>
                         
                         {/* Show success message or PayPal button */}
@@ -1501,9 +1515,9 @@ export default function ProductPage() {
                         ) : (
                           <div className="mt-4 block w-full" style={{ display: 'block', minWidth: 200 }}>
                             {uid ? (
-                              <PayPalButton 
-                                amount="34.99" 
-                                productName="Fotonix Side-Lit Acrylic Lamp" 
+                              <PayPalButton
+                                amount={priceToAmount(selectedSize.price)}
+                                productName={`Fotonix Side-Lit Acrylic Lamp — ${selectedSize.label}`}
                                 onSuccess={async (details) => {
                                   console.log('PayPal payment successful:', details);
                                   await saveAcrylicOrder(details);
