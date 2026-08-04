@@ -11,6 +11,12 @@ import luminaBgPoster from './image/lumina-bg-poster.jpg';
 
 const HERO_GRID_PALETTE = ['#00f5d4', '#7b2cbf', '#ff2d95', '#8b5cf6', '#ec4899', '#4f46e5'];
 
+const LUMINA_SIZES = [
+  { label: '15 × 20 cm', price: '£29.99' },
+  { label: '20 × 30 cm', price: '£44.99' },
+  { label: '30 × 50 cm', price: '£69.99' },
+];
+
 const FAQS = [
   ['Can I choose any shape for my mirror?', "Yes — outline whatever shape you want and we'll cut the mirror to match, with professional edge polishing included."],
   ['Does the mirror fog up in the bathroom?', 'No — the LED Lumina Mirror uses anti-fog technology, so it stays clear even in a steamy bathroom.'],
@@ -44,6 +50,7 @@ function FaqItem({ q, a, isOpen, onToggle }) {
 
 export default function MainLandingPage() {
   const [openFaq, setOpenFaq] = useState(0);
+  const [luminaSize, setLuminaSize] = useState(0);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [quoteForm, setQuoteForm] = useState({ name: '', email: '', phone: '', description: '' });
   const [quoteSubmitted, setQuoteSubmitted] = useState(false);
@@ -223,6 +230,11 @@ export default function MainLandingPage() {
         .mlp-banner-card h2 { font-size: clamp(28px, 4.2vw, 42px); margin: 0 0 16px; }
         .mlp-banner-card p.mlp-desc { color: var(--ink-soft); font-size: 15.5px; line-height: 1.65; margin: 0 0 26px; max-width: 46ch; }
         .mlp-banner-card.mlp-align-right p.mlp-desc { margin-left: auto; }
+        .mlp-size-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 18px; }
+        .mlp-banner-card.mlp-align-right .mlp-size-row { justify-content: flex-end; }
+        .mlp-size-pill { font-family: var(--body); font-size: 12.5px; font-weight: 600; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); color: var(--ink-soft); cursor: pointer; transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease; }
+        .mlp-size-pill:hover { border-color: var(--cyan); color: var(--paper); }
+        .mlp-size-pill[data-active="true"] { border-color: var(--cyan); background: rgba(0,245,212,0.1); color: var(--paper); }
         .mlp-banner-foot { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 4px; }
         .mlp-banner-card.mlp-align-right .mlp-banner-foot { justify-content: flex-end; }
         .mlp-banner-foot .mlp-price { font-family: var(--display); font-size: 26px; background: linear-gradient(90deg, var(--cyan), var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -377,8 +389,21 @@ export default function MainLandingPage() {
             <div className="mlp-sku">{lumina.sku}</div>
             <h2>{lumina.name}</h2>
             <p className="mlp-desc">This Lumina Mirror lights up Amelia's bedroom every night — reflective glass, edge lighting, ready in days.</p>
+            <div className="mlp-size-row">
+              {LUMINA_SIZES.map((s, i) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  className="mlp-size-pill"
+                  data-active={luminaSize === i}
+                  onClick={() => setLuminaSize(i)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
             <div className="mlp-banner-foot">
-              <span className="mlp-price">{lumina.price}</span>
+              <span className="mlp-price">{LUMINA_SIZES[luminaSize].price}</span>
               <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(lumina); }}>View Product →</a>
             </div>
             <a className="mlp-video-link" href="#" target="_blank" rel="noopener noreferrer">
