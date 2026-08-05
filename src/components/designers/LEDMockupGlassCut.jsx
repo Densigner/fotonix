@@ -32,6 +32,7 @@ export default function LEDMockupGlassCut({
   const canvasRef = useRef(null);
   const bgSnapRef = useRef(null);
   const shapeRef = useRef(null);
+  const imgRef = useRef(null);
 
   const color = colors[idx % colors.length];
 
@@ -41,6 +42,9 @@ export default function LEDMockupGlassCut({
   const PIVOT_X = W / 2;
   const EYE_Y = H * 0.30;
   const MARGIN = 26;
+  // A mirror's cut margin reads as roughly 2cm at the acrylic's MARGIN — the
+  // brief is 0.5cm max, so this stays proportionally tight to that (~1/4).
+  const MIRROR_MARGIN = 7;
   const EDGE_W = 9;
   const PADD = MARGIN + 8;
   const BLOOM = 96;
@@ -57,6 +61,7 @@ export default function LEDMockupGlassCut({
 
     if (!src) {
       shapeRef.current = null;
+      imgRef.current = null;
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, W, H);
       return;
@@ -66,22 +71,34 @@ export default function LEDMockupGlassCut({
     img.crossOrigin = "anonymous";
     img.onload = () => {
       if (cancelled) return;
-      shapeRef.current = buildShape(img);
+      imgRef.current = img;
+      shapeRef.current = buildShape(img, material);
       renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg, material);
     };
-    img.onerror = () => { shapeRef.current = null; };
+    img.onerror = () => { shapeRef.current = null; imgRef.current = null; };
     img.src = src;
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
+  // The cut margin itself differs by material (mirror's is much tighter),
+  // so a material change has to rebuild the shape, not just re-render it —
+  // re-uses the already-loaded image rather than re-fetching `src`.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imgRef.current) return;
+    shapeRef.current = buildShape(imgRef.current, material);
+    renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg, material);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [material]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !shapeRef.current) return;
     renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg, material);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [color, tiltDeg, material]);
+  }, [color, tiltDeg]);
 
   // ==== geometry / drawing pipeline ==========================================
   // (module-scope-independent — reads only the constants above and its args,
@@ -173,14 +190,15 @@ export default function LEDMockupGlassCut({
     return o;
   }
 
-  function buildShape(img) {
+  function buildShape(img, materialNow) {
     const art = cropToTightAlpha(img, 6);
     const sc = Math.min(600 / art.width, 470 / art.height, 1.7);
     const artS = cv(art.width * sc, art.height * sc);
     artS.getContext("2d").drawImage(art, 0, 0, artS.width, artS.height);
 
-    const outer = blurCopy(dilate(artS, MARGIN, PADD), 1.1);
-    const inner = blurCopy(dilate(artS, MARGIN - EDGE_W, PADD), 1.1);
+    const margin = materialNow === "mirror" ? MIRROR_MARGIN : MARGIN;
+    const outer = blurCopy(dilate(artS, margin, PADD), 1.1);
+    const inner = blurCopy(dilate(artS, margin - EDGE_W, PADD), 1.1);
 
     const ring = cv(outer.width, outer.height);
     const rc = ring.getContext("2d");
