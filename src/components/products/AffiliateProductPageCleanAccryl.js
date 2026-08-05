@@ -498,6 +498,28 @@ export default function ProductPage() {
   const [mockSrc, setMockSrc] = useState(null);
   // autoRing state removed
 
+  // `buildMirrorFinish` adds a full-canvas translucent rect + diagonal sheen
+  // + border purely so the editor itself looks glassy while designing —
+  // they're marked `_mirrorLayer` and are already excluded from
+  // vectorization/selection/history elsewhere. `toDataURL` doesn't know to
+  // skip them though, so a raw snapshot bakes that faint full-canvas fill
+  // and sheen into the "design" image — which is exactly what turns the cut
+  // line into a plain rectangle and washes out the real artwork once it
+  // hits the glass mockup (that layer becomes 100% of what gets detected as
+  // opaque content). Hide them for the duration of the capture only.
+  function captureDesignOnly(c, opts) {
+    const mirrorLayers = c.getObjects().filter((o) => o._mirrorLayer === true);
+    const prevVisible = mirrorLayers.map((o) => o.visible);
+    mirrorLayers.forEach((o) => { o.visible = false; });
+    c.renderAll();
+    try {
+      return c.toDataURL(opts);
+    } finally {
+      mirrorLayers.forEach((o, i) => { o.visible = prevVisible[i]; });
+      c.renderAll();
+    }
+  }
+
   // capture a snapshot of the Fabric canvas (scale down if requested)
   async function captureSnapshot({ maxWidth = 1200 } = {}) {
     const c = fabricCanvasRef.current; if (!c) throw new Error('Canvas not ready');
@@ -505,7 +527,7 @@ export default function ProductPage() {
       // compute multiplier to limit width
       const w = c.getWidth();
       const multiplier = (maxWidth && w > maxWidth) ? (maxWidth / w) : 1;
-      const dataUrl = c.toDataURL({ format: 'png', multiplier });
+      const dataUrl = captureDesignOnly(c, { format: 'png', multiplier });
       return dataUrl;
     } catch (e) {
       console.warn('captureSnapshot failed', e);
@@ -528,7 +550,7 @@ export default function ProductPage() {
       pending = false;
       try {
         const w = Math.max(1, c.getWidth() || 900);
-        const data = c.toDataURL({ format: "png", multiplier: Math.min(1, 500 / w) });
+        const data = captureDesignOnly(c, { format: "png", multiplier: Math.min(1, 500 / w) });
         setMockSrc(data);
       } catch (e) {
         // swallow — non-critical
