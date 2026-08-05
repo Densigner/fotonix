@@ -26,6 +26,7 @@ export default function LEDMockupGlassCut({
   initialIndex = 0,
   title = "LED Preview",
   tiltDeg = 4,
+  material = "acrylic",
 }) {
   const [idx, setIdx] = useState(initialIndex);
   const canvasRef = useRef(null);
@@ -66,7 +67,7 @@ export default function LEDMockupGlassCut({
     img.onload = () => {
       if (cancelled) return;
       shapeRef.current = buildShape(img);
-      renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg);
+      renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg, material);
     };
     img.onerror = () => { shapeRef.current = null; };
     img.src = src;
@@ -78,9 +79,9 @@ export default function LEDMockupGlassCut({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !shapeRef.current) return;
-    renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg);
+    renderScene(canvas, bgSnapRef.current, shapeRef.current, hexToRgb(color), tiltDeg, material);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [color, tiltDeg]);
+  }, [color, tiltDeg, material]);
 
   // ==== geometry / drawing pipeline ==========================================
   // (module-scope-independent — reads only the constants above and its args,
@@ -190,10 +191,76 @@ export default function LEDMockupGlassCut({
     return { artS, outer, ring, mw: outer.width, mh: outer.height };
   }
 
-  function buildPanel(shape, rgb, bgSnap, sx, sy) {
+  // A mirror is opaque, so the same LED strip that runs light through clear
+  // acrylic instead has to shine from behind it — there's no engraving-glow,
+  // no lit cut edge, just a reflective face and a soft halo spilling out
+  // around the perimeter from behind the shape ("back-lit" vs the acrylic
+  // panel's "edge-lit"). Kept as its own function rather than more branches
+  // threaded through the acrylic path below, since almost nothing is shared.
+  function buildMirrorPanel(shape, rgb, cw, ch, ox, oy) {
+    const body = cv(cw, ch), b = body.getContext("2d");
+    const base = b.createLinearGradient(0, oy, 0, oy + shape.mh);
+    base.addColorStop(0, "#e9eef1");
+    base.addColorStop(0.45, "#bcc5ca");
+    base.addColorStop(0.55, "#9aa4a9");
+    base.addColorStop(1, "#7c868b");
+    b.fillStyle = base;
+    b.fillRect(0, 0, cw, ch);
+
+    // Diagonal catch-light, like a real mirror surface reflecting a bright
+    // source at an angle — this is what reads as "reflective" rather than
+    // "flat grey", since there's no scene to actually reflect.
+    const sheen = b.createLinearGradient(ox, oy + shape.mh, ox + shape.mw, oy);
+    sheen.addColorStop(0.00, "rgba(255,255,255,0)");
+    sheen.addColorStop(0.36, "rgba(255,255,255,0)");
+    sheen.addColorStop(0.48, "rgba(255,255,255,0.30)");
+    sheen.addColorStop(0.55, "rgba(255,255,255,0.55)");
+    sheen.addColorStop(0.62, "rgba(255,255,255,0.30)");
+    sheen.addColorStop(0.74, "rgba(255,255,255,0)");
+    sheen.addColorStop(1.00, "rgba(255,255,255,0)");
+    b.fillStyle = sheen;
+    b.fillRect(0, 0, cw, ch);
+
+    b.globalCompositeOperation = "destination-in";
+    b.drawImage(shape.outer, ox, oy);
+    b.globalCompositeOperation = "source-over";
+
+    const glow = cv(cw, ch), g = glow.getContext("2d");
+    g.globalCompositeOperation = "lighter";
+    const ringGlow = tint(shape.ring, rgba(rgb, 1), 1);
+    g.filter = "blur(70px)"; g.globalAlpha = 0.55; g.drawImage(ringGlow, ox, oy);
+    g.filter = "blur(30px)"; g.globalAlpha = 0.50; g.drawImage(ringGlow, ox, oy);
+    g.filter = "blur(10px)"; g.globalAlpha = 0.35; g.drawImage(ringGlow, ox, oy);
+    g.filter = "none"; g.globalAlpha = 1;
+
+    // The blur radii above are tuned for the halo spilling into the air
+    // around the mirror — on a small shape that same blur reaches back in
+    // and re-floods the whole face, burying the reflective body layer under
+    // solid glow. Cut the interior back out so the light only shows where a
+    // backlit mirror would actually show it: past the edge, not on the glass.
+    g.globalCompositeOperation = "destination-out";
+    g.drawImage(shape.outer, ox, oy);
+    g.globalCompositeOperation = "source-over";
+
+    g.globalCompositeOperation = "destination-in";
+    const fall = g.createLinearGradient(0, oy + shape.mh, 0, oy - 20);
+    fall.addColorStop(0, "rgba(0,0,0,1)");
+    fall.addColorStop(0.6, "rgba(0,0,0,0.92)");
+    fall.addColorStop(1, "rgba(0,0,0,0.82)");
+    g.fillStyle = fall; g.fillRect(0, 0, cw, ch);
+
+    return { body, glow, cw, ch };
+  }
+
+  function buildPanel(shape, rgb, bgSnap, sx, sy, material) {
     const cw = shape.mw + BLOOM * 2, ch = shape.mh + BLOOM * 2;
     const ox = BLOOM, oy = BLOOM;
     const ax = BLOOM + PADD, ay = BLOOM + PADD;
+
+    if (material === "mirror") {
+      return buildMirrorPanel(shape, rgb, cw, ch, ox, oy);
+    }
+
     const hot = mixWhite(rgb, 0.45);
     const sinTilt = Math.sin(tiltDeg * Math.PI / 180);
 
@@ -386,7 +453,7 @@ export default function LEDMockupGlassCut({
     ctx.restore();
   }
 
-  function renderScene(canvas, bgSnap, shape, rgb, tiltDegNow) {
+  function renderScene(canvas, bgSnap, shape, rgb, tiltDegNow, materialNow) {
     if (!shape) return;
     const ctx = canvas.getContext("2d");
     const tilt = tiltDegNow * Math.PI / 180, cosT = Math.cos(tilt), sinT = Math.sin(tilt);
@@ -441,7 +508,7 @@ export default function LEDMockupGlassCut({
     bgCtx.clearRect(0, 0, W, H);
     bgCtx.drawImage(canvas, 0, 0);
 
-    const p = buildPanel(shape, rgb, bgSnap, layerLeft, layerTop);
+    const p = buildPanel(shape, rgb, bgSnap, layerLeft, layerTop, materialNow);
     const k = 0.42;
     const refl = cv(cw, ch), rc = refl.getContext("2d");
     rc.translate(0, ch); rc.scale(1, -1);

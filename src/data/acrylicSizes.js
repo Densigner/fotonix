@@ -40,3 +40,32 @@ export function isDeskAcrylicSize(sizeKey) {
 export function priceToAmount(priceString) {
   return (priceString || '').replace(/[^0-9.]/g, '');
 }
+
+// The desk sign ("Custom Shape Sign") is cut to whatever shape the customer
+// draws, in one of two materials. They're lit completely differently — clear
+// acrylic carries LED light through the sheet and out at the cut edges and
+// any engraving ("edge-lit"); a mirror is opaque, so the same LED strip
+// instead shines from behind it, spilling a soft halo out around the
+// perimeter ("back-lit"). The material name is shown to the customer, so it
+// has to reflect which of those it actually is, not a generic "lit" label.
+export const MATERIALS = [
+  { key: 'acrylic', label: 'Acrylic', lightingLabel: 'Edge-Lit Acrylic' },
+  { key: 'mirror', label: 'Mirror', lightingLabel: 'Back-Lit Mirror' },
+];
+export const DEFAULT_MATERIAL_KEY = 'acrylic';
+
+export function findMaterial(materialKey) {
+  return MATERIALS.find((m) => m.key === materialKey) || MATERIALS.find((m) => m.key === DEFAULT_MATERIAL_KEY);
+}
+
+// Mirror costs more than acrylic at the same size — heavier glass, silvering,
+// and a much higher breakage risk in transit.
+export const MIRROR_PRICE_MULTIPLIER = 1.4;
+
+// Applies the mirror premium to a base (acrylic) "£24.99"-style price string.
+export function priceForMaterial(basePriceString, materialKey) {
+  const base = parseFloat(priceToAmount(basePriceString));
+  if (!isFinite(base)) return basePriceString;
+  const amount = materialKey === 'mirror' ? base * MIRROR_PRICE_MULTIPLIER : base;
+  return `£${amount.toFixed(2)}`;
+}
