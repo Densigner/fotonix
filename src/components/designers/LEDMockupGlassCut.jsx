@@ -225,6 +225,18 @@ export default function LEDMockupGlassCut({
     b.drawImage(shape.outer, ox, oy);
     b.globalCompositeOperation = "source-over";
 
+    // The design itself still needs to read on the face — on acrylic it's
+    // the lit white engraving; a mirror doesn't glow, so the same detail
+    // shows as a dark etched mark against the reflective silver instead.
+    // "source-atop" keeps it from ever drawing past the silhouette above.
+    const ax = BLOOM + PADD, ay = BLOOM + PADD;
+    const etched = tint(shape.artS, "#454b4f", 1);
+    b.globalCompositeOperation = "source-atop";
+    b.filter = "blur(1.5px)"; b.globalAlpha = 0.35; b.drawImage(etched, ax, ay);
+    b.filter = "none";        b.globalAlpha = 0.85; b.drawImage(etched, ax, ay);
+    b.globalAlpha = 1;
+    b.globalCompositeOperation = "source-over";
+
     const glow = cv(cw, ch), g = glow.getContext("2d");
     g.globalCompositeOperation = "lighter";
     const ringGlow = tint(shape.ring, rgba(rgb, 1), 1);
