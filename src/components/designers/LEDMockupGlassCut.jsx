@@ -25,7 +25,7 @@ export default function LEDMockupGlassCut({
   colors = ["#22D3EE", "#34D399", "#A78BFA", "#F472B6", "#F59E0B", "#EF4444", "#FFFFFF"],
   initialIndex = 0,
   title = "LED Preview",
-  tiltDeg = 13,
+  tiltDeg = 4,
 }) {
   const [idx, setIdx] = useState(initialIndex);
   const canvasRef = useRef(null);
@@ -327,6 +327,46 @@ export default function LEDMockupGlassCut({
     ctx.restore();
   }
 
+  function roundRectPath(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+
+  function drawStand(ctx, rgb, panelW) {
+    const bw = Math.max(170, Math.min(300, panelW * 0.62));
+    const bh = 48;
+    const bx = W / 2 - bw / 2;
+    const by = PANEL_BOTTOM - 8;
+    ctx.save();
+    roundRectPath(ctx, bx, by, bw, bh, 22);
+    ctx.fillStyle = "#0B0F14";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(W / 2, by, bw * 0.46, 11, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#12161d";
+    ctx.fill();
+    const rg = ctx.createRadialGradient(W / 2, by - 4, 8, W / 2, by, bw * 0.5);
+    rg.addColorStop(0, rgba(mixWhite(rgb, 0.7), 0.14));
+    rg.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.globalAlpha = 0.8; ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.ellipse(W / 2, by, bw * 0.46, 11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    const sw = Math.min(bw * 0.5, 150);
+    roundRectPath(ctx, W / 2 - sw / 2, by - 5, sw, 9, 3);
+    ctx.fillStyle = "#05070A";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(bx + bw - 22, by + bh * 0.6, 3.4, 0, Math.PI * 2);
+    ctx.fillStyle = rgba(rgb, 0.95);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawTableLight(ctx, rgb, panelW) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
@@ -358,16 +398,29 @@ export default function LEDMockupGlassCut({
       return [PIVOT_X + x * s, EYE_Y + (y - EYE_Y) * s, s];
     }
     function warpBlit(dctx, source, topY, depth, op, alpha) {
-      const w = source.width, h = source.height, cx = w / 2, step = 2;
-      dctx.save();
-      dctx.globalCompositeOperation = op || "source-over";
-      if (alpha != null) dctx.globalAlpha = alpha;
+      // Slices the layer into thin vertical strips and re-projects each one
+      // through `proj` to fake real keystone perspective. A small, constant
+      // per-strip padding used to be enough to hide the seams between
+      // strips, but that overlap isn't constant in screen space (perspective
+      // compresses it unevenly across the width), which left a fine but
+      // very visible vertical banding — most obvious as bright streaks
+      // straight through high-contrast art. A larger, fixed overlap plus a
+      // small final blur removes it without visibly softening the design.
+      const w = source.width, h = source.height, cx = w / 2, step = 1;
+      const off = cv(dctx.canvas.width, dctx.canvas.height);
+      const octx = off.getContext("2d");
       for (let i = 0; i < w; i += step) {
         const a = proj(i - cx, depth, topY);
         const bpt = proj(i + step - cx, depth, topY);
-        const dw = Math.max(1, bpt[0] - a[0]) + 0.7;
-        dctx.drawImage(source, i, 0, step, h, a[0], a[1], dw, h * a[2]);
+        const dw = Math.max(1, bpt[0] - a[0]) + 4;
+        octx.drawImage(source, i, 0, step, h, a[0] - 2, a[1], dw, h * a[2]);
       }
+      dctx.save();
+      dctx.globalCompositeOperation = op || "source-over";
+      if (alpha != null) dctx.globalAlpha = alpha;
+      dctx.filter = "blur(0.6px)";
+      dctx.drawImage(off, 0, 0);
+      dctx.filter = "none";
       dctx.restore();
     }
 
@@ -382,6 +435,7 @@ export default function LEDMockupGlassCut({
     drawRoom(ctx, rgb, panelTop, shape.mw);
     drawContactShadow(ctx, shape.mw);
     drawTableLight(ctx, rgb, shape.mw);
+    drawStand(ctx, rgb, shape.mw);
 
     const bgCtx = bgSnap.getContext("2d");
     bgCtx.clearRect(0, 0, W, H);
