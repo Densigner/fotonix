@@ -129,7 +129,7 @@ export default function HeroRedesign() {
 
   {/* Endorsed.Review badge (kept as your SVG file) */}
   <a
-    href="https://endorsed.review/biz/fotonix"
+    href="https://endorsed.review/#/biz/fotonix"
     target="_blank"
     rel="noopener noreferrer"
     className="inline-flex items-center endorsed-badge"
@@ -149,14 +149,14 @@ export default function HeroRedesign() {
 
   {/* Option B: compact rating chip — container + separate links to avoid nested anchors */}
   <div className="group inline-flex items-center gap-1.5 rounded-full border border-gray-300/70 bg-white/70 px-2.5 py-1 text-sm font-semibold text-gray-900 shadow-sm backdrop-blur transition hover:border-yellow-400 hover:bg-white">
-    <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-1 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD43B] focus-visible:ring-offset-2">
+    <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-1 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD43B] focus-visible:ring-offset-2">
       <svg className="h-3.5 w-3.5 text-yellow-400 transition group-hover:scale-105" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 .8l3.3 6.9 7.6 1.1-5.5 5.3 1.3 7.6L12 18.9 5.3 21.7 6.6 14 1.1 8.8l7.6-1.1L12 .8z" fill="currentColor"/>
       </svg>
       <span className="text-sm font-semibold">4.8/5</span>
     </a>
     <span className="mx-1 text-gray-300">·</span>
-    <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="inline-flex flex-col items-center text-gray-700 underline-offset-4 group-hover:underline decoration-[#FFD43B] px-1 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD43B] focus-visible:ring-offset-2">
+    <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="inline-flex flex-col items-center text-gray-700 underline-offset-4 group-hover:underline decoration-[#FFD43B] px-1 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD43B] focus-visible:ring-offset-2">
       <span className="block text-center leading-tight">1,218</span>
       <span className="block text-center text-xs text-gray-600 -mt-0.5">reviews</span>
     </a>

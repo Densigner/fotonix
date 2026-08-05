@@ -231,11 +231,11 @@ function ReviewsSection() {
     <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur p-4 shadow-xl shadow-black/30">
       {/* Endorsed.Review Header Badge */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
-        <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group" title="Verified by Endorsed.Review">
+        <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group" title="Verified by Endorsed.Review">
           <img src="/endorsed.svg" alt="Endorsed.Review" className="h-8 rounded-lg shadow-md group-hover:scale-105 transition-transform" />
           <span className="text-xs text-slate-400 group-hover:text-white transition-colors">Verified Reviews</span>
         </a>
-        <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="text-sm text-amber-400 hover:text-amber-300 hover:underline transition-colors">
+        <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="text-sm text-amber-400 hover:text-amber-300 hover:underline transition-colors">
           View all on Endorsed.Review →
         </a>
       </div>
@@ -331,7 +331,7 @@ function ReviewsHeader({ reviews }) {
   <strong className="text-white">{avg.toFixed(1)}/5</strong>
   <span className="text-slate-400">51 verified reviews</span>
       </div>
-      <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-300 hover:text-white hover:underline decoration-[#FFD43B] underline-offset-4">
+      <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-300 hover:text-white hover:underline decoration-[#FFD43B] underline-offset-4">
         View on Endorsed.Review
       </a>
     </div>

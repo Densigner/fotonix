@@ -539,7 +539,7 @@ function ProductPage({ selectedProduct, onBack }) {
                   {[...Array(5)].map((_, i) => (
                     <span key={i} className={i < Math.floor(currentProduct.rating) ? "star filled" : "star"}>★</span>
                   ))}
-                  <span className="rating-text">(<a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="underline">{currentProduct.rating}</a>) • <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="underline">{currentProduct.reviews} reviews</a></span>
+                  <span className="rating-text">(<a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="underline">{currentProduct.rating}</a>) • <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="underline">{currentProduct.reviews} reviews</a></span>
                 </div>
               </div>
 

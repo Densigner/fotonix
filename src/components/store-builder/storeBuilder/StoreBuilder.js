@@ -1788,7 +1788,7 @@ const STORE_BLOCKS = {
     defaults: () => ({
       title: "Verified Reviews",
       subtitle: "See what our customers say",
-      endorsedReviewUrl: "https://endorsed.review/biz/fotonix",
+      endorsedReviewUrl: "https://endorsed.review/#/biz/fotonix",
       showEndorsedBadge: true,
       overallRating: 4.9,
       totalReviews: 1247,

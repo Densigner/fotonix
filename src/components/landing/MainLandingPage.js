@@ -322,7 +322,7 @@ export default function MainLandingPage() {
             </div>
 
             <div className="mlp-trust-row">
-              <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="mlp-trust-badge" aria-label="Verified by Endorsed.Review">
+              <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="mlp-trust-badge" aria-label="Verified by Endorsed.Review">
                 <svg viewBox="0 0 1400 300" xmlns="http://www.w3.org/2000/svg">
                   <rect x="10" y="10" width="1380" height="280" rx="70" fill="#FFD200" stroke="#0B0B0B" strokeWidth="14" strokeLinejoin="round" />
                   <g transform="translate(70,60)">
@@ -337,7 +337,7 @@ export default function MainLandingPage() {
                   </text>
                 </svg>
               </a>
-              <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="mlp-trust-chip">
+              <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="mlp-trust-chip">
                 <svg className="mlp-trust-star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8l3.3 6.9 7.6 1.1-5.5 5.3 1.3 7.6L12 18.9 5.3 21.7 6.6 14 1.1 8.8l7.6-1.1L12 .8z" fill="#FFD200" /></svg>
                 <span><b>4.8/5</b> · 1,218 reviews</span>
               </a>

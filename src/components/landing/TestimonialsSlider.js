@@ -57,7 +57,7 @@ export default function SocialProofSection({ showQuoteMark = false } ) {
                 <span className="verified">Verified by</span>
 
                 {/* Endorsed.Review badge (SVG, transparent outside) */}
-    <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer">
+    <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer">
  <img  src="/endorsedborder.svg"
   alt="Endorsed.Review"
   className="er-badge"
@@ -68,7 +68,7 @@ export default function SocialProofSection({ showQuoteMark = false } ) {
 
             <div className="trust-right">
               <a
-                href="https://endorsed.review/biz/fotonix"
+                href="https://endorsed.review/#/biz/fotonix"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="review-link"

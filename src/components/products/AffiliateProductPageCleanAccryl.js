@@ -75,11 +75,11 @@ function AcrylicReviewsSection() {
     <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6 shadow-lg">
       {/* Endorsed.Review Header Badge */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
-        <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group" title="Verified by Endorsed.Review">
+        <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 group" title="Verified by Endorsed.Review">
           <img src="/endorsed.svg" alt="Endorsed.Review" className="h-8 rounded-lg shadow-md group-hover:scale-105 transition-transform" />
           <span className="text-xs text-gray-500 group-hover:text-gray-700 transition-colors">Verified Reviews</span>
         </a>
-        <a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="text-sm text-amber-600 hover:text-amber-500 hover:underline transition-colors">
+        <a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="text-sm text-amber-600 hover:text-amber-500 hover:underline transition-colors">
           View all on Endorsed.Review →
         </a>
       </div>

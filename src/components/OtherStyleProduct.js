@@ -225,7 +225,7 @@ export default function ProductPage() {
                   <Star key={i} className={`w-5 h-5 ${i < Math.round(product.rating) ? "fill-current" : ""}`} />
                 ))}
               </div>
-              <span className="text-sm text-neutral-500"><a href="https://endorsed.review/biz/fotonix" target="_blank" rel="noopener noreferrer" className="underline">{product.rating} · {product.reviewsCount} reviews</a></span>
+              <span className="text-sm text-neutral-500"><a href="https://endorsed.review/#/biz/fotonix" target="_blank" rel="noopener noreferrer" className="underline">{product.rating} · {product.reviewsCount} reviews</a></span>
               <span className="ml-auto inline-flex items-center gap-1 text-sm text-neutral-500"><Sparkles className="w-4 h-4 text-pink-500"/> by {product.creator}</span>
             </div>
 
