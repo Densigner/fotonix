@@ -23,14 +23,14 @@ const products = [
   },
   {
     id: 3,
-    name: "Custom Shape Mirror - Made to Order",
-    description: "Create your perfect mirror! We can cut any shape you imagine - hexagon, oval, star, or your own custom design. Professional edge polishing included.",
-    price: "£79.99",
-    buttonLabel: "Get Custom Quote",
+    name: "Custom Shape Sign - Back-Lit Mirror",
+    description: "Cut to your own shape and mounted on a weighted base, just like our acrylic sign — but in mirror, back-lit for a soft glow around the edge instead of glowing engraving.",
+    price: "From £34.99",
     imagePlaceholder: "/images/products/lucasroomtwo.jpg",
     category: "custom-mirrors",
-    sku: "FTX-CST-SHP-001",
-    isCustomQuote: true
+    sku: "FTX-CST-SHP-MIRROR-001",
+    link: "affiliate-product-accryl",
+    linkQuery: "material=mirror"
   },
   {
     id: 4,

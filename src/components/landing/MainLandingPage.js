@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import products from '../../data/productsData';
-import { WALL_ACRYLIC_SIZES, DESK_ACRYLIC_SIZES } from '../../data/acrylicSizes';
+import { WALL_ACRYLIC_SIZES, DESK_ACRYLIC_SIZES, priceForMaterial } from '../../data/acrylicSizes';
 import bebasFontUrl from '../affiliate/fonts/BebasNeue-Regular.woff2';
 import plexFontUrl from '../affiliate/fonts/IBMPlexSans-Regular.woff2';
 import heroImage from '../affiliate/image/affiliate-hero.jpg';
@@ -55,9 +55,7 @@ export default function MainLandingPage() {
   const [luminaSize, setLuminaSize] = useState(0);
   const [deskAcrylicSize, setDeskAcrylicSize] = useState(0);
   const [wallAcrylicSize, setWallAcrylicSize] = useState(1);
-  const [showQuoteModal, setShowQuoteModal] = useState(false);
-  const [quoteForm, setQuoteForm] = useState({ name: '', email: '', phone: '', description: '' });
-  const [quoteSubmitted, setQuoteSubmitted] = useState(false);
+  const [mirrorSize, setMirrorSize] = useState(0);
 
   const heroCells = useMemo(
     () => Array.from({ length: 24 }, (_, i) => ({
@@ -72,34 +70,23 @@ export default function MainLandingPage() {
   const customMirror = products[2];
   const deskAcrylic = products[4];
 
-  const goToProduct = (product, sizeKey) => {
-    if (product.isCustomQuote) {
-      setShowQuoteModal(true);
-      return;
-    }
+  const goToProduct = (product, sizeKey, materialKey) => {
     const href = computeProductHref(product);
     if (href) {
       // The acrylic designer route is shared by both acrylic products and
       // reads ?size= to show the size/price actually picked on this page,
       // rather than always showing its old hardcoded 30x30cm default.
-      const finalHref = sizeKey
-        ? `/?size=${encodeURIComponent(sizeKey)}${href.startsWith('/#') ? href.slice(1) : href}`
+      // ?material= does the same for Mirror vs Acrylic on the desk sign.
+      const params = new URLSearchParams();
+      if (sizeKey) params.set('size', sizeKey);
+      if (materialKey) params.set('material', materialKey);
+      const query = params.toString();
+      const finalHref = query
+        ? `/?${query}${href.startsWith('/#') ? href.slice(1) : href}`
         : href;
       window.location.href = finalHref;
       setTimeout(() => window.scrollTo(0, 0), 50);
     }
-  };
-
-  const handleQuoteSubmit = (e) => {
-    e.preventDefault();
-    console.log('Quote request:', quoteForm);
-    setQuoteSubmitted(true);
-  };
-
-  const closeQuoteModal = () => {
-    setShowQuoteModal(false);
-    setQuoteSubmitted(false);
-    setQuoteForm({ name: '', email: '', phone: '', description: '' });
   };
 
   return (
@@ -487,14 +474,27 @@ export default function MainLandingPage() {
         <div className="mlp-mirror-media" />
         <div className="mlp-wrap">
           <div className="mlp-banner-card mlp-align-right">
-            <span className="mlp-banner-badge violet">Made to Order</span>
+            <span className="mlp-banner-badge violet">Cut To Shape · Back-Lit Mirror</span>
             <span className="mlp-eyebrow">Made By A Real Customer</span>
             <div className="mlp-sku">{customMirror.sku}</div>
             <h2>{customMirror.name.split(' - ')[0].split(' — ')[0]}</h2>
-            <p className="mlp-desc">"Amelia's Bedroom" — a custom-cut sign outlined exactly to the customer's design, not a stock rectangle. Outline whatever shape you want and we'll cut it to match.</p>
+            <p className="mlp-desc">"Amelia's Bedroom" — a custom-cut mirror outlined exactly to the customer's design, not a stock rectangle. Lit from behind for a soft glow around the edge, not engraved and lit through like our acrylic signs.</p>
+            <div className="mlp-size-row">
+              {DESK_ACRYLIC_SIZES.map((s, i) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  className="mlp-size-pill"
+                  data-active={mirrorSize === i}
+                  onClick={() => setMirrorSize(i)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
             <div className="mlp-banner-foot">
-              <span className="mlp-price">{customMirror.price}</span>
-              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(customMirror); }}>{customMirror.buttonLabel || 'Get Custom Quote'} →</a>
+              <span className="mlp-price">{priceForMaterial(DESK_ACRYLIC_SIZES[mirrorSize].price, 'mirror')}</span>
+              <a className="mlp-btn-primary" href="#" onClick={(e) => { e.preventDefault(); goToProduct(customMirror, DESK_ACRYLIC_SIZES[mirrorSize].key, 'mirror'); }}>Start Designing →</a>
             </div>
           </div>
         </div>
@@ -559,54 +559,6 @@ export default function MainLandingPage() {
         </div>
       </section>
 
-      {showQuoteModal && (
-        <div className="mlp-quote-overlay" onClick={closeQuoteModal}>
-          <div className="mlp-quote-modal" onClick={(e) => e.stopPropagation()}>
-            {!quoteSubmitted ? (
-              <>
-                <div className="mlp-quote-head">
-                  <div>
-                    <h3>Get a Custom Quote</h3>
-                    <p>{customMirror.name}</p>
-                  </div>
-                  <button className="mlp-quote-close" onClick={closeQuoteModal} aria-label="Close">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                <form className="mlp-quote-form" onSubmit={handleQuoteSubmit}>
-                  <div>
-                    <label>Your Name *</label>
-                    <input type="text" required value={quoteForm.name} onChange={(e) => setQuoteForm({ ...quoteForm, name: e.target.value })} placeholder="John Smith" />
-                  </div>
-                  <div>
-                    <label>Email Address *</label>
-                    <input type="email" required value={quoteForm.email} onChange={(e) => setQuoteForm({ ...quoteForm, email: e.target.value })} placeholder="john@example.com" />
-                  </div>
-                  <div>
-                    <label>Phone Number</label>
-                    <input type="tel" value={quoteForm.phone} onChange={(e) => setQuoteForm({ ...quoteForm, phone: e.target.value })} placeholder="+44 7123 456789" />
-                  </div>
-                  <div>
-                    <label>Describe Your Custom Mirror</label>
-                    <textarea rows={3} value={quoteForm.description} onChange={(e) => setQuoteForm({ ...quoteForm, description: e.target.value })} placeholder="Shape, size, any special requirements..." />
-                  </div>
-                  <button type="submit" className="mlp-quote-submit">Request Quote</button>
-                  <p className="mlp-quote-note">We'll get back to you within 24 hours with a personalised quote.</p>
-                </form>
-              </>
-            ) : (
-              <div className="mlp-quote-success">
-                <div className="mlp-check">
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                </div>
-                <h3>Quote Request Received!</h3>
-                <p>Thank you for your interest! We'll be in touch soon with your personalised quote.</p>
-                <button className="mlp-quote-submit" onClick={closeQuoteModal}>Close</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

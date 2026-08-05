@@ -8,17 +8,7 @@ const gradientBtn =
   "bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 text-white hover:brightness-110 active:brightness-95 transition-all shadow-lg shadow-pink-500/20 rounded-xl";
 
 function Products({ onProductSelect, searchResults = [] }) {
-  // Custom quote modal state
-  const [showCustomQuoteModal, setShowCustomQuoteModal] = useState(false);
-  const [quoteForm, setQuoteForm] = useState({ name: '', email: '', phone: '', description: '' });
-  const [quoteSubmitted, setQuoteSubmitted] = useState(false);
-  
   const handleProductSelect = (product) => {
-    // Check if this is a custom quote product
-    if (product.isCustomQuote) {
-      setShowCustomQuoteModal(true);
-      return;
-    }
     // Navigate based on product link property or default behavior
     if (product.link) {
       // If the link is a full URL or starts with a leading slash, use it directly.
@@ -42,19 +32,6 @@ function Products({ onProductSelect, searchResults = [] }) {
     }
   };
   
-  const handleQuoteSubmit = (e) => {
-    e.preventDefault();
-    // Here you could send the data to your backend
-    console.log('Quote request:', quoteForm);
-    setQuoteSubmitted(true);
-  };
-  
-  const closeQuoteModal = () => {
-    setShowCustomQuoteModal(false);
-    setQuoteSubmitted(false);
-    setQuoteForm({ name: '', email: '', phone: '', description: '' });
-  };
-
   const { signup, signInWithGoogle: ctxSignInWithGoogle } = useAuth();
 
   const [quickEmail, setQuickEmail] = useState('');
@@ -185,114 +162,6 @@ function Products({ onProductSelect, searchResults = [] }) {
           </div>
         </div>
       </div>
-      
-      {/* Custom Quote Modal */}
-      {showCustomQuoteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-            {!quoteSubmitted ? (
-              <>
-                {/* Modal Header */}
-                <div className="bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 p-4 text-white">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xl font-bold">Get a Custom Quote</h3>
-                      <p className="text-pink-100 text-sm">Custom Shape Mirror - Made to Order</p>
-                    </div>
-                    <button
-                      onClick={closeQuoteModal}
-                      className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-                    >
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Form */}
-                <form onSubmit={handleQuoteSubmit} className="p-6 space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Your Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={quoteForm.name}
-                      onChange={(e) => setQuoteForm({...quoteForm, name: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                      placeholder="John Smith"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email Address *</label>
-                    <input
-                      type="email"
-                      required
-                      value={quoteForm.email}
-                      onChange={(e) => setQuoteForm({...quoteForm, email: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                      placeholder="john@example.com"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone Number</label>
-                    <input
-                      type="tel"
-                      value={quoteForm.phone}
-                      onChange={(e) => setQuoteForm({...quoteForm, phone: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                      placeholder="+44 7123 456789"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Describe Your Custom Mirror</label>
-                    <textarea
-                      value={quoteForm.description}
-                      onChange={(e) => setQuoteForm({...quoteForm, description: e.target.value})}
-                      rows={3}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-transparent resize-none"
-                      placeholder="Shape, size, any special requirements..."
-                    />
-                  </div>
-                  
-                  <button
-                    type="submit"
-                    className={`${gradientBtn} w-full py-3 font-semibold`}
-                  >
-                    Request Quote
-                  </button>
-                  
-                  <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                    We'll get back to you within 24 hours with a personalised quote.
-                  </p>
-                </form>
-              </>
-            ) : (
-              /* Success State */
-              <div className="p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                  <svg className="h-8 w-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Quote Request Received!</h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Thank you for your interest! We'll be in touch soon with your personalised quote.
-                </p>
-                <button
-                  onClick={closeQuoteModal}
-                  className={`${gradientBtn} px-6 py-2 font-semibold`}
-                >
-                  Close
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </section>
   );
 }
