@@ -13,7 +13,7 @@ import { ref as dbRef, set } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { findAcrylicSize, WALL_ACRYLIC_SIZES, DEFAULT_WALL_ACRYLIC_SIZE_KEY, priceToAmount, isDeskAcrylicSize } from '../../data/acrylicSizes';
+import { findAcrylicSize, WALL_ACRYLIC_SIZES, DEFAULT_WALL_ACRYLIC_SIZE_KEY, priceToAmount, isDeskAcrylicSize, findMaterial, priceForMaterial, DEFAULT_MATERIAL_KEY, MATERIALS } from '../../data/acrylicSizes';
 
 // Resolves the ?size= query param set by the landing page into a real
 // { label, price } pair, falling back to the standard 30x30cm wall panel
@@ -25,6 +25,15 @@ function resolveAcrylicSize() {
   const params = new URLSearchParams(window.location.search);
   const found = findAcrylicSize(params.get('size'));
   return found || WALL_ACRYLIC_SIZES.find((s) => s.key === DEFAULT_WALL_ACRYLIC_SIZE_KEY);
+}
+
+// Resolves the ?material= query param (so the "Custom Shape Mirror" product
+// card can link straight into the Mirror material) — only meaningful for the
+// desk/cut-to-shape line, defaults to Acrylic everywhere else.
+function resolveMaterial() {
+  if (typeof window === 'undefined') return findMaterial(DEFAULT_MATERIAL_KEY);
+  const params = new URLSearchParams(window.location.search);
+  return findMaterial(params.get('material'));
 }
 
 // ============================================
@@ -132,10 +141,10 @@ function AcrylicReviewsSection() {
 
 // Inline fallback header so the file compiles even if ./Header is missing.
 // Replace <AppHeader /> with your own Header component later if desired.
-const AppHeader = ({ sizeLabel }) => (
+const AppHeader = ({ sizeLabel, productName }) => (
   <header className="sticky top-0 z-30 w-full border-b border-white/10 bg-slate-900/70 backdrop-blur">
     <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-      <div className="text-xl font-semibold tracking-tight text-slate-100">Fotonix — Side-lit Acrylic Designer {sizeLabel}</div>
+      <div className="text-xl font-semibold tracking-tight text-slate-100">Fotonix — {productName} Designer {sizeLabel}</div>
       <div className="text-slate-300 text-xs">Beta</div>
     </div>
   </header>
@@ -211,6 +220,21 @@ export default function ProductPage() {
   const canvasRef = useRef(null);
   const fabricCanvasRef = useRef(null);
   const [selectedSize] = useState(resolveAcrylicSize);
+  const [selectedMaterial, setSelectedMaterial] = useState(resolveMaterial);
+  const isDesk = isDeskAcrylicSize(selectedSize.key);
+  // Material only exists for the cut-to-shape desk line — the wall panel is
+  // acrylic only, so it never shows the toggle and never pays the premium.
+  const displayPrice = isDesk ? priceForMaterial(selectedSize.price, selectedMaterial.key) : selectedSize.price;
+  const productBaseName = isDesk ? 'Custom Shape Sign' : 'Side-lit Acrylic';
+  const productFullName = isDesk ? `${selectedMaterial.lightingLabel} Sign` : 'Side-Lit Acrylic Lamp';
+  const productDescription = isDesk
+    ? (selectedMaterial.key === 'mirror'
+        ? 'Cut to your own shape and lit from behind — a soft glow spills around the edge of your mirror.'
+        : 'Cut to your own shape and lit from the edge — your design engraved and glowing from within.')
+    : 'Premium laser-engraved acrylic with LED base. Your design illuminated beautifully.';
+  const productSummaryDescription = isDesk
+    ? (selectedMaterial.key === 'mirror' ? 'Custom-shaped mirror, back-lit with RGB LEDs' : 'Custom-shaped acrylic, edge-lit with RGB LEDs')
+    : 'Custom engraved acrylic with RGB LED base';
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [ready, setReady] = useState(false);
@@ -264,20 +288,21 @@ export default function ProductPage() {
         orderId,
         timestamp,
         productType: 'acrylic', // Key differentiator from stencil orders
-        productName: 'Side-Lit Acrylic Lamp',
+        productName: productFullName,
         status: 'paid',
         paypalOrderId: paypalDetails?.id || paypalDetails?.orderID || null,
         paypalStatus: paypalDetails?.status || 'COMPLETED',
         pricing: {
-          total: priceToAmount(selectedSize.price),
-          subtotal: priceToAmount(selectedSize.price),
+          total: priceToAmount(displayPrice),
+          subtotal: priceToAmount(displayPrice),
           deliveryFee: '0.00',
           currency: 'GBP'
         },
         designImageUrl,
         metadata: {
           productSize: selectedSize.label,
-          productDescription: 'Premium laser-engraved acrylic with RGB LED base',
+          material: isDesk ? selectedMaterial.key : 'acrylic',
+          productDescription: productSummaryDescription,
           appControlled: true, // Indicates product is app-controlled
           appLink: 'https://fotonix.co.uk/app' // Link to the control app
         },
@@ -1424,7 +1449,7 @@ export default function ProductPage() {
           </div>
         </div>
       )}
-      <AppHeader sizeLabel={selectedSize.label} />
+      <AppHeader sizeLabel={selectedSize.label} productName={isDesk ? `${productBaseName} — ${selectedMaterial.lightingLabel}` : productBaseName} />
       {/* Ensure PayPal SDK is injected when this page mounts */}
       <PayPalSDKLoader onLoad={() => { /* PayPal SDK loaded */ }} />
 
@@ -1436,7 +1461,7 @@ export default function ProductPage() {
               <div className="flex items-center justify-between px-5 py-4">
                 <div className="flex items-center gap-3">
                   <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_20px_2px_rgba(52,211,153,.5)]" />
-                  <h2 className="text-lg font-semibold">Design Your Side-lit Acrylic</h2>
+                  <h2 className="text-lg font-semibold">Design Your {productBaseName}</h2>
                 </div>
                 <div className="flex items-center gap-2">
                   {/* expand control removed per UX request */}
@@ -1493,12 +1518,31 @@ export default function ProductPage() {
                     <h3 className="text-lg font-semibold mb-4">Purchase Options</h3>
                     <div className="grid grid-cols-1 gap-4">
                       <div className="p-4 rounded-lg bg-white/80 border border-white/10 shadow flex flex-col">
+                        {isDesk && (
+                          <div className="w-full mb-3 flex items-center justify-center gap-2">
+                            {MATERIALS.map((m) => (
+                              <button
+                                key={m.key}
+                                type="button"
+                                onClick={() => setSelectedMaterial(m)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                                  selectedMaterial.key === m.key
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-white text-slate-700 border-slate-300 hover:border-slate-400'
+                                }`}
+                              >
+                                {m.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {/* LED Preview showing how design will look */}
                         <div className="w-full flex justify-center mb-4">
-                          {isDeskAcrylicSize(selectedSize.key) ? (
+                          {isDesk ? (
                             <LEDMockupGlassCut
                               src={mockSrc || previewDataUrl}
                               title="Your Design Preview"
+                              material={selectedMaterial.key}
                             />
                           ) : (
                             <LEDMockupGlass
@@ -1512,15 +1556,15 @@ export default function ProductPage() {
                           )}
                         </div>
                         <div className="flex-1">
-                          <h4 className="font-medium text-slate-900">Side-Lit Acrylic Lamp — {selectedSize.label}</h4>
-                          <p className="text-sm text-slate-600">Premium laser-engraved acrylic with LED base. Your design illuminated beautifully.</p>
-                          <div className="mt-3 text-2xl font-bold text-slate-900">{selectedSize.price}</div>
+                          <h4 className="font-medium text-slate-900">{productFullName} — {selectedSize.label}</h4>
+                          <p className="text-sm text-slate-600">{productDescription}</p>
+                          <div className="mt-3 text-2xl font-bold text-slate-900">{displayPrice}</div>
                         </div>
                         {/* Product summary — shown above the PayPal button */}
                         <div className="mt-4 p-3 rounded bg-white/90 text-slate-900 border border-white/10">
-                          <div className="text-base font-semibold">Side-Lit Acrylic Lamp — {selectedSize.label}</div>
-                          <div className="text-sm text-slate-600 mt-1">Custom engraved acrylic with RGB LED base</div>
-                          <div className="mt-2 text-xl font-bold">{selectedSize.price}</div>
+                          <div className="text-base font-semibold">{productFullName} — {selectedSize.label}</div>
+                          <div className="text-sm text-slate-600 mt-1">{productSummaryDescription}</div>
+                          <div className="mt-2 text-xl font-bold">{displayPrice}</div>
                         </div>
                         
                         {/* Show success message or PayPal button */}
@@ -1546,8 +1590,8 @@ export default function ProductPage() {
                           <div className="mt-4 block w-full" style={{ display: 'block', minWidth: 200 }}>
                             {uid ? (
                               <PayPalButton
-                                amount={priceToAmount(selectedSize.price)}
-                                productName={`Fotonix Side-Lit Acrylic Lamp — ${selectedSize.label}`}
+                                amount={priceToAmount(displayPrice)}
+                                productName={`Fotonix ${productFullName} — ${selectedSize.label}`}
                                 onSuccess={async (details) => {
                                   console.log('PayPal payment successful:', details);
                                   await saveAcrylicOrder(details);
@@ -1584,8 +1628,8 @@ export default function ProductPage() {
           {/* Right: Upload + Fonts + AI */}
           <aside className="lg:col-span-1 space-y-6">
             {/* NEW: Live LED mock-ups */}
-            {isDeskAcrylicSize(selectedSize.key) ? (
-              <LEDMockupGlassCut src={mockSrc} title="Lamp Preview" />
+            {isDesk ? (
+              <LEDMockupGlassCut src={mockSrc} title="Lamp Preview" material={selectedMaterial.key} />
             ) : (
               <LEDMockupGlass
                 src={mockSrc}
