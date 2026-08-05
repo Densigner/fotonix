@@ -144,27 +144,16 @@ export default function LEDMockupGlass({
     const artX = Math.round(W / 2 - artW / 2);
     const artY = Math.round(plateBottom - artH - 24);
 
-    // Build binary alpha mask at artwork scale
-    const { mask, w, h, bbox } = getAlphaMask(img, artW, artH);
-
-    // Build tight ring (outer - inner) in pixel space
-    const outer = dilate(mask, w, h, Math.max(1, Math.round(ringExpandPx)));
-    const inner = dilate(mask, w, h, Math.max(0, Math.round(Math.max(0, ringExpandPx - ringThicknessPx))));
-    const ring = logicSubtract(outer, inner); // Uint8Array
-
-    // Optionally tighten bbox to mask content (for glass plate sizing)
-    const rb = maskBounds(ring, w, h) || bbox; // fallback to original bbox
-
-    // Draw translucent glass plate around the art bbox (+ padding)
+    // This is the fixed-rectangle product — the plate always covers the
+    // full artwork canvas (+ padding), never shrinking to hug whatever the
+    // customer has drawn. It used to size itself to a ring traced tightly
+    // around the artwork's own silhouette, which both let the plate shrink
+    // to the size of the design and left a glowing outline in the exact
+    // shape of the artwork sitting inside the rectangle — a "cut to shape"
+    // look this product doesn't have. Just light the art itself; no ring.
     const pad = Math.max(8, Math.round(platePaddingPx));
-    const plate = inflateRect(
-      { x: artX + rb.x, y: artY + rb.y, w: rb.w, h: rb.h },
-      pad
-    );
+    const plate = inflateRect({ x: artX, y: artY, w: artW, h: artH }, pad);
     drawGlassPlate(ctx, plate, rgb);
-
-    // Draw LED ring (soft glow + crisp inner edge)
-    drawRing(ctx, ring, w, h, artX, artY, rgb);
 
     // Draw illuminated artwork (white core + colored bloom)
     drawLitArtwork(ctx, img, artX, artY, artW, artH, rgb);
@@ -249,31 +238,6 @@ export default function LEDMockupGlass({
     ctx.restore();
   }
 
-  function drawRing(ctx, ringMask, w, h, x, y, rgb) {
-    // Build an ImageData for the ring once (tinted)
-    const ringImg = new ImageData(w, h);
-    for (let i = 0, j = 0; i < ringMask.length; i++, j += 4) {
-      const on = ringMask[i] ? 1 : 0;
-      ringImg.data[j + 0] = rgb.r;
-      ringImg.data[j + 1] = rgb.g;
-      ringImg.data[j + 2] = rgb.b;
-      ringImg.data[j + 3] = on ? 255 : 0;
-    }
-
-    ctx.save();
-    // Soft bloom
-    ctx.globalCompositeOperation = "lighter";
-    ctx.filter = "blur(6px)";
-    ctx.putImageData(ringImg, x, y);
-    // Crisp core
-    ctx.filter = "none";
-    ctx.globalAlpha = 0.9;
-    ctx.putImageData(ringImg, x, y);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
-    ctx.restore();
-  }
-
   function drawLitArtwork(ctx, img, x, y, w, h, rgb) {
     ctx.save();
   // Glow pass (offscreen tinted blur) - avoids rectangular shadow artifacts
@@ -316,76 +280,6 @@ export default function LEDMockupGlass({
 
     ctx.drawImage(tmp, x, y);
     ctx.restore();
-  }
-
-  // --- image mask / ring utils ------------------------------------------------
-
-  function getAlphaMask(img, w, h) {
-    const cv = offA.current;
-    cv.width = w; cv.height = h;
-    const c = cv.getContext("2d", { willReadFrequently: true });
-    c.clearRect(0, 0, w, h);
-    c.drawImage(img, 0, 0, w, h);
-    const d = c.getImageData(0, 0, w, h).data;
-    const mask = new Uint8Array(w * h);
-    let x1 = w, y1 = h, x2 = -1, y2 = -1;
-
-    for (let y = 0, p = 0; y < h; y++) {
-      for (let x = 0; x < w; x++, p++) {
-        const a = d[p * 4 + 3];
-        const on = a > 8 ? 1 : 0;
-        mask[p] = on;
-        if (on) {
-          if (x < x1) x1 = x;
-          if (y < y1) y1 = y;
-          if (x > x2) x2 = x;
-          if (y > y2) y2 = y;
-        }
-      }
-    }
-    const bbox = (x2 >= x1 && y2 >= y1) ? { x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 } : { x: 0, y: 0, w: w, h: h };
-    return { mask, w, h, bbox };
-  }
-
-  function dilate(src, w, h, R) {
-    if (R <= 0) return src.slice();
-    const dst = new Uint8Array(src.length);
-    for (let y = 0; y < h; y++) {
-      const yoff = y * w;
-      for (let x = 0; x < w; x++) {
-        let on = 0;
-        for (let j = -R; j <= R && !on; j++) {
-          const yy = y + j; if (yy < 0 || yy >= h) continue;
-          const y2 = yy * w;
-          for (let i = -R; i <= R; i++) {
-            const xx = x + i; if (xx < 0 || xx >= w) continue;
-            if (src[y2 + xx]) { on = 1; break; }
-          }
-        }
-        dst[yoff + x] = on;
-      }
-    }
-    return dst;
-  }
-  function logicSubtract(a, b) {
-    const out = new Uint8Array(a.length);
-    for (let i = 0; i < a.length; i++) out[i] = a[i] && !b[i] ? 1 : 0;
-    return out;
-  }
-  function maskBounds(m, w, h) {
-    let x1 = w, y1 = h, x2 = -1, y2 = -1;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (m[y * w + x]) {
-          if (x < x1) x1 = x;
-          if (y < y1) y1 = y;
-          if (x > x2) x2 = x;
-          if (y > y2) y2 = y;
-        }
-      }
-    }
-    if (x2 < x1 || y2 < y1) return null;
-    return { x: x1, y: y1, w: x2 - x1 + 1, h: y2 - y1 + 1 };
   }
 
   // --- small drawing utils ----------------------------------------------------
