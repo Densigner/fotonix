@@ -230,6 +230,22 @@ export function buildPublicUrl(origin, handle, style) {
   return style === "at" ? `${base}/@${h}` : `${base}/u/${h}`;
 }
 
+// Shared by StorefrontView and AffiliateStorefrontViewer. Guards against
+// `theme` being missing entirely (a latent crash — every storefront made
+// through the real editor includes one, but nothing enforces that on the
+// data side) and falls back to the gradient instead of a blank/transparent
+// block when bgType is "image" but no image was ever actually uploaded.
+function themeBackground(theme) {
+  const t = theme || {};
+  if (t.bgType === "color") return { background: t.color || "#ffffff" };
+  if (t.bgType === "image" && t.imageUrl) {
+    return { backgroundImage: `url(${t.imageUrl})`, backgroundSize: "cover", backgroundPosition: "center" };
+  }
+  const from = t.gradientFrom || "#ec4899";
+  const to = t.gradientTo || "#8b5cf6";
+  return { backgroundImage: `linear-gradient(90deg, ${from}, ${to})` };
+}
+
 export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https://example.com" }) {
   const { db, storage } = ensureFirebase();
   const [loading, setLoading] = useState(true);
@@ -787,9 +803,10 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
 // DUPLICATE FUNCTION - removed, using the correct one below
 // DUPLICATE FUNCTION COMPLETELY REMOVED - using the correct one below
 
-// Public view (wire into your router)
-export function StorefrontView({ data, products = [], compact = false }) {
-  function RenderSections({ sections, fullProducts }) {
+// Shared by both StorefrontView (the editor's live preview) and
+// AffiliateStorefrontViewer (the real public /@handle page) so page-builder
+// sections render identically in both places instead of drifting apart.
+function RenderSections({ sections, fullProducts }) {
     if (!sections || !sections.length) return null;
     const getProducts = (ids) => (fullProducts || []).filter((p) => ids.includes(p.id));
     return (
@@ -874,13 +891,12 @@ export function StorefrontView({ data, products = [], compact = false }) {
         })}
       </div>
     );
-  }
-  const bg = (() => {
-    if (data.theme.bgType === "color") return { background: data.theme.color || "#ffffff" };
-    if (data.theme.bgType === "image") return { backgroundImage: `url(${data.theme.imageUrl || ""})`, backgroundSize: "cover", backgroundPosition: "center" };
-    const from = data.theme.gradientFrom || "#ec4899"; const to = data.theme.gradientTo || "#8b5cf6"; return { backgroundImage: `linear-gradient(90deg, ${from}, ${to})` };
-  })();
-  const light = (data.theme.textColor || "light") === "light";
+}
+
+// Public view (wire into your router)
+export function StorefrontView({ data, products = [], compact = false }) {
+  const bg = themeBackground(data.theme);
+  const light = (data.theme?.textColor || "light") === "light";
   const curatedOrdered = data.productDisplayMode === "all"
     ? products
     : (data.productIds || []).map(id => products.find(p => p?.id === id)).filter(Boolean);
@@ -1124,13 +1140,9 @@ export function AffiliateStorefrontViewer({ handle }) {
     );
   }
 
-  const bg = (() => {
-    if (storeData.theme.bgType === "color") return { background: storeData.theme.color || "#ffffff" };
-    if (storeData.theme.bgType === "image") return { backgroundImage: `url(${storeData.theme.imageUrl || ""})`, backgroundSize: "cover", backgroundPosition: "center" };
-    const from = storeData.theme.gradientFrom || "#ec4899"; const to = storeData.theme.gradientTo || "#8b5cf6"; return { backgroundImage: `linear-gradient(90deg, ${from}, ${to})` };
-  })();
+  const bg = themeBackground(storeData.theme);
 
-  const light = (storeData.theme.textColor || "light") === "light";
+  const light = (storeData.theme?.textColor || "light") === "light";
 
   return (
     <div className="min-h-screen" style={bg}>
@@ -1154,6 +1166,10 @@ export function AffiliateStorefrontViewer({ handle }) {
             </p>
           )}
         </div>
+
+        {/* Page-builder sections (hero, rich text, curated grid, FAQ) —
+            same renderer the editor's own live preview uses. */}
+        <RenderSections sections={storeData.pageSections} fullProducts={products} />
 
         {/* Products Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
