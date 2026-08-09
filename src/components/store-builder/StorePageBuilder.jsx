@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, GripVertical, Upload } from "lucide-react";
 import { createSection } from "../shared/sections";
@@ -162,6 +162,28 @@ function Num({ label, value, onChange }) {
 
 function RichTextEditor({ data, onChange }) {
   const { html, align, maxWidth = 720 } = data;
+  const editorRef = useRef(null);
+  // Sentinel (not a valid html value) so the first effect run always paints
+  // the initial content into the DOM instead of thinking nothing changed.
+  const lastEmitted = useRef(undefined);
+
+  // Only push `html` into the DOM when it changed for a reason other than
+  // this editor's own onInput (e.g. switching sections, loading saved data).
+  // Setting innerHTML unconditionally on every render wipes the DOM subtree
+  // and resets the caret to the start on each keystroke.
+  useEffect(() => {
+    if (editorRef.current && html !== lastEmitted.current) {
+      editorRef.current.innerHTML = html;
+      lastEmitted.current = html;
+    }
+  }, [html]);
+
+  const handleInput = (e) => {
+    const next = e.currentTarget.innerHTML;
+    lastEmitted.current = next;
+    onChange({ html: next });
+  };
+
   return (
     <div className="space-y-2">
       <Row label="Align">
@@ -173,10 +195,9 @@ function RichTextEditor({ data, onChange }) {
         <input type="number" value={maxWidth} onChange={(e) => onChange({ maxWidth: Number(e.target.value) || 720 })} className="w-32 rounded-xl border px-3 py-2" />
       </Row>
       <div className="rounded-xl border">
-        <div contentEditable suppressContentEditableWarning
+        <div ref={editorRef} contentEditable suppressContentEditableWarning
           className="min-h-[120px] w-full rounded-xl p-3 text-sm"
-          onInput={(e) => onChange({ html: e.currentTarget.innerHTML })}
-          dangerouslySetInnerHTML={{ __html: html }} />
+          onInput={handleInput} />
       </div>
     </div>
   );
