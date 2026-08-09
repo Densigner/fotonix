@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import products from '../../data/productsData';
 import { WALL_ACRYLIC_SIZES, DESK_ACRYLIC_SIZES, priceForMaterial } from '../../data/acrylicSizes';
 import bebasFontUrl from '../affiliate/fonts/BebasNeue-Regular.woff2';
@@ -64,6 +64,36 @@ export default function MainLandingPage() {
     })),
     []
   );
+
+  const pageRef = useRef(null);
+
+  // Fades/slides each .mlp-reveal (and staggers .mlp-reveal-stagger children)
+  // into place the first time it scrolls into view, then stops watching it.
+  useEffect(() => {
+    const root = pageRef.current;
+    if (!root) return undefined;
+    const targets = root.querySelectorAll('.mlp-reveal');
+    if (!targets.length) return undefined;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      targets.forEach((el) => el.classList.add('mlp-in'));
+      return undefined;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('mlp-in');
+            io.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -8% 0px' }
+    );
+    targets.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
 
   const lumina = products[0];
   const wallAcrylic = products[1];
@@ -292,8 +322,21 @@ export default function MainLandingPage() {
         .mlp-quote-success .mlp-check { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 999px; background: rgba(0,245,212,0.12); display: flex; align-items: center; justify-content: center; color: var(--cyan); }
         .mlp-quote-success h3 { font-family: var(--body); font-size: 18px; font-weight: 700; margin: 0 0 8px; }
         .mlp-quote-success p { font-size: 14px; color: var(--ink-soft); margin: 0 0 24px; }
+
+        .mlp-reveal { opacity: 0; transform: translateY(32px); transition: opacity 0.7s cubic-bezier(0.16, 0.8, 0.24, 1), transform 0.7s cubic-bezier(0.16, 0.8, 0.24, 1); }
+        .mlp-reveal.mlp-in { opacity: 1; transform: translateY(0); }
+        .mlp-reveal-stagger > * { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
+        .mlp-reveal-stagger.mlp-in > * { opacity: 1; transform: translateY(0); }
+        .mlp-reveal-stagger.mlp-in > *:nth-child(1) { transition-delay: 0.05s; }
+        .mlp-reveal-stagger.mlp-in > *:nth-child(2) { transition-delay: 0.14s; }
+        .mlp-reveal-stagger.mlp-in > *:nth-child(3) { transition-delay: 0.23s; }
+        .mlp-reveal-stagger.mlp-in > *:nth-child(4) { transition-delay: 0.32s; }
+        @media (prefers-reduced-motion: reduce) {
+          .mlp-reveal, .mlp-reveal-stagger > * { opacity: 1; transform: none; transition: none; }
+        }
       `}</style>
 
+      <div ref={pageRef}>
       <section className="mlp-hero">
         <div className="mlp-wrap mlp-hero-grid">
           <div>
@@ -345,7 +388,7 @@ export default function MainLandingPage() {
       </section>
 
       <div className="mlp-facts">
-        <div className="mlp-wrap mlp-facts-row">
+        <div className="mlp-wrap mlp-facts-row mlp-reveal mlp-reveal-stagger">
           <div className="mlp-fact"><span className="mlp-num">£29.99</span><span className="mlp-cap">to get started</span></div>
           <div className="mlp-fact"><span className="mlp-num">Any</span><span className="mlp-cap">shape, made to order</span></div>
           <div className="mlp-fact"><span className="mlp-num">Free App</span><span className="mlp-cap">with downloadable patterns</span></div>
@@ -355,13 +398,13 @@ export default function MainLandingPage() {
 
       <section id="products">
         <div className="mlp-wrap">
-          <div className="mlp-section-head">
+          <div className="mlp-section-head mlp-reveal">
             <span className="mlp-eyebrow">Shop</span>
             <h2>Four ways to light up your space</h2>
             <p>Real products, real prices — jump straight to any of them.</p>
           </div>
 
-          <div className="mlp-quicklinks">
+          <div className="mlp-quicklinks mlp-reveal mlp-reveal-stagger">
             <a className="mlp-quicklink" href="#lumina-banner"><span className="mlp-qdot" style={{ background: '#00f5d4' }} />{lumina.name.split(' - ')[0].split(' — ')[0]}</a>
             <a className="mlp-quicklink" href="#acrylic-banner"><span className="mlp-qdot" style={{ background: '#ec4899' }} />Acrylic Sign (Desk)</a>
             <a className="mlp-quicklink" href="#wall-acrylic"><span className="mlp-qdot" style={{ background: '#f5f3ff' }} />Acrylic Panel (Wall)</a>
@@ -378,7 +421,7 @@ export default function MainLandingPage() {
           <div className="mlp-lumina-overlay" />
         </div>
         <div className="mlp-wrap">
-          <div className="mlp-banner-card mlp-align-right">
+          <div className="mlp-banner-card mlp-align-right mlp-reveal">
             <span className="mlp-banner-badge cyan">Bestseller</span>
             <span className="mlp-eyebrow">Made By A Real Customer</span>
             <img className="mlp-banner-photo" src={luminaMainPhoto} alt="LED Lumina Mirror, Amelia's Bedroom" />
@@ -413,7 +456,7 @@ export default function MainLandingPage() {
       <section id="acrylic-banner" className="mlp-acrylic-banner">
         <div className="mlp-acrylic-media" />
         <div className="mlp-wrap">
-          <div className="mlp-banner-card">
+          <div className="mlp-banner-card mlp-reveal">
             <span className="mlp-banner-badge cyan">Cut To Shape · Desk Mounted</span>
             <span className="mlp-eyebrow">Made By A Real Customer</span>
             <div className="mlp-sku">{deskAcrylic.sku}</div>
@@ -443,7 +486,7 @@ export default function MainLandingPage() {
       <section id="wall-acrylic" className="mlp-wall-banner">
         <div className="mlp-wall-media" />
         <div className="mlp-wrap">
-          <div className="mlp-banner-card mlp-align-right">
+          <div className="mlp-banner-card mlp-align-right mlp-reveal">
             <span className="mlp-banner-badge violet">Wall Mounted</span>
             <span className="mlp-eyebrow">Made By A Real Customer</span>
             <div className="mlp-sku">{wallAcrylic.sku}</div>
@@ -473,7 +516,7 @@ export default function MainLandingPage() {
       <section id="mirror-banner" className="mlp-mirror-banner">
         <div className="mlp-mirror-media" />
         <div className="mlp-wrap">
-          <div className="mlp-banner-card mlp-align-right">
+          <div className="mlp-banner-card mlp-align-right mlp-reveal">
             <span className="mlp-banner-badge violet">Cut To Shape · Back-Lit Mirror</span>
             <span className="mlp-eyebrow">Made By A Real Customer</span>
             <div className="mlp-sku">{customMirror.sku}</div>
@@ -502,11 +545,11 @@ export default function MainLandingPage() {
 
       <section id="tools" style={{ paddingTop: 0 }}>
         <div className="mlp-wrap">
-          <div className="mlp-section-head">
+          <div className="mlp-section-head mlp-reveal">
             <span className="mlp-eyebrow">How it works</span>
             <h2>From idea to wall-mounted in three steps</h2>
           </div>
-          <div className="mlp-steps">
+          <div className="mlp-steps mlp-reveal mlp-reveal-stagger">
             <div className="mlp-step">
               <span className="mlp-step-num">DESIGN</span>
               <h3>Open a designer</h3>
@@ -528,11 +571,11 @@ export default function MainLandingPage() {
 
       <section id="faq" style={{ paddingTop: 0 }}>
         <div className="mlp-wrap" style={{ maxWidth: 760 }}>
-          <div className="mlp-section-head" style={{ marginBottom: 8 }}>
+          <div className="mlp-section-head mlp-reveal" style={{ marginBottom: 8 }}>
             <span className="mlp-eyebrow">Questions</span>
             <h2>Before you order</h2>
           </div>
-          <div>
+          <div className="mlp-reveal">
             {FAQS.map(([q, a], i) => (
               <FaqItem
                 key={q}
@@ -548,7 +591,7 @@ export default function MainLandingPage() {
 
       <section>
         <div className="mlp-wrap">
-          <div className="mlp-final-cta">
+          <div className="mlp-final-cta mlp-reveal">
             <h2>Ready to light up your space?</h2>
             <p>Real products, made to your design, from £29.99.</p>
             <div className="mlp-final-ctas">
@@ -558,6 +601,7 @@ export default function MainLandingPage() {
           </div>
         </div>
       </section>
+      </div>
 
     </div>
   );
