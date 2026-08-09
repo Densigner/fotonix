@@ -132,7 +132,9 @@ function HeroEditor({ data, onChange, onPickImage }) {
 }
 
 function CollectionEditor({ data, onChange }) {
-  const { title, productIds, columns, showPrice, showCTA } = data;
+  // Same RTDB-prunes-empty-arrays issue as FaqEditor below: a saved section
+  // with zero product IDs reloads with `productIds` missing, not `[]`.
+  const { title, productIds = [], columns, showPrice, showCTA } = data;
   const setCols = (k, v) => onChange({ columns: { ...columns, [k]: v } });
   return (
     <div className="space-y-2">
@@ -204,7 +206,9 @@ function RichTextEditor({ data, onChange }) {
 }
 
 function FaqEditor({ data, onChange }) {
-  const { items } = data;
+  // Firebase RTDB prunes empty arrays on write, so a saved-then-reloaded
+  // section with zero items comes back with `items` missing, not `[]`.
+  const { items = [] } = data;
   const set = (i, patch) => onChange({ items: items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) });
   return (
     <div className="space-y-2">

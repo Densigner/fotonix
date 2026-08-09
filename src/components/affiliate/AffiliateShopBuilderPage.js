@@ -852,11 +852,15 @@ export function StorefrontView({ data, products = [], compact = false }) {
             );
           }
           if (s.type === "faq") {
+            // Firebase RTDB prunes empty arrays on write, so a saved section
+            // with zero FAQ items reloads with `items` missing, not `[]`.
+            const faqItems = s.data.items || [];
+            if (!faqItems.length) return null;
             return (
               <section key={s.id} className="rounded-2xl border p-4">
                 <h3 className="mb-2 text-lg font-semibold">FAQ</h3>
                 <div className="divide-y">
-                  {s.data.items.map((it, idx) => (
+                  {faqItems.map((it, idx) => (
                     <details key={idx} className="py-2">
                       <summary className="cursor-pointer text-sm font-medium">{it.q}</summary>
                       <p className="mt-1 text-sm text-zinc-600">{it.a}</p>
