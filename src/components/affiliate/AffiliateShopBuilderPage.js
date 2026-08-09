@@ -5,7 +5,7 @@ import { getAuth } from "firebase/auth";
 import { getDatabase, ref as dbRef, get, set, runTransaction } from "firebase/database";
 import { getStorage, ref as stRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import ProductCard from '../products/ProductCard';
-import StorePageBuilder from '../store-builder/StorePageBuilder';
+import StoreCanvasBuilder, { SHOP_BLOCKS } from '../store-builder/StoreCanvasBuilder';
 import { API_URL } from '../../config/environment';
 import CommandPalette from '../shared/CommandPalette';
 import DeviceToolbar from '../shared/DeviceToolbar';
@@ -444,8 +444,9 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h3 className="text-sm font-semibold">Page sections</h3>
           <div className="mt-3">
-            <StorePageBuilder
+            <StoreCanvasBuilder
               value={data.pageSections}
+              products={products}
               onChange={(next) => setData((d) => ({ ...d, pageSections: next }))}
               onPickImage={(sectionId) => {
                 // trigger file input and then uploadSectionImage
@@ -806,91 +807,21 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
 // Shared by both StorefrontView (the editor's live preview) and
 // AffiliateStorefrontViewer (the real public /@handle page) so page-builder
 // sections render identically in both places instead of drifting apart.
+// Per-type rendering itself lives in SHOP_BLOCKS (StoreCanvasBuilder.jsx) —
+// the same registry the drag-and-drop editor's canvas uses — so there is
+// only ever one copy of what a "hero" or "faq" section looks like.
 function RenderSections({ sections, fullProducts }) {
-    if (!sections || !sections.length) return null;
-    const getProducts = (ids) => (fullProducts || []).filter((p) => ids.includes(p.id));
-    return (
-      <div className="space-y-8 mb-6">
-        {sections.map((s) => {
-          if (s.type === "hero") {
-            const { title, subtitle, align, bgImage, overlay = 0.35, cta } = s.data;
-            const justify = align === "left" ? "items-start" : align === "right" ? "items-end" : "items-center";
-            return (
-              <section key={s.id} className="relative overflow-hidden rounded-2xl">
-                {bgImage && <img src={bgImage} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
-                <div className="relative z-10 grid min-h-[220px] place-items-center p-8">
-                  <div className={`flex w-full max-w-3xl flex-col gap-2 ${justify} text-white`}>
-                    <h2 className="text-3xl font-bold drop-shadow">{title}</h2>
-                    {subtitle && <p className="max-w-prose drop-shadow">{subtitle}</p>}
-                    {cta?.label && <a href={cta.href || "#"} className="mt-2 w-max rounded-xl bg-white px-4 py-2 text-sm font-semibold text-zinc-900 shadow"> {cta.label} </a>}
-                  </div>
-                </div>
-                <div className="absolute inset-0" style={{ background: "#000", opacity: overlay }} />
-              </section>
-            );
-          }
-          if (s.type === "collection-grid") {
-            const { title, productIds, columns, showPrice, showCTA } = s.data;
-            const colCls = `grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4`;
-            // Only render if the section explicitly selected productIds.
-            const list = productIds && productIds.length ? getProducts(productIds) : [];
-            return (
-              <section key={s.id}>
-                {title && <h3 className="mb-2 text-lg font-semibold">{title}</h3>}
-                <div className={`gap-3 ${colCls}`}>
-                  {list.map((p) => (
-                    <a key={p.id} href={p.href || `#product/${p.id}`} className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md">
-                      {(() => {
-                        const idx = p.mainImageIndex ?? 0;
-                        const fallback = p.images && p.images[idx] ? p.images[idx].url : undefined;
-                        const src = p.imageUrl || fallback;
-                        return src ? (
-                          <img src={src} alt={p.title} className="h-48 w-full object-cover" loading="lazy" />
-                        ) : null;
-                      })()}
-                      <div className="p-4">
-                        <h4 className="line-clamp-2 text-sm font-semibold">{p.title}</h4>
-                        {showPrice && <div className="mt-1 text-pink-600">£{p.price?.toFixed?.(2) ?? "-"}</div>}
-                        {showCTA && <div className="mt-2 text-xs text-zinc-500">View details →</div>}
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              </section>
-            );
-          }
-          if (s.type === "rich-text") {
-            const { html, align, maxWidth = 720 } = s.data;
-            const cls = align === "center" ? "mx-auto text-center" : align === "right" ? "ml-auto text-right" : "mr-auto text-left";
-            return (
-              <section key={s.id} className={`prose max-w-none ${cls}`} style={{ maxWidth }}>
-                <div dangerouslySetInnerHTML={{ __html: html }} />
-              </section>
-            );
-          }
-          if (s.type === "faq") {
-            // Firebase RTDB prunes empty arrays on write, so a saved section
-            // with zero FAQ items reloads with `items` missing, not `[]`.
-            const faqItems = s.data.items || [];
-            if (!faqItems.length) return null;
-            return (
-              <section key={s.id} className="rounded-2xl border p-4">
-                <h3 className="mb-2 text-lg font-semibold">FAQ</h3>
-                <div className="divide-y">
-                  {faqItems.map((it, idx) => (
-                    <details key={idx} className="py-2">
-                      <summary className="cursor-pointer text-sm font-medium">{it.q}</summary>
-                      <p className="mt-1 text-sm text-zinc-600">{it.a}</p>
-                    </details>
-                  ))}
-                </div>
-              </section>
-            );
-          }
-          return null;
-        })}
-      </div>
-    );
+  if (!sections || !sections.length) return null;
+  return (
+    <div className="space-y-8 mb-6">
+      {sections.map((s) => {
+        const block = SHOP_BLOCKS[s.type];
+        if (!block) return null;
+        const Renderer = block.Renderer;
+        return <Renderer key={s.id} data={s.data} fullProducts={fullProducts} />;
+      })}
+    </div>
+  );
 }
 
 // Public view (wire into your router)

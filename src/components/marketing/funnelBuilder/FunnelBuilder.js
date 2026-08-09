@@ -57,57 +57,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../shared/ui/card";
 import { Separator } from "../../shared/ui/separator";
 
 // Minimal inline fallbacks for shadcn/ui components not present in this repo.
-// These are intentionally simple — replace with full components when available.
-const Input = ({ value, onChange, placeholder, className, ...rest }) => (
-  <input value={value} onChange={onChange} placeholder={placeholder} className={className || 'w-full rounded-md border border-gray-200 px-2 py-1'} {...rest} />
-);
-const Label = ({ children, className }) => <label className={className || 'block text-xs font-semibold text-gray-600'}>{children}</label>;
-const Switch = ({ checked, onCheckedChange }) => (
-  <button
-    type="button"
-    role="switch"
-    aria-checked={!!checked}
-    onClick={() => onCheckedChange && onCheckedChange(!checked)}
-    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-indigo-600' : 'bg-gray-300'}`}
-  >
-    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-1'}`} />
-  </button>
-);
-const Tabs = ({ children }) => <div>{children}</div>;
-const TabsList = ({ children }) => <div className="flex gap-2">{children}</div>;
-const TabsTrigger = ({ children, onClick, className }) => <button onClick={onClick} className={className}>{children}</button>;
-const TabsContent = ({ children }) => <div>{children}</div>;
-const Textarea = ({ value, onChange, className, ...rest }) => <textarea value={value} onChange={onChange} className={className || 'w-full rounded-md border p-2'} {...rest} />;
-const Slider = ({ value, onValueChange, min = 0, max = 100 }) => (
-  <input type="range" min={min} max={max} value={Array.isArray(value) ? value[0] : value} onChange={(e) => onValueChange && onValueChange([Number(e.target.value)])} />
-);
-const Tooltip = ({ children }) => <span>{children}</span>;
-const TooltipProvider = ({ children }) => <>{children}</>;
-const TooltipTrigger = ({ children }) => <span>{children}</span>;
-const TooltipContent = ({ children }) => <div>{children}</div>;
-const Dialog = ({ open, children, onOpenChange }) => {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={() => onOpenChange && onOpenChange(false)} />
-      <div className="relative z-10 w-full max-w-md mx-auto px-4">{children}</div>
-    </div>
-  );
-};
-
-const DialogContent = ({ children, className }) => (
-  <div className={`bg-white shadow-xl rounded-2xl ${className || ''}`}>{children}</div>
-);
-const DialogFooter = ({ children }) => <div className="mt-4">{children}</div>;
-const DialogHeader = ({ children }) => <div className="mb-2">{children}</div>;
-const DialogTitle = ({ children }) => <h3 className="text-lg font-medium">{children}</h3>;
-const DialogTrigger = ({ children }) => <>{children}</>;
-const DropdownMenu = ({ children }) => <div>{children}</div>;
-const DropdownMenuTrigger = ({ children }) => <>{children}</>;
-const DropdownMenuContent = ({ children }) => <div>{children}</div>;
-const DropdownMenuItem = ({ children }) => <div>{children}</div>;
-const ScrollArea = ({ children, className }) => <div className={className} style={{ maxHeight: '60vh', overflow: 'auto' }}>{children}</div>;
-const Badge = ({ children }) => <span className="inline-block bg-gray-200 px-2 py-1 rounded">{children}</span>;
+// Shared with StoreCanvasBuilder.jsx so both editors use identical building
+// blocks instead of forking a second copy — see inlineFallbacks.js.
+import {
+  Input, Label, Switch, Tabs, TabsList, TabsTrigger, TabsContent, Textarea,
+  Slider, Tooltip, TooltipProvider, TooltipTrigger, TooltipContent,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  ScrollArea, Badge,
+} from "../../shared/ui/inlineFallbacks";
 
 /*****************************************
  * FunnelBuilder – Single‑file React app
