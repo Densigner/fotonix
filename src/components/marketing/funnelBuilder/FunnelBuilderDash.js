@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
   Search,
@@ -6,6 +6,9 @@ import {
   MoreVertical,
   CheckCircle2,
   XCircle,
+  Pencil,
+  Copy,
+  Trash2,
 } from "lucide-react";
 import { API_URL } from '../../../config/environment';
 import { getStarterBlocks } from './templateRegistry';
@@ -212,12 +215,50 @@ function StatusPill({ published }) {
   );
 }
 
-/** --- Actions menu (simple) -------------------------------------------- */
-function RowActions() {
-  return (
-    <button className="rounded-md p-2 hover:bg-neutral-100">
-      <MoreVertical className="h-4 w-4 text-neutral-600" />
+/** --- Actions menu ------------------------------------------------------ */
+function RowActions({ funnel, onRename, onDuplicate, onTogglePublish, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [open]);
+
+  const item = (icon, label, handler, danger) => (
+    <button
+      onClick={(e) => { e.stopPropagation(); setOpen(false); handler(); }}
+      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 ${danger ? "text-red-600" : "text-neutral-700"}`}
+    >
+      {icon}
+      {label}
     </button>
+  );
+
+  return (
+    <div ref={wrapRef} className="relative inline-block text-left">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="rounded-md p-2 hover:bg-neutral-100"
+      >
+        <MoreVertical className="h-4 w-4 text-neutral-600" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
+          {item(<Pencil className="h-3.5 w-3.5" />, "Rename", () => onRename(funnel))}
+          {item(<Copy className="h-3.5 w-3.5" />, "Duplicate", () => onDuplicate(funnel))}
+          {funnel.published
+            ? item(<XCircle className="h-3.5 w-3.5" />, "Unpublish", () => onTogglePublish(funnel))
+            : item(<CheckCircle2 className="h-3.5 w-3.5" />, "Publish", () => onTogglePublish(funnel))}
+          <div className="my-1 border-t border-neutral-100" />
+          {item(<Trash2 className="h-3.5 w-3.5" />, "Delete", () => onDelete(funnel), true)}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -311,6 +352,75 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
     } catch (e) {
       setCreateError('Something went wrong creating this funnel.');
       setCreating(false);
+    }
+  }
+
+  async function handleRename(funnel) {
+    const next = window.prompt('Rename funnel', funnel.name);
+    if (next == null) return; // cancelled
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === funnel.name) return;
+    try {
+      const res = await fetch(`${API_URL}/api/funnels/${funnel.id}`, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) throw new Error();
+      const { funnel: updated } = await res.json();
+      setRows((s) => s.map((r) => (r.id === funnel.id ? updated : r)));
+    } catch (e) {
+      window.alert('Could not rename this funnel — please try again.');
+    }
+  }
+
+  async function handleDuplicate(funnel) {
+    try {
+      // Same slug-collision handling as manual creation: try the plain
+      // "name (copy)" slug first, then fall back to a timestamp suffix if
+      // that's already taken too (e.g. duplicating the same funnel twice).
+      const attempt = async (name) => fetch(`${API_URL}/api/funnels`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ name, blocks: funnel.blocks }),
+      });
+      let res = await attempt(`${funnel.name} (copy)`);
+      if (res.status === 409) {
+        res = await attempt(`${funnel.name} (copy ${Date.now().toString().slice(-4)})`);
+      }
+      if (!res.ok) throw new Error();
+      const { funnel: created } = await res.json();
+      setRows((s) => [created, ...s]);
+    } catch (e) {
+      window.alert('Could not duplicate this funnel — please try again.');
+    }
+  }
+
+  async function handleTogglePublish(funnel) {
+    try {
+      const res = await fetch(`${API_URL}/api/funnels/${funnel.id}/${funnel.published ? 'unpublish' : 'publish'}`, {
+        method: 'POST',
+        headers: authHeaders,
+      });
+      if (!res.ok) throw new Error();
+      const { funnel: updated } = await res.json();
+      setRows((s) => s.map((r) => (r.id === funnel.id ? updated : r)));
+    } catch (e) {
+      window.alert(`Could not ${funnel.published ? 'unpublish' : 'publish'} this funnel — please try again.`);
+    }
+  }
+
+  async function handleDelete(funnel) {
+    if (!window.confirm(`Delete "${funnel.name}"? This can't be undone.`)) return;
+    try {
+      const res = await fetch(`${API_URL}/api/funnels/${funnel.id}`, {
+        method: 'DELETE',
+        headers: authHeaders,
+      });
+      if (!res.ok) throw new Error();
+      setRows((s) => s.filter((r) => r.id !== funnel.id));
+    } catch (e) {
+      window.alert('Could not delete this funnel — please try again.');
     }
   }
 
@@ -437,7 +547,13 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end">
-                        <RowActions />
+                        <RowActions
+                          funnel={r}
+                          onRename={handleRename}
+                          onDuplicate={handleDuplicate}
+                          onTogglePublish={handleTogglePublish}
+                          onDelete={handleDelete}
+                        />
                       </div>
                     </td>
                   </tr>
