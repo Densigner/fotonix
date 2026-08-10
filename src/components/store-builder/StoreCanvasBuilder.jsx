@@ -139,10 +139,19 @@ export function HeroRenderer({ data, editable }) {
 // this behavior isn't lost now that collection-grid is the only product
 // grid — a bare `#product/{id}` hash (the old default) doesn't resolve to
 // anything real.
+//
+// These checks used to read `p.typeId`, but AffiliateCreateProduct.js (the
+// Create Product modal) actually saves the chosen template under
+// `templateId` — `typeId` is never set anywhere in the codebase, so this
+// only ever matched via the title-text fallback below, never via the field
+// it looks like it's checking. Fixed to read the real field.
 function resolveProductClick(p, ownerUid) {
   const title = (p.title || "").toLowerCase();
-  if ((title.includes("fotonix") && title.includes("light up")) || p.typeId === "lumina-cut-user" || p.typeId === "light-up-user") {
+  if ((title.includes("fotonix") && title.includes("light up")) || p.templateId === "lumina-cut-user" || p.templateId === "light-up-user") {
     return () => { window.location.hash = "affiliate-product-accryl"; };
+  }
+  if (p.templateId === "lumina-mirror-user") {
+    return () => { window.location.hash = "standard-mirror-designer"; };
   }
   if (ownerUid) {
     return () => { window.location.href = `${window.location.origin}/product/${ownerUid}/${p.id}`; };
