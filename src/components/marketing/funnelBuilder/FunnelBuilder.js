@@ -121,14 +121,19 @@ function resolveOverlayColor(gradientColor) {
 // it opens YouTube's native one-click subscribe prompt instead of just
 // landing on the channel page. Other platforms don't have an equivalent
 // deep link, so they just take a profile URL.
+// `icon` reuses the actual saved brand logo files this project already has
+// (previously only used by the affiliate storefront's old bespoke social-
+// links UI, now retired in favor of this shared button block) instead of a
+// plain color swatch + text. Platforms with no saved logo asset just fall
+// back to the color swatch.
 const FOLLOW_PLATFORMS = {
   youtube: { label: 'YouTube', color: '#FF0000', defaultLabel: '▶ Subscribe on YouTube', placeholder: '@yourhandle or full channel URL', isHandle: true },
   spotify: { label: 'Spotify', color: '#1DB954', defaultLabel: 'Listen on Spotify', placeholder: 'https://open.spotify.com/show/...' },
   applepodcasts: { label: 'Apple Podcasts', color: '#A855F7', defaultLabel: 'Listen on Apple Podcasts', placeholder: 'https://podcasts.apple.com/...' },
-  instagram: { label: 'Instagram', color: '#E1306C', defaultLabel: 'Follow on Instagram', placeholder: 'https://instagram.com/yourhandle' },
-  tiktok: { label: 'TikTok', color: '#000000', defaultLabel: 'Follow on TikTok', placeholder: 'https://tiktok.com/@yourhandle' },
+  instagram: { label: 'Instagram', color: '#E1306C', defaultLabel: 'Follow on Instagram', placeholder: 'https://instagram.com/yourhandle', icon: '/images/hero/instalogo.jpg' },
+  tiktok: { label: 'TikTok', color: '#000000', defaultLabel: 'Follow on TikTok', placeholder: 'https://tiktok.com/@yourhandle', icon: '/images/hero/tiktok.png' },
   twitter: { label: 'Twitter / X', color: '#1DA1F2', defaultLabel: 'Follow on X', placeholder: 'https://x.com/yourhandle' },
-  facebook: { label: 'Facebook', color: '#1877F2', defaultLabel: 'Follow on Facebook', placeholder: 'https://facebook.com/yourpage' },
+  facebook: { label: 'Facebook', color: '#1877F2', defaultLabel: 'Follow on Facebook', placeholder: 'https://facebook.com/yourpage', icon: '/images/hero/facebook.png' },
 };
 
 function normalizeYouTubeLink(input) {
@@ -285,13 +290,14 @@ function ActionFields({ data, onChange, funnelOwnerUid, allowSubscribe = true, a
                   key={id}
                   type="button"
                   onClick={() => onChange({ platform: id, label: p.defaultLabel, ctaLabel: p.defaultLabel })}
-                  className="text-xs px-3 py-1.5 rounded-full border transition"
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition"
                   style={{
                     backgroundColor: data.platform === id ? p.color : '#fff',
                     color: data.platform === id ? '#fff' : '#111827',
                     borderColor: data.platform === id ? p.color : '#e5e7eb',
                   }}
                 >
+                  {p.icon && <img src={p.icon} alt="" className="h-4 w-4 rounded-sm object-cover" />}
                   {p.label}
                 </button>
               ))}
@@ -360,6 +366,7 @@ function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, 
         title={missing ? (data.actionType === 'shop' ? "No shop set up yet" : "No product selected yet") : undefined}
         onClick={(e) => { if (disabled) e.preventDefault(); }}
       >
+        {platform?.icon && <img src={platform.icon} alt="" className="h-4 w-4 rounded-sm object-cover" />}
         <span
           contentEditable={editable}
           suppressContentEditableWarning={true}

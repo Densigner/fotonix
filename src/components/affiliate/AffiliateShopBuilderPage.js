@@ -306,7 +306,7 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
           </div>
         </section>
 
-        <div className="flex items-center gap-2"><button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">{saving ? "Saving…" : "Save Storefront"}</button>{err && <span className={`text-xs ${err.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>{err}</span>}</div>
+        <div className="flex flex-col items-center gap-2 py-2"><button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50">{saving ? "Saving…" : "Save Storefront"}</button>{err && <span className={`text-xs ${err.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>{err}</span>}</div>
     </div>
   );
 }

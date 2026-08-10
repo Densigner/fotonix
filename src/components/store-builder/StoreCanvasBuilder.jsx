@@ -475,7 +475,7 @@ export const SHOP_BLOCKS = {
   paragraph: { name: "Paragraph", icon: Rows3, Renderer: ParagraphRenderer, Inspector: ParagraphInspector },
   image: { name: "Image", icon: ImageIcon, Renderer: ImageRenderer, Inspector: ImageInspector },
   button: { name: "Button", icon: LinkIconLucide, Renderer: ButtonRenderer, Inspector: ButtonInspector },
-  "collection-grid": { name: "Collection Grid", icon: LayoutGrid, Renderer: CollectionGridRenderer, Inspector: CollectionGridInspector },
+  "collection-grid": { name: "Products", icon: LayoutGrid, Renderer: CollectionGridRenderer, Inspector: CollectionGridInspector },
   "rich-text": { name: "Rich Text", icon: Type, Renderer: RichTextRenderer, Inspector: RichTextInspector },
   faq: { name: "FAQ", icon: HelpCircle, Renderer: FaqRenderer, Inspector: FaqInspector },
 };
@@ -573,9 +573,15 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        {/* Left: block palette, or the selected block's Inspector */}
-        <Card className="h-[calc(100vh-260px)] overflow-hidden border border-zinc-200">
-          <CardHeader className="flex items-center justify-between pb-2">
+        {/* Left: block palette, or the selected block's Inspector.
+            flex-col + flex-1 + min-h-0 on CardContent (rather than a second
+            calc()'d height that has to be kept in sync with the Card's own)
+            is what actually lets ScrollArea fill the remaining space and
+            scroll — a flex child needs min-h-0 to be allowed to shrink
+            below its content size at all, otherwise it just overflows the
+            card silently instead of scrolling. */}
+        <Card className="flex h-[calc(100vh-260px)] flex-col overflow-hidden border border-zinc-200">
+          <CardHeader className="flex shrink-0 items-center justify-between pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               {selectedId ? <Settings2 className="h-4 w-4" /> : <LayoutTemplate className="h-4 w-4" />}
               {selectedId ? "Inspector" : "Blocks"}
@@ -586,9 +592,9 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
               </Button>
             )}
           </CardHeader>
-          <Separator />
-          <CardContent className="p-0">
-            <ScrollArea className="h-[calc(100vh-320px)] p-3">
+          <Separator className="shrink-0" />
+          <CardContent className="min-h-0 flex-1 p-0">
+            <ScrollArea className="h-full p-3">
               {selectedId && selectedDef ? (
                 <div className="space-y-3 p-1">
                   <div className="flex items-center justify-between">
@@ -628,9 +634,11 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
           </CardContent>
         </Card>
 
-        {/* Right: canvas */}
-        <Card className="relative h-[calc(100vh-260px)] overflow-hidden border border-zinc-200">
-          <CardContent className="h-full p-0">
+        {/* Right: canvas — same flex-1/min-h-0 reasoning as the left panel,
+            so a tall block's Duplicate/Remove buttons are reachable by
+            scrolling instead of silently overflowing the card. */}
+        <Card className="relative flex h-[calc(100vh-260px)] flex-col overflow-hidden border border-zinc-200">
+          <CardContent className="min-h-0 flex-1 p-0">
             <div className="relative flex h-full items-start overflow-auto bg-white">
               <div className="relative mx-auto h-full w-full overflow-y-auto" style={{ width: containerWidth }}>
                 <div className="min-h-full border border-gray-200">

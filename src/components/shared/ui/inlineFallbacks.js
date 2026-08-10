@@ -52,5 +52,10 @@ export const DropdownMenu = ({ children }) => <div>{children}</div>;
 export const DropdownMenuTrigger = ({ children }) => <>{children}</>;
 export const DropdownMenuContent = ({ children }) => <div>{children}</div>;
 export const DropdownMenuItem = ({ children }) => <div>{children}</div>;
-export const ScrollArea = ({ children, className }) => <div className={className} style={{ maxHeight: '60vh', overflow: 'auto' }}>{children}</div>;
+// No hardcoded maxHeight here on purpose: a fixed 60vh silently fought
+// whatever real height a caller's className gave it (e.g. h-full inside a
+// flex layout), capping/clipping content and making it look unscrollable
+// even though overflow was technically "auto". Height is entirely the
+// caller's responsibility via className now.
+export const ScrollArea = ({ children, className }) => <div className={`${className || ''} overflow-y-auto`}>{children}</div>;
 export const Badge = ({ children }) => <span className="inline-block bg-gray-200 px-2 py-1 rounded">{children}</span>;
