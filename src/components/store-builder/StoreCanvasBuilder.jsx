@@ -52,11 +52,19 @@ import { CompactControls, ActionFields, CtaAction, SubscribeInlineForm, Clickabl
  * canvas here and the real storefront can never drift apart.
  * ========================================================================= */
 
-export function HeroRenderer({ data }) {
+// editable is also (ab)used here as "is this the real public page or the
+// editor's own boxed device-preview canvas": the storefront page wraps
+// everything in a centered max-width column for readable text, which also
+// flattened hero banners into a letterboxed strip instead of a real
+// edge-to-edge hero. Breaks out to full viewport width only when it's not
+// sitting inside the canvas's own simulated device frame, where "full
+// width" would just mean "wider than the frame" and look broken.
+export function HeroRenderer({ data, editable }) {
   const { title, subtitle, align, bgImage, overlay = 0.35, cta } = data;
   const justify = align === "left" ? "items-start" : align === "right" ? "items-end" : "items-center";
+  const bleed = editable ? "rounded-2xl" : "w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]";
   return (
-    <section className="relative overflow-hidden rounded-2xl">
+    <section className={`relative overflow-hidden ${bleed}`}>
       {bgImage && <img src={bgImage} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
       <div className="relative z-10 grid min-h-[220px] place-items-center p-8">
         <div className={`flex w-full max-w-3xl flex-col gap-2 ${justify} text-white`}>
@@ -437,6 +445,13 @@ function ImageInspector({ data, onChange, onPickImage, ownerUid }) {
       <Separator />
       <p className="text-xs font-medium text-gray-700">Click behavior</p>
       <ActionFields data={data} onChange={onChange} funnelOwnerUid={ownerUid} allowSubscribe={false} allowNone />
+      {/* ActionFields itself never renders a field to type the URL into for
+          the "link" action — every block that offers it has to add this
+          itself (see the button block below). Missing here meant picking
+          "Link to a URL" on an image gave no way to actually enter one. */}
+      {data.actionType === "link" && (
+        <Field label="Link"><Input value={data.href || ""} onChange={(e) => onChange({ href: e.target.value })} /></Field>
+      )}
     </div>
   );
 }

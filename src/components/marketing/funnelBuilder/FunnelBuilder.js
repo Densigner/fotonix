@@ -871,6 +871,13 @@ const BLOCKS = {
         <Separator />
         <p className="text-xs font-medium text-gray-700">Click behavior</p>
         <ActionFields data={data} onChange={onChange} funnelOwnerUid={funnelOwnerUid} allowSubscribe={false} allowNone />
+        {/* ActionFields never renders a field to type the URL into for the
+            "link" action itself — every block offering it has to add this
+            separately (see the button block below), and this one never did,
+            so picking "Link to a URL" here gave no way to enter one. */}
+        {data.actionType === 'link' && (
+          <Field label="Link"><Input value={data.href} onChange={e=>onChange({ href: e.target.value })} /></Field>
+        )}
       </div>
     )
   },
