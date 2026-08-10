@@ -64,6 +64,26 @@ function makeBlock(type, data) {
   return { ...base, data: { ...base.data, ...data } };
 }
 
+// A brand-new storefront's starting page. Built procedurally (not a flat
+// array literal) so the Hero's CTA can point at the real generated id of
+// the products block below it -- the old default linked to a hardcoded
+// "#products" anchor that never actually existed on the page, which is
+// exactly why the Hero shipped with no button at all for a while instead.
+// Now every block renders with id={section.id} on the public page (see
+// RenderSections), so an in-page anchor like this genuinely scrolls there.
+function buildStarterSections() {
+  const products = makeBlock("collection-grid", { tone: "muted" });
+  const hero = makeBlock("hero", { cta: { label: "Shop now", href: `#${products.id}` } });
+  return [
+    hero,
+    makeBlock("split", { tone: "muted" }),
+    createSection("columns"),
+    products,
+    makeBlock("testimonial", { tone: "default" }),
+    createSection("faq"),
+  ];
+}
+
 // One-time migration for storefronts saved before Theme/Banner/Bio/Links/
 // Products became blocks: synthesizes the equivalent heading/paragraph/
 // button/collection-grid blocks from the old top-level fields so existing
@@ -173,14 +193,7 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
     // half-empty template. Every owner is expected to edit this copy --
     // see sections.js for why the testimonial default deliberately reads
     // as a builder instruction rather than an invented quote.
-    pageSections: [
-      createSection("hero"),
-      makeBlock("split", { tone: "muted" }),
-      createSection("columns"),
-      makeBlock("collection-grid", { tone: "muted" }),
-      makeBlock("testimonial", { tone: "default" }),
-      createSection("faq"),
-    ],
+    pageSections: buildStarterSections(),
     seo: { title: "", description: "", ogImage: "" },
   });
 
@@ -422,7 +435,7 @@ function RenderSections({ sections, fullProducts, ownerUid, reveal }) {
         if (!block) return null;
         const Renderer = block.Renderer;
         return (
-          <Reveal key={s.id} mode={reveal} index={idx} disabled={idx === 0}>
+          <Reveal key={s.id} id={s.id} mode={reveal} index={idx} disabled={idx === 0}>
             <Renderer data={s.data} fullProducts={fullProducts} ownerUid={ownerUid} editable={false} />
           </Reveal>
         );

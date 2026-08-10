@@ -170,7 +170,7 @@ export function useGoogleFont(fontsKey) {
 // prefers-reduced-motion always wins, and the caller is expected to pass
 // `disabled` for the first block on the page (nothing above the fold
 // should animate in).
-export function Reveal({ mode, index = 0, disabled, children }) {
+export function Reveal({ mode, index = 0, disabled, id, children }) {
   const ref = useRef(null);
   const [visible, setVisible] = useState(true);
   const active = !disabled && mode && mode !== "none";
@@ -196,12 +196,13 @@ export function Reveal({ mode, index = 0, disabled, children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
-  if (!active) return <div ref={ref}>{children}</div>;
+  if (!active) return <div ref={ref} id={id}>{children}</div>;
 
   const delay = Math.min(index * 60, 300);
   return (
     <div
       ref={ref}
+      id={id}
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? "none" : mode === "fade-up" ? "translateY(24px)" : "none",
