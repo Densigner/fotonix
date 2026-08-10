@@ -244,7 +244,22 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
       if (!handle) throw new Error("Please choose a handle (3–30 letters/numbers/dashes)");
       const ok = await claimHandle(getDatabase(), handle, uid);
       if (!ok) throw new Error("That handle is already taken. Try another.");
-      const payload = { ...data, handle, updatedAt: Date.now() };
+      // Legacy pre-block fields (still present in local state because the
+      // load effect spreads the raw Firebase record wholesale) must not be
+      // written back out here. If they were, migrateLegacyFieldsToBlocks()
+      // would keep reading e.g. the old displayName/bio on every future
+      // load and re-synthesizing a heading/paragraph block for it forever
+      // -- deleting that block in the editor would never actually stick,
+      // since the very next load would resurrect it from the still-present
+      // legacy field.
+      const {
+        displayName, bio, bannerUrl, theme, links, linkAlignment, linkStyle,
+        linksHeading, linksDescription, productDisplayMode, productIds,
+        featuredLayout, featuredProductId, productsHeading, productsDescription,
+        seo, urlStyle,
+        ...cleanData
+      } = data;
+      const payload = { ...cleanData, handle, updatedAt: Date.now() };
       await set(dbRef(db, `storefronts/${uid}`), payload);
       setErr("Storefront saved successfully!");
       setTimeout(() => {

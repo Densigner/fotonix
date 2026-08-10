@@ -12,7 +12,13 @@ export function createSection(type) {
           subtitle: "Curated picks I love",
           align: "center",
           overlay: 0.35,
-          cta: { label: "Shop now", href: "#products" },
+          // No default CTA link: the old "#products" anchor doesn't point
+          // at anything real anymore (there's no longer a hardcoded
+          // Products section with that id -- products are just a block
+          // like anything else, if the page even has one). Leaving both
+          // empty means no CTA button renders at all until someone
+          // deliberately sets one in the Inspector.
+          cta: { label: "", href: "" },
         },
       };
     case "collection-grid":
