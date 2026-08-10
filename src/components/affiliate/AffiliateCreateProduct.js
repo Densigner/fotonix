@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Image as ImageIcon, CheckCircle2, AlertTriangle, Tag, Package, Layers } from "lucide-react";
+import { X, Image as ImageIcon, CheckCircle2, AlertTriangle, Tag, Package, Layers, ExternalLink, RefreshCcw } from "lucide-react";
 
 /**
  * ProductUploadModal — Fotonix product creation flow
@@ -68,42 +68,48 @@ export default function ProductUploadModal({
     };
   }, [isOpen, previews]);
 
-  // Load the affiliate's own saved designs (from the mirror/pattern designers)
-  useEffect(() => {
-    const loadDesigns = async () => {
-      const u = getCurrentUser();
-      if (!isOpen || !u) return;
+  // Load the affiliate's own saved designs (from the mirror/pattern designers).
+  // Pulled out of the effect so the "Refresh" button below can re-run it
+  // on demand too -- an affiliate with none saved yet needs to jump to the
+  // designer in a new tab, save one there, then come back to *this* still-
+  // open modal and pick it up without losing whatever they've already
+  // typed into the title/description fields here.
+  const loadDesigns = async () => {
+    const u = getCurrentUser();
+    if (!isOpen || !u) return;
 
-      setLoadingDesigns(true);
-      try {
-        const dbm = await import("firebase/database");
-        const { getDatabase, ref: dbRef, get } = dbm;
-        const db = getDatabase();
-        const snapshot = await get(dbRef(db, `designs/${u.uid}`));
+    setLoadingDesigns(true);
+    try {
+      const dbm = await import("firebase/database");
+      const { getDatabase, ref: dbRef, get } = dbm;
+      const db = getDatabase();
+      const snapshot = await get(dbRef(db, `designs/${u.uid}`));
 
-        if (snapshot.exists()) {
-          const designsData = snapshot.val();
-          const designsList = Object.entries(designsData).map(([id, d]) => ({
-            id: `design_${id}`,
-            label: d.title || 'Untitled design',
-            basePrice: d.basePrice ?? 0,
-            category: "my-designs",
-            sourceDesignId: id,
-            thumbnailUrl: d.thumbnailUrl || null,
-          }));
-          setSavedDesigns(designsList);
-        } else {
-          setSavedDesigns([]);
-        }
-      } catch (error) {
-        console.error('Error loading saved designs:', error);
+      if (snapshot.exists()) {
+        const designsData = snapshot.val();
+        const designsList = Object.entries(designsData).map(([id, d]) => ({
+          id: `design_${id}`,
+          label: d.title || 'Untitled design',
+          basePrice: d.basePrice ?? 0,
+          category: "my-designs",
+          sourceDesignId: id,
+          thumbnailUrl: d.thumbnailUrl || null,
+        }));
+        setSavedDesigns(designsList);
+      } else {
         setSavedDesigns([]);
-      } finally {
-        setLoadingDesigns(false);
       }
-    };
+    } catch (error) {
+      console.error('Error loading saved designs:', error);
+      setSavedDesigns([]);
+    } finally {
+      setLoadingDesigns(false);
+    }
+  };
 
+  useEffect(() => {
     loadDesigns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   function showError(msg) { setToast({ ok: false, msg }); }
@@ -314,7 +320,19 @@ export default function ProductUploadModal({
                       <option value="my-designs">✏️ My Saved Designs</option>
                     </select>
 
-                    <label className="block text-xs text-zinc-600">Template</label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs text-zinc-600">Template</label>
+                      {selectedCategory === "my-designs" && (
+                        <button
+                          type="button"
+                          onClick={loadDesigns}
+                          disabled={loadingDesigns}
+                          className="inline-flex items-center gap-1 text-xs text-fuchsia-600 hover:text-fuchsia-700 disabled:opacity-50"
+                        >
+                          <RefreshCcw className={`h-3 w-3 ${loadingDesigns ? "animate-spin" : ""}`} /> Refresh
+                        </button>
+                      )}
+                    </div>
                     {selectedCategory === "my-designs" && loadingDesigns ? (
                       <div className="flex items-center gap-2 py-2 text-sm text-zinc-500">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-fuchsia-400 border-t-transparent"></div>
@@ -322,7 +340,18 @@ export default function ProductUploadModal({
                       </div>
                     ) : selectedCategory === "my-designs" && savedDesigns.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-zinc-300 p-3 text-xs text-zinc-500 dark:border-zinc-700">
-                        No saved designs yet. Design a mirror and save it first, then it'll show up here.
+                        <p className="mb-2">No saved designs yet. Design a mirror and save it first, then it'll show up here.</p>
+                        {/* Opens in a new tab -- this modal (and whatever the affiliate has
+                            already typed into the fields below) stays open and untouched, so
+                            they just design, save, come back to this tab, and hit Refresh above. */}
+                        <a
+                          href="/#product"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-fuchsia-50 px-3 py-1.5 font-medium text-fuchsia-700 hover:bg-fuchsia-100 dark:bg-fuchsia-950/30 dark:text-fuchsia-300"
+                        >
+                          Design a mirror now <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
                       </div>
                     ) : (
                       <div className="relative">
