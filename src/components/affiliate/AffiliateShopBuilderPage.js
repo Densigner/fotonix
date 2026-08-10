@@ -11,6 +11,7 @@ import CommandPalette from '../shared/CommandPalette';
 import DeviceToolbar from '../shared/DeviceToolbar';
 import { createSection } from '../shared/sections';
 import { saveSnapshot, listSnapshots } from '../shared/versions';
+import { DEFAULT_THEME, FONT_PAIRINGS, deriveThemeVars, useGoogleFont, Reveal } from '../store-builder/theme';
 
 // ==============================
 // Affiliate Storefront — Editable Page for Affiliates
@@ -152,7 +153,8 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
     displayName: "",
     bio: "",
     bannerUrl: "",
-    theme: { bgType: "gradient", gradientFrom: "#ec4899", gradientTo: "#8b5cf6", textColor: "light" },
+    theme: DEFAULT_THEME,
+    motion: { reveal: "none" },
     links: [],
     linkAlignment: "center",
     linkStyle: "bordered",
@@ -224,9 +226,10 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
       const r = stRef(storage, key);
       await uploadBytes(r, file);
       const url = await getDownloadURL(r);
+      const fieldForType = { image: "url", testimonial: "photo" };
       setData((d) => ({
         ...d,
-        pageSections: (d.pageSections || []).map((s) => (s.id === sectionId ? { ...s, data: { ...s.data, [s.type === "image" ? "url" : "bgImage"]: url } } : s)),
+        pageSections: (d.pageSections || []).map((s) => (s.id === sectionId ? { ...s, data: { ...s.data, [fieldForType[s.type] || "bgImage"]: url } } : s)),
       }));
     } catch (e) {
       setErr(e.message || String(e));
@@ -289,13 +292,66 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
           </div>
         </section>
 
-        {/* Everything else — profile text, banner image, background theme,
-            social/action links, curated products, SEO — is now built as
-            blocks in the canvas below, the same way the Funnel Builder
-            handles its own pages. Old saved storefronts get their existing
-            content migrated into equivalent blocks automatically on load
-            (see migrateLegacyFieldsToBlocks). SEO is derived from the
-            blocks themselves (see deriveSeo), not a separate form. */}
+        {/* Design: one brand color drives every color on the page (see
+            store-builder/theme.js) -- no more per-block color pickers or a
+            page-wide gradient/image "Theme" strip. */}
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h3 className="text-sm font-semibold">Design</h3>
+          <div className="mt-3 space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-zinc-600">Brand color</label>
+              <input type="color" value={data.theme?.brand || DEFAULT_THEME.brand} onChange={(e) => setData((d) => ({ ...d, theme: { ...d.theme, brand: e.target.value } }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <label className="flex flex-col gap-1 text-zinc-600">
+                Mood
+                <select value={data.theme?.mood || DEFAULT_THEME.mood} onChange={(e) => setData((d) => ({ ...d, theme: { ...d.theme, mood: e.target.value } }))} className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+                  <option value="editorial">Editorial</option>
+                  <option value="warm">Warm</option>
+                  <option value="bold">Bold</option>
+                  <option value="clinical">Clinical</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-zinc-600">
+                Fonts
+                <select value={data.theme?.fonts || DEFAULT_THEME.fonts} onChange={(e) => setData((d) => ({ ...d, theme: { ...d.theme, fonts: e.target.value } }))} className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+                  {Object.entries(FONT_PAIRINGS).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-zinc-600">
+                Corner radius
+                <select value={data.theme?.radius || DEFAULT_THEME.radius} onChange={(e) => setData((d) => ({ ...d, theme: { ...d.theme, radius: e.target.value } }))} className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+                  <option value="none">None</option>
+                  <option value="sm">Small</option>
+                  <option value="lg">Large</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-zinc-600">
+                Spacing
+                <select value={data.theme?.density || DEFAULT_THEME.density} onChange={(e) => setData((d) => ({ ...d, theme: { ...d.theme, density: e.target.value } }))} className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+                  <option value="airy">Airy</option>
+                  <option value="tight">Tight</option>
+                </select>
+              </label>
+            </div>
+            <label className="flex flex-col gap-1 text-xs text-zinc-600">
+              Scroll animation
+              <select value={data.motion?.reveal || "none"} onChange={(e) => setData((d) => ({ ...d, motion: { ...d.motion, reveal: e.target.value } }))} className="w-48 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+                <option value="none">None</option>
+                <option value="fade">Fade in</option>
+                <option value="fade-up">Fade up</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        {/* Everything else — profile text, banner image, social/action
+            links, curated products, SEO — is now built as blocks in the
+            canvas below, the same way the Funnel Builder handles its own
+            pages. Old saved storefronts get their existing content
+            migrated into equivalent blocks automatically on load (see
+            migrateLegacyFieldsToBlocks). SEO is derived from the blocks
+            themselves (see deriveSeo), not a separate form. */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h3 className="text-sm font-semibold">Page sections</h3>
           <div className="mt-3">
@@ -303,6 +359,7 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
               value={data.pageSections}
               products={products}
               currentUserId={currentUserId}
+              theme={data.theme}
               onChange={(next) => setData((d) => ({ ...d, pageSections: next }))}
               onPickImage={(sectionId) => {
                 // trigger file input and then uploadSectionImage
@@ -333,15 +390,19 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
 // only ever one copy of what a "hero" or "faq" section looks like.
 // editable is always false here (real visitors, real clicks/submissions);
 // the canvas passes editable=true at its own call site instead.
-function RenderSections({ sections, fullProducts, ownerUid }) {
+function RenderSections({ sections, fullProducts, ownerUid, reveal }) {
   if (!sections || !sections.length) return null;
   return (
-    <div className="space-y-8 mb-6">
-      {sections.map((s) => {
+    <div className="flex flex-col" style={{ gap: "var(--block-gap, 5rem)" }}>
+      {sections.map((s, idx) => {
         const block = SHOP_BLOCKS[s.type];
         if (!block) return null;
         const Renderer = block.Renderer;
-        return <Renderer key={s.id} data={s.data} fullProducts={fullProducts} ownerUid={ownerUid} editable={false} />;
+        return (
+          <Reveal key={s.id} mode={reveal} index={idx} disabled={idx === 0}>
+            <Renderer data={s.data} fullProducts={fullProducts} ownerUid={ownerUid} editable={false} />
+          </Reveal>
+        );
       })}
     </div>
   );
@@ -464,6 +525,9 @@ export function AffiliateStorefrontViewer({ handle }) {
     return () => { document.title = prevTitle; };
   }, [storeData, handle]);
 
+  // Real fonts on the public page too, same pairing chosen in the editor.
+  useGoogleFont(storeData?.theme?.fonts);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -493,11 +557,14 @@ export function AffiliateStorefrontViewer({ handle }) {
   // any legacy displayName/bio/bannerUrl/theme/links/products migrated into
   // block form on load above) — no bespoke header or product grid of its
   // own, matching how FunnelViewer.js is just "fetch blocks, render via the
-  // shared registry."
+  // shared registry." The brand color chosen in the editor drives every
+  // color here via CSS custom properties (see deriveThemeVars) — nothing
+  // is a hardcoded Tailwind color anymore.
+  const themeVars = deriveThemeVars(storeData.theme);
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen" style={{ ...themeVars, background: "var(--surface)", color: "var(--text)" }}>
       <div className="mx-auto max-w-6xl px-6 py-12">
-        <RenderSections sections={storeData.pageSections} fullProducts={products} ownerUid={ownerUid} />
+        <RenderSections sections={storeData.pageSections} fullProducts={products} ownerUid={ownerUid} reveal={storeData.motion?.reveal} />
       </div>
     </div>
   );

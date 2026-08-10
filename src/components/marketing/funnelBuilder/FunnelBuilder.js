@@ -326,7 +326,7 @@ function ActionFields({ data, onChange, funnelOwnerUid, allowSubscribe = true, a
 // block so "link vs mailing-list vs follow-a-platform" behaves and looks
 // identical everywhere a CTA button appears, not just on the standalone
 // button block.
-function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, buttonVariant, showIcon, labelKey = 'ctaLabel' }) {
+function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, buttonVariant, showIcon, labelKey = 'ctaLabel', styleOverride }) {
   // Called unconditionally, before the subscribe early-return below, so
   // this respects the rules of hooks regardless of which action is active.
   // useResolvedActionHref's 'link' case already checks both data.href and
@@ -356,7 +356,7 @@ function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, 
       asChild
       variant={buttonVariant}
       className={buttonClassName}
-      style={platform ? { backgroundColor: platform.color, color: '#fff' } : undefined}
+      style={{ ...(platform ? { backgroundColor: platform.color, color: '#fff' } : undefined), ...styleOverride }}
     >
       <a
         href={disabled ? undefined : href}

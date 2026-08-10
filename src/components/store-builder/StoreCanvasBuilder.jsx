@@ -30,6 +30,7 @@ import {
   Heading as HeadingIcon,
   Rows3,
   Link as LinkIconLucide,
+  Quote,
 } from "lucide-react";
 
 import { Button } from "../shared/ui/button";
@@ -44,6 +45,7 @@ import { createSection, uid } from "../shared/sections";
 // list / follow / shop / product" click-action logic rather than each
 // maintaining its own.
 import { CompactControls, ActionFields, CtaAction, SubscribeInlineForm, ClickableImage } from "../marketing/funnelBuilder/FunnelBuilder";
+import { deriveThemeVars, useGoogleFont } from "./theme";
 
 /* =========================================================================
  * Block renderers — the single source of truth for what a section looks
@@ -60,20 +62,54 @@ import { CompactControls, ActionFields, CtaAction, SubscribeInlineForm, Clickabl
 // sitting inside the canvas's own simulated device frame, where "full
 // width" would just mean "wider than the frame" and look broken.
 export function HeroRenderer({ data, editable }) {
-  const { title, subtitle, align, bgImage, overlay = 0.35, cta } = data;
+  const { title, subtitle, align, bgImage, overlay = 0.35, cta, variant = "full-bleed" } = data;
   const justify = align === "left" ? "items-start" : align === "right" ? "items-end" : "items-center";
-  const bleed = editable ? "rounded-2xl" : "w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]";
+  const textAlign = align === "left" ? "left" : align === "right" ? "right" : "center";
+
+  const ctaButton = cta?.label && (
+    <a
+      href={cta.href || "#"}
+      style={{ background: "var(--accent)", color: "var(--accent-foreground)", borderRadius: "var(--radius)" }}
+      className="mt-2 inline-block w-max px-5 py-3 text-sm font-semibold shadow-sm transition hover:brightness-110"
+    >
+      {cta.label}
+    </a>
+  );
+
+  // Portrait or busy images read better split beside the text than
+  // underneath it with an overlay fighting for contrast.
+  if (variant === "split") {
+    return (
+      <section className="grid grid-cols-1 items-center gap-8 py-6 md:grid-cols-2">
+        <div className={`flex flex-col gap-4 ${justify}`} style={{ textAlign }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)", color: "var(--text)" }} className="text-3xl md:text-4xl">{title}</h2>
+          {subtitle && <p style={{ fontFamily: "var(--font-body)", color: "var(--muted-text)" }} className="max-w-prose text-lg">{subtitle}</p>}
+          {ctaButton}
+        </div>
+        {bgImage && <img src={bgImage} alt="" style={{ borderRadius: "var(--radius)" }} className="aspect-[4/5] w-full object-cover md:aspect-square" loading="lazy" />}
+      </section>
+    );
+  }
+
+  // editable is also (ab)used here as "is this the real public page or the
+  // editor's own boxed device-preview canvas": the storefront page wraps
+  // everything in a centered max-width column for readable text, which also
+  // flattened hero banners into a letterboxed strip instead of a real
+  // edge-to-edge hero. Breaks out to full viewport width only when it's not
+  // sitting inside the canvas's own simulated device frame, where "full
+  // width" would just mean "wider than the frame" and look broken.
+  const bleed = editable ? "" : "w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]";
   return (
-    <section className={`relative overflow-hidden ${bleed}`}>
+    <section className={`relative overflow-hidden ${bleed}`} style={{ borderRadius: editable ? "var(--radius)" : 0 }}>
       {bgImage && <img src={bgImage} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
-      <div className="relative z-10 grid min-h-[220px] place-items-center p-8">
-        <div className={`flex w-full max-w-3xl flex-col gap-2 ${justify} text-white`}>
-          <h2 className="text-3xl font-bold drop-shadow">{title}</h2>
-          {subtitle && <p className="max-w-prose drop-shadow">{subtitle}</p>}
-          {cta?.label && <a href={cta.href || "#"} className="mt-2 w-max rounded-xl bg-white px-4 py-2 text-sm font-semibold text-zinc-900 shadow"> {cta.label} </a>}
+      <div className="relative z-10 grid min-h-[320px] place-items-center p-10">
+        <div className={`flex w-full max-w-3xl flex-col gap-3 ${justify}`} style={{ textAlign, color: bgImage ? "#fff" : "var(--text)" }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)" }} className="text-4xl drop-shadow md:text-5xl">{title}</h2>
+          {subtitle && <p style={{ fontFamily: "var(--font-body)" }} className="max-w-prose text-lg drop-shadow">{subtitle}</p>}
+          {ctaButton}
         </div>
       </div>
-      <div className="absolute inset-0" style={{ background: "#000", opacity: overlay }} />
+      {bgImage && <div className="absolute inset-0" style={{ background: "#000", opacity: overlay }} />}
     </section>
   );
 }
@@ -95,22 +131,40 @@ function resolveProductClick(p, ownerUid) {
   return undefined;
 }
 
-function ProductCardLink({ p, showPrice, showCTA, ownerUid }) {
+function ProductCardLink({ p, showPrice, showCTA, ownerUid, variant = "grid" }) {
   const idx = p.mainImageIndex ?? 0;
   const fallback = p.images && p.images[idx] ? p.images[idx].url : undefined;
   const src = p.imageUrl || fallback;
   const onNavigate = resolveProductClick(p, ownerUid);
+  const clickProps = onNavigate ? { onClick: (e) => { e.preventDefault(); onNavigate(); } } : {};
+
+  if (variant === "editorial-list") {
+    return (
+      <a href={p.href || "#"} {...clickProps} className="group flex flex-col gap-3">
+        <div className="overflow-hidden" style={{ borderRadius: "var(--radius)" }}>
+          {src ? <img src={src} alt={p.title} className="aspect-[4/5] w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy" /> : null}
+        </div>
+        <div>
+          <h4 style={{ fontFamily: "var(--font-display)", color: "var(--text)" }} className="text-lg font-medium">{p.title}</h4>
+          {showPrice && <div style={{ color: "var(--muted-text)" }} className="mt-1 text-sm">£{p.price?.toFixed?.(2) ?? "-"}</div>}
+          {showCTA && <div style={{ color: "var(--accent)" }} className="mt-2 text-xs font-medium">View details →</div>}
+        </div>
+      </a>
+    );
+  }
+
   return (
     <a
       href={p.href || "#"}
-      onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate(); } : undefined}
-      className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md"
+      {...clickProps}
+      style={{ background: "var(--surface)", borderColor: "var(--border)", borderRadius: "var(--radius)" }}
+      className="group block overflow-hidden border shadow-sm transition hover:shadow-md"
     >
       {src ? <img src={src} alt={p.title} className="h-48 w-full object-cover" loading="lazy" /> : null}
       <div className="p-4">
-        <h4 className="line-clamp-2 text-sm font-semibold">{p.title}</h4>
-        {showPrice && <div className="mt-1 text-pink-600">£{p.price?.toFixed?.(2) ?? "-"}</div>}
-        {showCTA && <div className="mt-2 text-xs text-zinc-500">View details →</div>}
+        <h4 style={{ fontFamily: "var(--font-body)", color: "var(--text)" }} className="line-clamp-2 text-sm font-semibold">{p.title}</h4>
+        {showPrice && <div style={{ color: "var(--accent)" }} className="mt-1 font-medium">£{p.price?.toFixed?.(2) ?? "-"}</div>}
+        {showCTA && <div style={{ color: "var(--muted-text)" }} className="mt-2 text-xs">View details →</div>}
       </div>
     </a>
   );
@@ -119,24 +173,27 @@ function ProductCardLink({ p, showPrice, showCTA, ownerUid }) {
 export function CollectionGridRenderer({ data, fullProducts, ownerUid }) {
   // Firebase RTDB prunes empty arrays on write, so a saved section with no
   // product IDs reloads with `productIds` missing, not [].
-  const { title, productIds = [], showPrice, showCTA, displayMode = "curated", featured, featuredProductId } = data;
+  const { title, productIds = [], showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid" } = data;
   const all = fullProducts || [];
   const ordered = displayMode === "all" ? all : productIds.map((id) => all.find((p) => p?.id === id)).filter(Boolean);
   const featuredProduct = featured
     ? (featuredProductId && ordered.find((p) => p.id === featuredProductId)) || ordered[0]
     : null;
   const gridProducts = featuredProduct ? ordered.filter((p) => p.id !== featuredProduct.id) : ordered;
+  const gridCls = variant === "editorial-list"
+    ? "grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-3"
+    : "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
 
   return (
     <section>
-      {title && <h3 className="mb-2 text-lg font-semibold">{title}</h3>}
+      {title && <h3 style={{ fontFamily: "var(--font-display)", color: "var(--text)", fontWeight: "var(--heading-weight)" }} className="mb-4 text-2xl">{title}</h3>}
       {featuredProduct && (
-        <div className="mb-4">
-          <ProductCardLink p={featuredProduct} showPrice={showPrice} showCTA={showCTA} ownerUid={ownerUid} />
+        <div className="mb-6">
+          <ProductCardLink p={featuredProduct} showPrice={showPrice} showCTA={showCTA} ownerUid={ownerUid} variant={variant} />
         </div>
       )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {gridProducts.map((p) => <ProductCardLink key={p.id} p={p} showPrice={showPrice} showCTA={showCTA} ownerUid={ownerUid} />)}
+      <div className={gridCls}>
+        {gridProducts.map((p) => <ProductCardLink key={p.id} p={p} showPrice={showPrice} showCTA={showCTA} ownerUid={ownerUid} variant={variant} />)}
       </div>
     </section>
   );
@@ -146,7 +203,7 @@ export function RichTextRenderer({ data }) {
   const { html, align, maxWidth = 720 } = data;
   const cls = align === "center" ? "mx-auto text-center" : align === "right" ? "ml-auto text-right" : "mr-auto text-left";
   return (
-    <section className={`prose max-w-none ${cls}`} style={{ maxWidth }}>
+    <section className={`prose max-w-none ${cls}`} style={{ maxWidth, fontFamily: "var(--font-body)", color: "var(--text)" }}>
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </section>
   );
@@ -157,13 +214,13 @@ export function FaqRenderer({ data }) {
   const faqItems = data.items || [];
   if (!faqItems.length) return null;
   return (
-    <section className="rounded-2xl border p-4">
-      <h3 className="mb-2 text-lg font-semibold">FAQ</h3>
-      <div className="divide-y">
+    <section style={{ background: "var(--muted-surface)", borderColor: "var(--border)", borderRadius: "var(--radius)" }} className="border p-6">
+      <h3 style={{ fontFamily: "var(--font-display)", color: "var(--text)", fontWeight: "var(--heading-weight)" }} className="mb-3 text-xl">Frequently asked questions</h3>
+      <div style={{ borderColor: "var(--border)" }} className="divide-y">
         {faqItems.map((it, idx) => (
-          <details key={idx} className="py-2">
-            <summary className="cursor-pointer text-sm font-medium">{it.q}</summary>
-            <p className="mt-1 text-sm text-zinc-600">{it.a}</p>
+          <details key={idx} className="py-3">
+            <summary style={{ fontFamily: "var(--font-body)", color: "var(--text)" }} className="cursor-pointer text-sm font-medium">{it.q}</summary>
+            <p style={{ color: "var(--muted-text)" }} className="mt-2 text-sm leading-relaxed">{it.a}</p>
           </details>
         ))}
       </div>
@@ -173,13 +230,44 @@ export function FaqRenderer({ data }) {
 
 export function HeadingRenderer({ data }) {
   const { text, size = 32, align = "center" } = data;
-  return <h2 style={{ fontSize: size, textAlign: align }} className="font-bold tracking-tight">{text}</h2>;
+  return (
+    <h2
+      style={{ fontSize: size, textAlign: align, fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)", color: "var(--text)" }}
+    >
+      {text}
+    </h2>
+  );
 }
 
 export function ParagraphRenderer({ data }) {
   const { text, width = 700, align = "center" } = data;
   const cls = align === "center" ? "mx-auto text-center" : align === "right" ? "ml-auto text-right" : "text-left";
-  return <p className={`text-gray-600 leading-7 ${cls}`} style={{ maxWidth: width }}>{text}</p>;
+  return (
+    <p className={`leading-7 ${cls}`} style={{ maxWidth: width, fontFamily: "var(--font-body)", color: "var(--muted-text)" }}>
+      {text}
+    </p>
+  );
+}
+
+export function TestimonialRenderer({ data }) {
+  const { quote, name, role, photo } = data;
+  if (!quote) return null;
+  return (
+    <section style={{ background: "var(--muted-surface)", borderRadius: "var(--radius)" }} className="p-8 text-center">
+      <p style={{ fontFamily: "var(--font-display)", color: "var(--text)" }} className="mx-auto max-w-2xl text-xl leading-relaxed md:text-2xl">
+        &ldquo;{quote}&rdquo;
+      </p>
+      {(name || photo) && (
+        <div className="mt-5 flex items-center justify-center gap-3">
+          {photo && <img src={photo} alt="" className="h-10 w-10 rounded-full object-cover" />}
+          <div style={{ fontFamily: "var(--font-body)" }} className="text-left">
+            {name && <div style={{ color: "var(--text)" }} className="text-sm font-semibold">{name}</div>}
+            {role && <div style={{ color: "var(--muted-text)" }} className="text-xs">{role}</div>}
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 // funnelOwnerUid here is the storefront owner's own uid — ClickableImage/
@@ -206,6 +294,13 @@ export function ButtonRenderer({ data, ownerUid, editable = false }) {
   if (data.actionType === "subscribe") {
     return <SubscribeInlineForm label={data.label} full={data.full} style={data.style} funnelOwnerUid={ownerUid} editable={editable} />;
   }
+  // Follow/Subscribe buttons keep their platform's own brand color (e.g.
+  // YouTube red) — everything else picks up the storefront's theme accent
+  // instead of the shared Button component's generic slate default.
+  const themedStyle = data.actionType === "follow" ? undefined
+    : data.style === "outline" ? { borderColor: "var(--accent)", color: "var(--accent)", background: "transparent" }
+    : data.style === "ghost" ? { color: "var(--accent)", background: "transparent" }
+    : { background: "var(--accent)", color: "var(--accent-foreground)", borderRadius: "var(--radius)" };
   return (
     <div className={`flex ${data.full ? "" : "justify-center"}`}>
       <CtaAction
@@ -215,6 +310,7 @@ export function ButtonRenderer({ data, ownerUid, editable = false }) {
         labelKey="label"
         buttonClassName={data.full ? "w-full" : ""}
         buttonVariant={data.style === "ghost" ? "ghost" : data.style === "outline" ? "outline" : "default"}
+        styleOverride={themedStyle}
       />
     </div>
   );
@@ -246,11 +342,25 @@ const AlignField = ({ align, onChange }) => (
     </div>
   </Field>
 );
+const VariantField = ({ value, options, onChange }) => (
+  <Field label="Layout">
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => (
+        <Button key={opt.value} size="sm" variant={value === opt.value ? "default" : "outline"} className="text-black" onClick={() => onChange(opt.value)}>{opt.label}</Button>
+      ))}
+    </div>
+  </Field>
+);
 
 function HeroInspector({ data, onChange, onPickImage }) {
-  const { title, subtitle, align, bgImage, overlay = 0.35, cta } = data;
+  const { title, subtitle, align, bgImage, overlay = 0.35, cta, variant = "full-bleed" } = data;
   return (
     <div className="space-y-4">
+      <VariantField
+        value={variant}
+        options={[{ value: "full-bleed", label: "Full-bleed" }, { value: "split", label: "Split" }]}
+        onChange={(v) => onChange({ variant: v })}
+      />
       <Field label="Title"><Input value={title} onChange={(e) => onChange({ title: e.target.value })} /></Field>
       <Field label="Subtitle"><Input value={subtitle || ""} onChange={(e) => onChange({ subtitle: e.target.value })} /></Field>
       <AlignField align={align} onChange={(al) => onChange({ align: al })} />
@@ -274,12 +384,17 @@ function HeroInspector({ data, onChange, onPickImage }) {
 }
 
 function CollectionGridInspector({ data, onChange, fullProducts }) {
-  const { title, productIds = [], columns, showPrice, showCTA, displayMode = "curated", featured, featuredProductId } = data;
+  const { title, productIds = [], columns, showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid" } = data;
   const setCols = (k, v) => onChange({ columns: { ...columns, [k]: v } });
   const all = fullProducts || [];
   const candidateProducts = displayMode === "all" ? all : all.filter((p) => productIds.includes(p.id));
   return (
     <div className="space-y-4">
+      <VariantField
+        value={variant}
+        options={[{ value: "grid", label: "Grid" }, { value: "editorial-list", label: "Editorial list" }]}
+        onChange={(v) => onChange({ variant: v })}
+      />
       <Field label="Title"><Input value={title || ""} onChange={(e) => onChange({ title: e.target.value })} /></Field>
       <Field label="Which products">
         <div className="flex gap-2">
@@ -479,6 +594,26 @@ function ButtonInspector({ data, onChange, ownerUid }) {
   );
 }
 
+function TestimonialInspector({ data, onChange, onPickImage }) {
+  return (
+    <div className="space-y-4">
+      <Field label="Quote"><Textarea value={data.quote || ""} onChange={(e) => onChange({ quote: e.target.value })} className="h-24 w-full rounded-md border border-gray-200 p-2" /></Field>
+      <Field label="Name"><Input value={data.name || ""} onChange={(e) => onChange({ name: e.target.value })} /></Field>
+      <Field label="Role / context"><Input value={data.role || ""} onChange={(e) => onChange({ role: e.target.value })} placeholder="e.g. Verified buyer" /></Field>
+      <Field label="Photo">
+        <div className="flex items-center gap-2">
+          <Input placeholder="Image URL" value={data.photo || ""} onChange={(e) => onChange({ photo: e.target.value })} />
+          {onPickImage && (
+            <Button size="sm" variant="outline" className="shrink-0 text-black" onClick={onPickImage}>
+              <Upload className="mr-1 inline h-3 w-3" />Upload
+            </Button>
+          )}
+        </div>
+      </Field>
+    </div>
+  );
+}
+
 /* =========================================================================
  * SHOP_BLOCKS registry — mirrors Funnel Builder's BLOCKS registry shape
  * (name/icon/Renderer/Inspector) so both editors work the same way.
@@ -493,6 +628,7 @@ export const SHOP_BLOCKS = {
   "collection-grid": { name: "Products", icon: LayoutGrid, Renderer: CollectionGridRenderer, Inspector: CollectionGridInspector },
   "rich-text": { name: "Rich Text", icon: Type, Renderer: RichTextRenderer, Inspector: RichTextInspector },
   faq: { name: "FAQ", icon: HelpCircle, Renderer: FaqRenderer, Inspector: FaqInspector },
+  testimonial: { name: "Testimonial", icon: Quote, Renderer: TestimonialRenderer, Inspector: TestimonialInspector },
 };
 
 /* =========================================================================
@@ -530,10 +666,15 @@ function SortableItem({ id, children, selected, onSelect }) {
  * Main editor
  * ========================================================================= */
 
-export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, products = [], currentUserId }) {
+export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, products = [], currentUserId, theme }) {
   const [selectedId, setSelectedId] = useState(null);
   const [device, setDevice] = useState("desktop");
   const [activeId, setActiveId] = useState(null);
+
+  // Real fonts + derived colors in the canvas too, so what you see while
+  // editing is what actually ships — not just on the public page.
+  useGoogleFont(theme?.fonts);
+  const themeVars = deriveThemeVars(theme);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -656,8 +797,8 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
           <CardContent className="min-h-0 flex-1 p-0">
             <div className="relative flex h-full items-start overflow-auto bg-white">
               <div className="relative mx-auto h-full w-full overflow-y-auto" style={{ width: containerWidth }}>
-                <div className="min-h-full border border-gray-200">
-                  <div className="space-y-6 p-6">
+                <div className="min-h-full border border-gray-200" style={{ ...themeVars, background: "var(--surface)" }}>
+                  <div className="flex flex-col p-6" style={{ gap: "var(--block-gap)" }}>
                     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
                       <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
                         {blocks.map((block) => {

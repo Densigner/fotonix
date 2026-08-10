@@ -8,8 +8,8 @@ export function createSection(type) {
         id: uid("hero"),
         type,
         data: {
-          title: "Welcome to my store",
-          subtitle: "Curated picks I love",
+          title: "Your store's headline",
+          subtitle: "A line that says what makes it worth buying",
           align: "center",
           overlay: 0.35,
           // No default CTA link: the old "#products" anchor doesn't point
@@ -42,13 +42,15 @@ export function createSection(type) {
     case "faq":
       return { id: uid("faq"), type, data: { items: [{ q: "What is shipping time?", a: "2-5 business days." }] } };
     case "heading":
-      return { id: uid("heading"), type, data: { text: "Welcome to my store", size: 32, align: "center" } };
+      return { id: uid("heading"), type, data: { text: "Your store's headline", size: 32, align: "center" } };
     case "paragraph":
-      return { id: uid("para"), type, data: { text: "Curated picks I love", width: 700, align: "center" } };
+      return { id: uid("para"), type, data: { text: "A line that says what makes it worth buying", width: 700, align: "center" } };
     case "image":
       return { id: uid("img"), type, data: { url: "", widthPct: 100, radius: 16, shadow: true, actionType: "none" } };
     case "button":
       return { id: uid("btn"), type, data: { label: "Follow me", href: "#", style: "default", full: false, actionType: "link" } };
+    case "testimonial":
+      return { id: uid("testi"), type, data: { quote: "What a customer actually said, word for word.", name: "", role: "", photo: "" } };
     default:
       return { id: uid("sec"), type, data: {} };
   }
