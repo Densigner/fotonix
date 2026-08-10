@@ -1247,7 +1247,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
     // fallback for older keys
     simpleLaunch: ['hero', 'features', 'emailCapture'],
   };
-  const [variant, setVariant] = useState('A');
   const [device, setDevice] = useState('desktop');
   const [blocks, setBlocks] = useState(()=>loadInitial(initialTemplateId));
   const [selectedId, setSelectedId] = useState(null);
@@ -1439,17 +1438,15 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
   const containerWidth = device === 'desktop' ? '100%' : device === 'tablet' ? '768px' : '380px';
 
   // Export schema
-  const schema = useMemo(()=> JSON.stringify({ variant, blocks }, null, 2), [variant, blocks]);
+  const schema = useMemo(()=> JSON.stringify({ blocks }, null, 2), [blocks]);
 
-  function importSchema(){ try { const obj = JSON.parse(importText); if (obj?.blocks) { setBlocks(obj.blocks); setVariant(obj.variant||'A'); setShowExport(false);} } catch(e){ alert('Invalid JSON'); } }
+  function importSchema(){ try { const obj = JSON.parse(importText); if (obj?.blocks) { setBlocks(obj.blocks); setShowExport(false);} } catch(e){ alert('Invalid JSON'); } }
 
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-gradient-to-b from-white to-gray-100">
   <div className="w-full px-0 py-5">
           <EditorHeader
-            variant={variant}
-            setVariant={setVariant}
             device={device}
             setDevice={setDevice}
             showExport={showExport}
@@ -1935,36 +1932,7 @@ function IconBtn({ label, onClick, children }) {
   );
 }
 
-/* Segmented control (variants + device) */
-function Segmented({ options, value, onChange, compact = false }) {
-  return (
-    <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1">
-      {options.map((opt) => {
-        const active = value === opt.key;
-        return (
-          <button
-            key={opt.key}
-            onClick={() => onChange(opt.key)}
-            className={`
-              px-3 py-1.5 rounded-md text-sm font-medium transition-all
-              ${active 
-                ? "bg-white text-gray-900 shadow-sm" 
-                : "text-gray-600 hover:text-gray-800"
-              }
-            `}
-          >
-            {opt.icon && <span className="mr-1">{opt.icon}</span>}
-            {opt.label || opt.key}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function EditorHeader({
-  variant,
-  setVariant,
   device,
   setDevice,
   showExport,
@@ -1990,15 +1958,6 @@ function EditorHeader({
           </span>
 
           <div className="hidden sm:flex items-center gap-2 ml-4">
-            <Segmented
-              options={[
-                { key: "A", label: "Variant A" },
-                { key: "B", label: "Variant B" },
-              ]}
-              value={variant}
-              onChange={setVariant}
-            />
-
             <Button
               variant={editMode ? "default" : "outline"}
               size="icon"
