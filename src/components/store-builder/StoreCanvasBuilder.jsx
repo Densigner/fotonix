@@ -27,6 +27,9 @@ import {
   Type,
   LayoutGrid,
   HelpCircle,
+  Heading as HeadingIcon,
+  Rows3,
+  Link as LinkIconLucide,
 } from "lucide-react";
 
 import { Button } from "../shared/ui/button";
@@ -34,11 +37,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "../shared/ui/card";
 import { Separator } from "../shared/ui/separator";
 import { Input, Label, Switch, Textarea, ScrollArea, Badge } from "../shared/ui/inlineFallbacks";
 import { createSection, uid } from "../shared/sections";
-// Reusing the exact device-preview toggle from the Funnel Builder for visual
-// and behavioral parity — see src/Bible/store-builder (this rebuild) and
+// Reusing the exact device-preview toggle and CTA/action system from the
+// Funnel Builder for visual and behavioral parity — see
 // src/Bible/funnel-builder/architecture.md for why these two editors are
-// meant to share the same editing paradigm.
-import { CompactControls } from "../marketing/funnelBuilder/FunnelBuilder";
+// meant to share the same editing paradigm and the same "link / mailing
+// list / follow / shop / product" click-action logic rather than each
+// maintaining its own.
+import { CompactControls, ActionFields, CtaAction, SubscribeInlineForm, ClickableImage } from "../marketing/funnelBuilder/FunnelBuilder";
 
 /* =========================================================================
  * Block renderers — the single source of truth for what a section looks
@@ -65,30 +70,65 @@ export function HeroRenderer({ data }) {
   );
 }
 
-export function CollectionGridRenderer({ data, fullProducts }) {
+// Some designer product types route to a special affiliate page instead of
+// the generic product page; everything else goes to the real, owner-scoped
+// product URL. Ported from AffiliateStorefrontViewer's old hardcoded grid so
+// this behavior isn't lost now that collection-grid is the only product
+// grid — a bare `#product/{id}` hash (the old default) doesn't resolve to
+// anything real.
+function resolveProductClick(p, ownerUid) {
+  const title = (p.title || "").toLowerCase();
+  if ((title.includes("fotonix") && title.includes("light up")) || p.typeId === "lumina-cut-user" || p.typeId === "light-up-user") {
+    return () => { window.location.hash = "affiliate-product-accryl"; };
+  }
+  if (ownerUid) {
+    return () => { window.location.href = `${window.location.origin}/product/${ownerUid}/${p.id}`; };
+  }
+  return undefined;
+}
+
+function ProductCardLink({ p, showPrice, showCTA, ownerUid }) {
+  const idx = p.mainImageIndex ?? 0;
+  const fallback = p.images && p.images[idx] ? p.images[idx].url : undefined;
+  const src = p.imageUrl || fallback;
+  const onNavigate = resolveProductClick(p, ownerUid);
+  return (
+    <a
+      href={p.href || "#"}
+      onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate(); } : undefined}
+      className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md"
+    >
+      {src ? <img src={src} alt={p.title} className="h-48 w-full object-cover" loading="lazy" /> : null}
+      <div className="p-4">
+        <h4 className="line-clamp-2 text-sm font-semibold">{p.title}</h4>
+        {showPrice && <div className="mt-1 text-pink-600">£{p.price?.toFixed?.(2) ?? "-"}</div>}
+        {showCTA && <div className="mt-2 text-xs text-zinc-500">View details →</div>}
+      </div>
+    </a>
+  );
+}
+
+export function CollectionGridRenderer({ data, fullProducts, ownerUid }) {
   // Firebase RTDB prunes empty arrays on write, so a saved section with no
   // product IDs reloads with `productIds` missing, not [].
-  const { title, productIds = [], showPrice, showCTA } = data;
-  const list = productIds.length ? (fullProducts || []).filter((p) => productIds.includes(p.id)) : [];
+  const { title, productIds = [], showPrice, showCTA, displayMode = "curated", featured, featuredProductId } = data;
+  const all = fullProducts || [];
+  const ordered = displayMode === "all" ? all : productIds.map((id) => all.find((p) => p?.id === id)).filter(Boolean);
+  const featuredProduct = featured
+    ? (featuredProductId && ordered.find((p) => p.id === featuredProductId)) || ordered[0]
+    : null;
+  const gridProducts = featuredProduct ? ordered.filter((p) => p.id !== featuredProduct.id) : ordered;
+
   return (
     <section>
       {title && <h3 className="mb-2 text-lg font-semibold">{title}</h3>}
+      {featuredProduct && (
+        <div className="mb-4">
+          <ProductCardLink p={featuredProduct} showPrice={showPrice} showCTA={showCTA} ownerUid={ownerUid} />
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {list.map((p) => (
-          <a key={p.id} href={p.href || `#product/${p.id}`} className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md">
-            {(() => {
-              const idx = p.mainImageIndex ?? 0;
-              const fallback = p.images && p.images[idx] ? p.images[idx].url : undefined;
-              const src = p.imageUrl || fallback;
-              return src ? <img src={src} alt={p.title} className="h-48 w-full object-cover" loading="lazy" /> : null;
-            })()}
-            <div className="p-4">
-              <h4 className="line-clamp-2 text-sm font-semibold">{p.title}</h4>
-              {showPrice && <div className="mt-1 text-pink-600">£{p.price?.toFixed?.(2) ?? "-"}</div>}
-              {showCTA && <div className="mt-2 text-xs text-zinc-500">View details →</div>}
-            </div>
-          </a>
-        ))}
+        {gridProducts.map((p) => <ProductCardLink key={p.id} p={p} showPrice={showPrice} showCTA={showCTA} ownerUid={ownerUid} />)}
       </div>
     </section>
   );
@@ -120,6 +160,55 @@ export function FaqRenderer({ data }) {
         ))}
       </div>
     </section>
+  );
+}
+
+export function HeadingRenderer({ data }) {
+  const { text, size = 32, align = "center" } = data;
+  return <h2 style={{ fontSize: size, textAlign: align }} className="font-bold tracking-tight">{text}</h2>;
+}
+
+export function ParagraphRenderer({ data }) {
+  const { text, width = 700, align = "center" } = data;
+  const cls = align === "center" ? "mx-auto text-center" : align === "right" ? "ml-auto text-right" : "text-left";
+  return <p className={`text-gray-600 leading-7 ${cls}`} style={{ maxWidth: width }}>{text}</p>;
+}
+
+// funnelOwnerUid here is the storefront owner's own uid — ClickableImage/
+// CtaAction/SubscribeInlineForm were written for the Funnel Builder, where
+// that prop name refers to whoever owns the funnel being viewed; the same
+// resolution (storefronts/{uid}, products/{uid}) applies unchanged here.
+export function ImageRenderer({ data, ownerUid }) {
+  if (!data.url) return null;
+  return (
+    <div className="text-center">
+      <ClickableImage data={data} funnelOwnerUid={ownerUid}>
+        <img
+          src={data.url}
+          alt=""
+          className={data.shadow ? "shadow-md" : ""}
+          style={{ width: `${data.widthPct || 100}%`, maxWidth: "100%", borderRadius: data.radius ?? 16, display: "inline-block" }}
+        />
+      </ClickableImage>
+    </div>
+  );
+}
+
+export function ButtonRenderer({ data, ownerUid, editable = false }) {
+  if (data.actionType === "subscribe") {
+    return <SubscribeInlineForm label={data.label} full={data.full} style={data.style} funnelOwnerUid={ownerUid} editable={editable} />;
+  }
+  return (
+    <div className={`flex ${data.full ? "" : "justify-center"}`}>
+      <CtaAction
+        data={data}
+        editable={false}
+        funnelOwnerUid={ownerUid}
+        labelKey="label"
+        buttonClassName={data.full ? "w-full" : ""}
+        buttonVariant={data.style === "ghost" ? "ghost" : data.style === "outline" ? "outline" : "default"}
+      />
+    </div>
   );
 }
 
@@ -176,19 +265,29 @@ function HeroInspector({ data, onChange, onPickImage }) {
   );
 }
 
-function CollectionGridInspector({ data, onChange }) {
-  const { title, productIds = [], columns, showPrice, showCTA } = data;
+function CollectionGridInspector({ data, onChange, fullProducts }) {
+  const { title, productIds = [], columns, showPrice, showCTA, displayMode = "curated", featured, featuredProductId } = data;
   const setCols = (k, v) => onChange({ columns: { ...columns, [k]: v } });
+  const all = fullProducts || [];
+  const candidateProducts = displayMode === "all" ? all : all.filter((p) => productIds.includes(p.id));
   return (
     <div className="space-y-4">
       <Field label="Title"><Input value={title || ""} onChange={(e) => onChange({ title: e.target.value })} /></Field>
-      <Field label="Product IDs">
-        <Input
-          placeholder="id1, id2, id3"
-          value={productIds.join(", ")}
-          onChange={(e) => onChange({ productIds: e.target.value.split(/[,\s]+/).filter(Boolean) })}
-        />
+      <Field label="Which products">
+        <div className="flex gap-2">
+          <Button size="sm" variant={displayMode === "curated" ? "default" : "outline"} className="text-black" onClick={() => onChange({ displayMode: "curated" })}>Curated list</Button>
+          <Button size="sm" variant={displayMode === "all" ? "default" : "outline"} className="text-black" onClick={() => onChange({ displayMode: "all" })}>All active products</Button>
+        </div>
       </Field>
+      {displayMode === "curated" && (
+        <Field label="Product IDs">
+          <Input
+            placeholder="id1, id2, id3"
+            value={productIds.join(", ")}
+            onChange={(e) => onChange({ productIds: e.target.value.split(/[,\s]+/).filter(Boolean) })}
+          />
+        </Field>
+      )}
       <Field label="Columns">
         <div className="grid grid-cols-4 gap-2">
           {["base", "sm", "md", "lg"].map((k) => (
@@ -208,6 +307,19 @@ function CollectionGridInspector({ data, onChange }) {
       </Field>
       <ToggleField label="Show price" checked={showPrice} onCheckedChange={(v) => onChange({ showPrice: v })} />
       <ToggleField label="Show button" checked={showCTA} onCheckedChange={(v) => onChange({ showCTA: v })} />
+      <ToggleField label="Feature one product" checked={featured} onCheckedChange={(v) => onChange({ featured: v })} />
+      {featured && (
+        <Field label="Featured product">
+          <select
+            value={featuredProductId || ""}
+            onChange={(e) => onChange({ featuredProductId: e.target.value })}
+            className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm"
+          >
+            <option value="">(first in list)</option>
+            {candidateProducts.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+        </Field>
+      )}
     </div>
   );
 }
@@ -276,6 +388,82 @@ function FaqInspector({ data, onChange }) {
   );
 }
 
+function HeadingInspector({ data, onChange }) {
+  const { text, size = 32, align = "center" } = data;
+  return (
+    <div className="space-y-4">
+      <Field label="Text"><Input value={text} onChange={(e) => onChange({ text: e.target.value })} /></Field>
+      <Field label={`Size (${size}px)`}>
+        <input type="range" min={16} max={72} step={1} value={size} onChange={(e) => onChange({ size: Number(e.target.value) })} className="w-full" />
+      </Field>
+      <AlignField align={align} onChange={(al) => onChange({ align: al })} />
+    </div>
+  );
+}
+
+function ParagraphInspector({ data, onChange }) {
+  const { text, width = 700, align = "center" } = data;
+  return (
+    <div className="space-y-4">
+      <Field label="Text"><Textarea value={text} onChange={(e) => onChange({ text: e.target.value })} className="h-24 w-full rounded-md border border-gray-200 p-2" /></Field>
+      <Field label={`Max width (${width}px)`}>
+        <input type="range" min={320} max={1200} step={20} value={width} onChange={(e) => onChange({ width: Number(e.target.value) })} className="w-full" />
+      </Field>
+      <AlignField align={align} onChange={(al) => onChange({ align: al })} />
+    </div>
+  );
+}
+
+function ImageInspector({ data, onChange, onPickImage, ownerUid }) {
+  return (
+    <div className="space-y-4">
+      <Field label="Image">
+        <div className="flex items-center gap-2">
+          <Input placeholder="Image URL" value={data.url || ""} onChange={(e) => onChange({ url: e.target.value })} />
+          {onPickImage && (
+            <Button size="sm" variant="outline" className="shrink-0 text-black" onClick={onPickImage}>
+              <Upload className="mr-1 inline h-3 w-3" />Upload
+            </Button>
+          )}
+        </div>
+      </Field>
+      <Field label={`Width (${data.widthPct || 100}%)`}>
+        <input type="range" min={20} max={100} step={5} value={data.widthPct || 100} onChange={(e) => onChange({ widthPct: Number(e.target.value) })} className="w-full" />
+      </Field>
+      <Field label={`Corner radius (${data.radius ?? 16}px)`}>
+        <input type="range" min={0} max={32} step={1} value={data.radius ?? 16} onChange={(e) => onChange({ radius: Number(e.target.value) })} className="w-full" />
+      </Field>
+      <ToggleField label="Shadow" checked={data.shadow} onCheckedChange={(v) => onChange({ shadow: v })} />
+      <Separator />
+      <p className="text-xs font-medium text-gray-700">Click behavior</p>
+      <ActionFields data={data} onChange={onChange} funnelOwnerUid={ownerUid} allowSubscribe={false} allowNone />
+    </div>
+  );
+}
+
+function ButtonInspector({ data, onChange, ownerUid }) {
+  return (
+    <div className="space-y-4">
+      <Field label="Label"><Input value={data.label} onChange={(e) => onChange({ label: e.target.value })} /></Field>
+      <ActionFields data={data} onChange={onChange} funnelOwnerUid={ownerUid} />
+      {(!data.actionType || data.actionType === "link") && (
+        <Field label="Link"><Input value={data.href} onChange={(e) => onChange({ href: e.target.value })} /></Field>
+      )}
+      {data.actionType === "subscribe" && (
+        <p className="text-xs text-gray-500">Visitors who click this button enter their email right there to join your mailing list — no link needed.</p>
+      )}
+      <Field label="Style">
+        <div className="flex gap-2">
+          {["default", "outline", "ghost"].map((s) => (
+            <Button key={s} size="sm" variant={data.style === s ? "default" : "outline"} className="text-black" onClick={() => onChange({ style: s })}>{s}</Button>
+          ))}
+        </div>
+      </Field>
+      <ToggleField label="Full width" checked={data.full} onCheckedChange={(v) => onChange({ full: v })} />
+    </div>
+  );
+}
+
 /* =========================================================================
  * SHOP_BLOCKS registry — mirrors Funnel Builder's BLOCKS registry shape
  * (name/icon/Renderer/Inspector) so both editors work the same way.
@@ -283,6 +471,10 @@ function FaqInspector({ data, onChange }) {
 
 export const SHOP_BLOCKS = {
   hero: { name: "Hero", icon: ImageIcon, Renderer: HeroRenderer, Inspector: HeroInspector },
+  heading: { name: "Heading", icon: HeadingIcon, Renderer: HeadingRenderer, Inspector: HeadingInspector },
+  paragraph: { name: "Paragraph", icon: Rows3, Renderer: ParagraphRenderer, Inspector: ParagraphInspector },
+  image: { name: "Image", icon: ImageIcon, Renderer: ImageRenderer, Inspector: ImageInspector },
+  button: { name: "Button", icon: LinkIconLucide, Renderer: ButtonRenderer, Inspector: ButtonInspector },
   "collection-grid": { name: "Collection Grid", icon: LayoutGrid, Renderer: CollectionGridRenderer, Inspector: CollectionGridInspector },
   "rich-text": { name: "Rich Text", icon: Type, Renderer: RichTextRenderer, Inspector: RichTextInspector },
   faq: { name: "FAQ", icon: HelpCircle, Renderer: FaqRenderer, Inspector: FaqInspector },
@@ -323,7 +515,7 @@ function SortableItem({ id, children, selected, onSelect }) {
  * Main editor
  * ========================================================================= */
 
-export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, products = [] }) {
+export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, products = [], currentUserId }) {
   const [selectedId, setSelectedId] = useState(null);
   const [device, setDevice] = useState("desktop");
   const [activeId, setActiveId] = useState(null);
@@ -407,6 +599,8 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
                     data={selectedBlock.data}
                     onChange={(patch) => updateBlock(selectedBlock.id, patch)}
                     onPickImage={onPickImage ? () => onPickImage(selectedBlock.id) : undefined}
+                    fullProducts={products}
+                    ownerUid={currentUserId}
                   />
                 </div>
               ) : (
@@ -449,7 +643,10 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
                           const Renderer = def.Renderer;
                           return (
                             <SortableItem key={block.id} id={block.id} selected={selectedId === block.id} onSelect={() => setSelectedId(block.id)}>
-                              <Renderer data={block.data} fullProducts={products} />
+                              {/* editable=true here: e.g. a "subscribe" button block must not
+                                  actually POST a real signup while someone's just testing it
+                                  in the canvas — see ButtonRenderer/SubscribeInlineForm. */}
+                              <Renderer data={block.data} fullProducts={products} ownerUid={currentUserId} editable={true} />
                               <div className="mt-3 flex items-center justify-end gap-2">
                                 <Button variant="outline" size="sm" className="text-black" onClick={() => duplicate(block.id)}>
                                   <Copy className="mr-1 h-3 w-3" /> Duplicate
@@ -470,7 +667,7 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
                       <DragOverlay>
                         {activeBlock && activeDef ? (
                           <div className="rounded-xl border bg-white p-4 opacity-90 shadow-xl">
-                            <activeDef.Renderer data={activeBlock.data} fullProducts={products} />
+                            <activeDef.Renderer data={activeBlock.data} fullProducts={products} ownerUid={currentUserId} editable={true} />
                           </div>
                         ) : null}
                       </DragOverlay>

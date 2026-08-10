@@ -19,7 +19,13 @@ export function createSection(type) {
       return {
         id: uid("grid"),
         type,
-        data: { title: "Featured", productIds: [], columns: { base: 1, sm: 2, md: 3, lg: 4 }, showPrice: true, showCTA: true },
+        data: {
+          title: "Featured", productIds: [], columns: { base: 1, sm: 2, md: 3, lg: 4 }, showPrice: true, showCTA: true,
+          // displayMode "all" shows every active product instead of the
+          // curated productIds list; "featured" pulls one product out into
+          // a large hero card above the grid.
+          displayMode: "curated", featured: false, featuredProductId: "",
+        },
       };
     case "rich-text":
       return {
@@ -29,6 +35,14 @@ export function createSection(type) {
       };
     case "faq":
       return { id: uid("faq"), type, data: { items: [{ q: "What is shipping time?", a: "2-5 business days." }] } };
+    case "heading":
+      return { id: uid("heading"), type, data: { text: "Welcome to my store", size: 32, align: "center" } };
+    case "paragraph":
+      return { id: uid("para"), type, data: { text: "Curated picks I love", width: 700, align: "center" } };
+    case "image":
+      return { id: uid("img"), type, data: { url: "", widthPct: 100, radius: 16, shadow: true, actionType: "none" } };
+    case "button":
+      return { id: uid("btn"), type, data: { label: "Follow me", href: "#", style: "default", full: false, actionType: "link" } };
     default:
       return { id: uid("sec"), type, data: {} };
   }

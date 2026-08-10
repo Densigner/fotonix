@@ -1124,6 +1124,12 @@ const BLOCKS = {
 // of maintaining a second copy of every block's display logic.
 export { BLOCKS };
 
+// Also exported for StoreCanvasBuilder.jsx (the Shop Builder's canvas
+// editor), which reuses this same CTA/action system for its own `button`
+// and `image` blocks rather than forking a second copy — see
+// src/Bible/store-builder for why these two editors share this.
+export { ActionFields, CtaAction, SubscribeInlineForm, ClickableImage };
+
 // (Templates gallery removed — templates are now managed in the separate TemplatesPage)
 
 // ----- Utilities ----- //
