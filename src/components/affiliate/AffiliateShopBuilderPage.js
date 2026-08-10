@@ -167,8 +167,20 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
     productsHeading: "Products",
     productsDescription: "",
     published: false,
-    // new page sections and seo defaults
-    pageSections: [createSection("hero"), createSection("collection-grid"), createSection("rich-text")],
+    // new page sections and seo defaults -- a brand-new storefront starts
+    // with a full, alternating-tone page (not three sparse blocks) so it
+    // looks like a real finished page before anyone's touched it, not a
+    // half-empty template. Every owner is expected to edit this copy --
+    // see sections.js for why the testimonial default deliberately reads
+    // as a builder instruction rather than an invented quote.
+    pageSections: [
+      createSection("hero"),
+      makeBlock("split", { tone: "muted" }),
+      createSection("columns"),
+      makeBlock("collection-grid", { tone: "muted" }),
+      makeBlock("testimonial", { tone: "default" }),
+      createSection("faq"),
+    ],
     seo: { title: "", description: "", ogImage: "" },
   });
 
