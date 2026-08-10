@@ -229,7 +229,13 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
       const fieldForType = { image: "url", testimonial: "photo" };
       setData((d) => ({
         ...d,
-        pageSections: (d.pageSections || []).map((s) => (s.id === sectionId ? { ...s, data: { ...s.data, [fieldForType[s.type] || "bgImage"]: url } } : s)),
+        pageSections: (d.pageSections || []).map((s) => {
+          if (s.id !== sectionId) return s;
+          // split's image lives at data.media.url (nested, so it can also
+          // carry a focal point), not a flat field like every other block.
+          if (s.type === "split") return { ...s, data: { ...s.data, media: { ...(s.data.media || {}), url } } };
+          return { ...s, data: { ...s.data, [fieldForType[s.type] || "bgImage"]: url } };
+        }),
       }));
     } catch (e) {
       setErr(e.message || String(e));
@@ -344,7 +350,7 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
               <select value={data.motion?.reveal || "none"} onChange={(e) => setData((d) => ({ ...d, motion: { ...d.motion, reveal: e.target.value } }))} className="w-48 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
                 <option value="none">None</option>
                 <option value="fade">Fade in</option>
-                <option value="fade-up">Fade up</option>
+                <option value="fade-up">Stagger (fade up)</option>
               </select>
             </label>
           </div>

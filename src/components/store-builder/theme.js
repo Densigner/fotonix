@@ -77,6 +77,34 @@ export function deriveThemeVars(theme) {
   };
 }
 
+// A block's background "tone" — the single biggest thing that stops a long
+// page reading as one flat scroll, and previously handled inconsistently
+// (some blocks hardcoded muted-surface, most set no background at all).
+// Every block now reads this instead of picking its own background.
+export function toneStyle(tone) {
+  if (tone === "muted") return { background: "var(--muted-surface)" };
+  if (tone === "contrast") return { background: "var(--accent)", color: "var(--accent-foreground)" };
+  return {};
+}
+
+// Shared by any block showing an image with a chosen focal point, so
+// cropping never cuts through a face or the actual subject. Images only
+// for now -- nothing currently needs video -- but kept as its own
+// component (not just an inline <img>) so a video/poster prop can be added
+// later without every caller changing.
+export function Media({ src, alt = "", focal, className, style }) {
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      className={className}
+      style={{ objectPosition: focal || "50% 50%", ...style }}
+    />
+  );
+}
+
 // Real, freely-loadable Google Fonts pairings. The user's original spec
 // named Canela and Satoshi for two of these pairings; neither is a free/
 // Google Font (Canela is commercial, Satoshi ships from Fontshare, not

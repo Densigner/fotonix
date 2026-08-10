@@ -32,6 +32,16 @@ import {
   Link as LinkIconLucide,
   Quote,
   Star,
+  Columns3,
+  ChevronDown,
+  Truck,
+  Shield,
+  RotateCcw,
+  Award,
+  Zap,
+  Headphones,
+  CreditCard,
+  Check,
 } from "lucide-react";
 
 import { Button } from "../shared/ui/button";
@@ -46,8 +56,15 @@ import { createSection, uid } from "../shared/sections";
 // list / follow / shop / product" click-action logic rather than each
 // maintaining its own.
 import { CompactControls, ActionFields, CtaAction, SubscribeInlineForm, ClickableImage } from "../marketing/funnelBuilder/FunnelBuilder";
-import { deriveThemeVars, useGoogleFont } from "./theme";
+import { deriveThemeVars, useGoogleFont, toneStyle, Media } from "./theme";
 import { EndorsedWidget, ENDORSED_WIDGET_TYPES } from "../shared/endorsedWidget";
+
+// Blocks with no explicit tone stay exactly as they were (no padding added,
+// nothing to regress) -- a muted/contrast band needs its own breathing room
+// so text isn't flush against the color change, which blocks that already
+// carry their own padding (faq, testimonial) handle themselves instead of
+// picking this up too.
+const toneClass = (tone) => (tone && tone !== "default" ? "rounded-[var(--radius)] p-6 md:p-10" : "");
 
 /* =========================================================================
  * Block renderers — the single source of truth for what a section looks
@@ -64,7 +81,7 @@ import { EndorsedWidget, ENDORSED_WIDGET_TYPES } from "../shared/endorsedWidget"
 // sitting inside the canvas's own simulated device frame, where "full
 // width" would just mean "wider than the frame" and look broken.
 export function HeroRenderer({ data, editable }) {
-  const { title, subtitle, align, bgImage, overlay = 0.35, cta, variant = "full-bleed" } = data;
+  const { title, subtitle, align, bgImage, overlay = 0.35, cta, variant = "full-bleed", tone } = data;
   const justify = align === "left" ? "items-start" : align === "right" ? "items-end" : "items-center";
   const textAlign = align === "left" ? "left" : align === "right" ? "right" : "center";
 
@@ -82,10 +99,10 @@ export function HeroRenderer({ data, editable }) {
   // underneath it with an overlay fighting for contrast.
   if (variant === "split") {
     return (
-      <section className="grid grid-cols-1 items-center gap-8 py-6 md:grid-cols-2">
+      <section className="grid grid-cols-1 items-center gap-8 rounded-none py-6 md:grid-cols-2" style={toneStyle(tone)}>
         <div className={`flex flex-col gap-4 ${justify}`} style={{ textAlign }}>
-          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)", color: "var(--text)" }} className="text-3xl md:text-4xl">{title}</h2>
-          {subtitle && <p style={{ fontFamily: "var(--font-body)", color: "var(--muted-text)" }} className="max-w-prose text-lg">{subtitle}</p>}
+          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)", color: tone === "contrast" ? "inherit" : "var(--text)" }} className="text-3xl md:text-4xl">{title}</h2>
+          {subtitle && <p style={{ fontFamily: "var(--font-body)", color: tone === "contrast" ? "inherit" : "var(--muted-text)" }} className="max-w-prose text-lg">{subtitle}</p>}
           {ctaButton}
         </div>
         {bgImage && <img src={bgImage} alt="" style={{ borderRadius: "var(--radius)" }} className="aspect-[4/5] w-full object-cover md:aspect-square" loading="lazy" />}
@@ -102,10 +119,10 @@ export function HeroRenderer({ data, editable }) {
   // width" would just mean "wider than the frame" and look broken.
   const bleed = editable ? "" : "w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]";
   return (
-    <section className={`relative overflow-hidden ${bleed}`} style={{ borderRadius: editable ? "var(--radius)" : 0 }}>
+    <section className={`relative overflow-hidden ${bleed}`} style={{ borderRadius: editable ? "var(--radius)" : 0, ...(bgImage ? {} : toneStyle(tone)) }}>
       {bgImage && <img src={bgImage} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
       <div className="relative z-10 grid min-h-[320px] place-items-center p-10">
-        <div className={`flex w-full max-w-3xl flex-col gap-3 ${justify}`} style={{ textAlign, color: bgImage ? "#fff" : "var(--text)" }}>
+        <div className={`flex w-full max-w-3xl flex-col gap-3 ${justify}`} style={{ textAlign, color: bgImage ? "#fff" : tone === "contrast" ? "inherit" : "var(--text)" }}>
           <h2 style={{ fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)" }} className="text-4xl drop-shadow md:text-5xl">{title}</h2>
           {subtitle && <p style={{ fontFamily: "var(--font-body)" }} className="max-w-prose text-lg drop-shadow">{subtitle}</p>}
           {ctaButton}
@@ -175,7 +192,7 @@ function ProductCardLink({ p, showPrice, showCTA, ownerUid, variant = "grid" }) 
 export function CollectionGridRenderer({ data, fullProducts, ownerUid }) {
   // Firebase RTDB prunes empty arrays on write, so a saved section with no
   // product IDs reloads with `productIds` missing, not [].
-  const { title, productIds = [], showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid" } = data;
+  const { title, productIds = [], showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid", tone } = data;
   const all = fullProducts || [];
   const ordered = displayMode === "all" ? all : productIds.map((id) => all.find((p) => p?.id === id)).filter(Boolean);
   const featuredProduct = featured
@@ -192,8 +209,8 @@ export function CollectionGridRenderer({ data, fullProducts, ownerUid }) {
     : "grid gap-3 grid-cols-[repeat(auto-fit,minmax(240px,1fr))]";
 
   return (
-    <section>
-      {title && <h3 style={{ fontFamily: "var(--font-display)", color: "var(--text)", fontWeight: "var(--heading-weight)" }} className="mb-4 text-2xl">{title}</h3>}
+    <section className={toneClass(tone)} style={toneStyle(tone)}>
+      {title && <h3 style={{ fontFamily: "var(--font-display)", color: "inherit", fontWeight: "var(--heading-weight)" }} className="mb-4 text-2xl">{title}</h3>}
       {featuredProduct && (
         <div className="mb-6">
           <ProductCardLink p={featuredProduct} showPrice={showPrice} showCTA={showCTA} ownerUid={ownerUid} variant={variant} />
@@ -207,10 +224,10 @@ export function CollectionGridRenderer({ data, fullProducts, ownerUid }) {
 }
 
 export function RichTextRenderer({ data }) {
-  const { html, align, maxWidth = 720 } = data;
+  const { html, align, maxWidth = 720, tone } = data;
   const cls = align === "center" ? "mx-auto text-center" : align === "right" ? "ml-auto text-right" : "mr-auto text-left";
   return (
-    <section className={`prose max-w-none ${cls}`} style={{ maxWidth, fontFamily: "var(--font-body)", color: "var(--text)" }}>
+    <section className={`prose max-w-none ${cls} ${toneClass(tone)}`} style={{ maxWidth, fontFamily: "var(--font-body)", color: "inherit", ...toneStyle(tone) }}>
       <div dangerouslySetInnerHTML={{ __html: html }} />
     </section>
   );
@@ -220,14 +237,22 @@ export function FaqRenderer({ data }) {
   // Same RTDB-prunes-empty-arrays issue as collection-grid above.
   const faqItems = data.items || [];
   if (!faqItems.length) return null;
+  const { tone = "muted" } = data;
   return (
-    <section style={{ background: "var(--muted-surface)", borderColor: "var(--border)", borderRadius: "var(--radius)" }} className="border p-6">
-      <h3 style={{ fontFamily: "var(--font-display)", color: "var(--text)", fontWeight: "var(--heading-weight)" }} className="mb-3 text-xl">Frequently asked questions</h3>
-      <div style={{ borderColor: "var(--border)" }} className="divide-y">
+    <section style={{ borderColor: "var(--border)", borderRadius: "var(--radius)", ...toneStyle(tone) }} className="border p-6">
+      {/* Native <details> marker killed in favor of a real rotating chevron
+          -- the default browser triangle reads as instantly unstyled.
+          list-none handles Chrome/Firefox, the webkit rule handles Safari. */}
+      <style>{".fx-faq summary{list-style:none}.fx-faq summary::-webkit-details-marker{display:none}.fx-faq details[open] .fx-chevron{transform:rotate(180deg)}"}</style>
+      <h3 style={{ fontFamily: "var(--font-display)", color: "inherit", fontWeight: "var(--heading-weight)" }} className="mb-3 text-xl">Frequently asked questions</h3>
+      <div style={{ borderColor: "var(--border)" }} className="fx-faq divide-y">
         {faqItems.map((it, idx) => (
           <details key={idx} className="py-3">
-            <summary style={{ fontFamily: "var(--font-body)", color: "var(--text)" }} className="cursor-pointer text-sm font-medium">{it.q}</summary>
-            <p style={{ color: "var(--muted-text)" }} className="mt-2 text-sm leading-relaxed">{it.a}</p>
+            <summary style={{ fontFamily: "var(--font-body)", color: "inherit" }} className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium">
+              {it.q}
+              <ChevronDown className="fx-chevron h-4 w-4 shrink-0 transition-transform duration-200" style={{ color: "var(--muted-text)" }} />
+            </summary>
+            <p style={{ color: tone === "contrast" ? "inherit" : "var(--muted-text)" }} className="mt-2 text-sm leading-relaxed">{it.a}</p>
           </details>
         ))}
       </div>
@@ -236,40 +261,45 @@ export function FaqRenderer({ data }) {
 }
 
 export function HeadingRenderer({ data }) {
-  const { text, size = 32, align = "center" } = data;
+  const { text, size = 32, align = "center", tone } = data;
   return (
-    <h2
-      style={{ fontSize: size, textAlign: align, fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)", color: "var(--text)" }}
-    >
-      {text}
-    </h2>
+    <section className={toneClass(tone)} style={toneStyle(tone)}>
+      <h2
+        style={{ fontSize: size, textAlign: align, fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)", color: "inherit" }}
+      >
+        {text}
+      </h2>
+    </section>
   );
 }
 
 export function ParagraphRenderer({ data }) {
-  const { text, width = 700, align = "center" } = data;
+  const { text, width = 700, align = "center", tone } = data;
   const cls = align === "center" ? "mx-auto text-center" : align === "right" ? "ml-auto text-right" : "text-left";
   return (
-    <p className={`leading-7 ${cls}`} style={{ maxWidth: width, fontFamily: "var(--font-body)", color: "var(--muted-text)" }}>
-      {text}
-    </p>
+    <section className={toneClass(tone)} style={toneStyle(tone)}>
+      <p className={`leading-7 ${cls}`} style={{ maxWidth: width, fontFamily: "var(--font-body)", color: tone === "contrast" ? "inherit" : "var(--muted-text)" }}>
+        {text}
+      </p>
+    </section>
   );
 }
 
 export function TestimonialRenderer({ data }) {
-  const { quote, name, role, photo } = data;
+  const { quote, name, role, photo, tone = "muted" } = data;
   if (!quote) return null;
+  const onContrast = tone === "contrast";
   return (
-    <section style={{ background: "var(--muted-surface)", borderRadius: "var(--radius)" }} className="p-8 text-center">
-      <p style={{ fontFamily: "var(--font-display)", color: "var(--text)" }} className="mx-auto max-w-2xl text-xl leading-relaxed md:text-2xl">
+    <section style={{ borderRadius: "var(--radius)", ...toneStyle(tone) }} className="p-8 text-center">
+      <p style={{ fontFamily: "var(--font-display)", color: "inherit" }} className="mx-auto max-w-2xl text-xl leading-relaxed md:text-2xl">
         &ldquo;{quote}&rdquo;
       </p>
       {(name || photo) && (
         <div className="mt-5 flex items-center justify-center gap-3">
           {photo && <img src={photo} alt="" className="h-10 w-10 rounded-full object-cover" />}
           <div style={{ fontFamily: "var(--font-body)" }} className="text-left">
-            {name && <div style={{ color: "var(--text)" }} className="text-sm font-semibold">{name}</div>}
-            {role && <div style={{ color: "var(--muted-text)" }} className="text-xs">{role}</div>}
+            {name && <div style={{ color: "inherit" }} className="text-sm font-semibold">{name}</div>}
+            {role && <div style={{ color: onContrast ? "inherit" : "var(--muted-text)" }} className="text-xs">{role}</div>}
           </div>
         </div>
       )}
@@ -280,9 +310,9 @@ export function TestimonialRenderer({ data }) {
 // Real, live reviews (Endorsed.Review's own widget.js loader), not a
 // hand-typed quote -- see src/components/shared/endorsedWidget.js.
 export function EndorsedReviewRenderer({ data }) {
-  const { widgetType = "basic-stars", themeMode = "light", branding = true } = data;
+  const { widgetType = "basic-stars", themeMode = "light", branding = true, tone } = data;
   return (
-    <div className="text-center">
+    <div className={`text-center ${toneClass(tone)}`} style={toneStyle(tone)}>
       <EndorsedWidget type={widgetType} theme={themeMode} color="var(--accent)" branding={branding} />
     </div>
   );
@@ -334,6 +364,78 @@ export function ButtonRenderer({ data, ownerUid, editable = false }) {
   );
 }
 
+// General-purpose media+text block, distinct from Hero (Hero stays the
+// page-opening banner; this is the block reused repeatedly further down a
+// page -- "media one side, text the other"). Text column capped at 50ch so
+// a long body never reads edge-to-edge next to a narrow image.
+export function SplitRenderer({ data }) {
+  const { eyebrow, heading, body, cta, media, variant = "media-left", tone } = data;
+  if (!heading && !media?.url) return null;
+  const mediaRight = variant === "media-right";
+  const onContrast = tone === "contrast";
+  const ctaButton = cta?.label && (
+    <a
+      href={cta.href || "#"}
+      style={{ background: "var(--accent)", color: "var(--accent-foreground)", borderRadius: "var(--radius)" }}
+      className="mt-2 inline-block w-max px-5 py-3 text-sm font-semibold shadow-sm transition hover:brightness-110"
+    >
+      {cta.label}
+    </a>
+  );
+  return (
+    <section className={`grid grid-cols-1 items-center gap-8 md:grid-cols-2 ${toneClass(tone)}`} style={toneStyle(tone)}>
+      <div className={mediaRight ? "md:order-2" : ""}>
+        {media?.url && (
+          <Media
+            src={media.url}
+            alt={heading || ""}
+            focal={media.focal}
+            className="aspect-[4/3] w-full object-cover"
+            style={{ borderRadius: "var(--radius)" }}
+          />
+        )}
+      </div>
+      <div className={`flex flex-col gap-3 ${mediaRight ? "md:order-1" : ""}`} style={{ maxWidth: "50ch" }}>
+        {eyebrow && <div style={{ fontFamily: "var(--font-body)", color: onContrast ? "inherit" : "var(--accent)" }} className="text-xs font-semibold uppercase tracking-wider">{eyebrow}</div>}
+        {heading && <h3 style={{ fontFamily: "var(--font-display)", fontWeight: "var(--heading-weight)", letterSpacing: "var(--heading-tracking)", color: "inherit" }} className="text-2xl md:text-3xl">{heading}</h3>}
+        {body && <p style={{ fontFamily: "var(--font-body)", color: onContrast ? "inherit" : "var(--muted-text)" }} className="leading-relaxed">{body}</p>}
+        {ctaButton}
+      </div>
+    </section>
+  );
+}
+
+// Fixed icon set (one stroke weight, no colored circle backgrounds --
+// deliberately plainer than a typical feature grid). Covers shipping/
+// guarantee info and simple feature/process lists in one block.
+const COLUMN_ICONS = { truck: Truck, shield: Shield, "rotate-ccw": RotateCcw, award: Award, zap: Zap, headphones: Headphones, "credit-card": CreditCard, check: Check };
+
+export function ColumnsRenderer({ data }) {
+  const items = data.items || [];
+  if (!items.length) return null;
+  const { heading, variant = "icon", tone } = data;
+  const onContrast = tone === "contrast";
+  return (
+    <section className={toneClass(tone)} style={toneStyle(tone)}>
+      {heading && <h3 style={{ fontFamily: "var(--font-display)", color: "inherit", fontWeight: "var(--heading-weight)" }} className="mb-6 text-center text-2xl">{heading}</h3>}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-8">
+        {items.map((it, idx) => {
+          const Icon = COLUMN_ICONS[it.icon];
+          return (
+            <div key={idx} className="flex flex-col items-center gap-2 text-center">
+              {variant === "numbered"
+                ? <div style={{ fontFamily: "var(--font-display)", color: onContrast ? "inherit" : "var(--muted-text)" }} className="text-2xl font-semibold">{String(idx + 1).padStart(2, "0")}</div>
+                : Icon && <Icon className="h-6 w-6" style={{ color: onContrast ? "inherit" : "var(--muted-text)" }} />}
+              <h4 style={{ fontFamily: "var(--font-body)", color: "inherit" }} className="text-sm font-semibold">{it.title}</h4>
+              {it.text && <p style={{ color: onContrast ? "inherit" : "var(--muted-text)" }} className="text-xs leading-relaxed">{it.text}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /* =========================================================================
  * Inspectors — the property forms shown in the left panel when a block is
  * selected. Editing lives here, not inline in the canvas.
@@ -369,9 +471,20 @@ const VariantField = ({ value, options, onChange, label = "Layout" }) => (
     </div>
   </Field>
 );
+// Section background — every block reads this via theme.js's toneStyle()
+// instead of picking its own. "Contrast" is a real accent-colored band for
+// pacing a long page, not just a slightly darker gray.
+const TONE_OPTIONS = [
+  { value: "default", label: "Default" },
+  { value: "muted", label: "Muted" },
+  { value: "contrast", label: "Contrast" },
+];
+const ToneField = ({ value, onChange }) => (
+  <VariantField label="Background" value={value || "default"} options={TONE_OPTIONS} onChange={onChange} />
+);
 
 function HeroInspector({ data, onChange, onPickImage }) {
-  const { title, subtitle, align, bgImage, overlay = 0.35, cta, variant = "full-bleed" } = data;
+  const { title, subtitle, align, bgImage, overlay = 0.35, cta, variant = "full-bleed", tone } = data;
   return (
     <div className="space-y-4">
       <VariantField
@@ -379,6 +492,7 @@ function HeroInspector({ data, onChange, onPickImage }) {
         options={[{ value: "full-bleed", label: "Full-bleed" }, { value: "split", label: "Split" }]}
         onChange={(v) => onChange({ variant: v })}
       />
+      <ToneField value={tone} onChange={(v) => onChange({ tone: v })} />
       <Field label="Title"><Input value={title} onChange={(e) => onChange({ title: e.target.value })} /></Field>
       <Field label="Subtitle"><Input value={subtitle || ""} onChange={(e) => onChange({ subtitle: e.target.value })} /></Field>
       <AlignField align={align} onChange={(al) => onChange({ align: al })} />
@@ -402,7 +516,7 @@ function HeroInspector({ data, onChange, onPickImage }) {
 }
 
 function CollectionGridInspector({ data, onChange, fullProducts }) {
-  const { title, productIds = [], columns, showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid" } = data;
+  const { title, productIds = [], columns, showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid", tone } = data;
   const setCols = (k, v) => onChange({ columns: { ...columns, [k]: v } });
   const all = fullProducts || [];
   const candidateProducts = displayMode === "all" ? all : all.filter((p) => productIds.includes(p.id));
@@ -413,6 +527,7 @@ function CollectionGridInspector({ data, onChange, fullProducts }) {
         options={[{ value: "grid", label: "Grid" }, { value: "editorial-list", label: "Editorial list" }]}
         onChange={(v) => onChange({ variant: v })}
       />
+      <ToneField value={tone} onChange={(v) => onChange({ tone: v })} />
       <Field label="Title"><Input value={title || ""} onChange={(e) => onChange({ title: e.target.value })} /></Field>
       <Field label="Which products">
         <div className="flex gap-2">
@@ -466,7 +581,7 @@ function CollectionGridInspector({ data, onChange, fullProducts }) {
 }
 
 function RichTextInspector({ data, onChange }) {
-  const { html, align, maxWidth = 720 } = data;
+  const { html, align, maxWidth = 720, tone } = data;
   const editorRef = useRef(null);
   // Sentinel (not a valid html value) so the first effect run always paints
   // the initial content; afterwards only external changes (not this
@@ -492,6 +607,7 @@ function RichTextInspector({ data, onChange }) {
   return (
     <div className="space-y-4">
       <AlignField align={align} onChange={(al) => onChange({ align: al })} />
+      <ToneField value={tone} onChange={(v) => onChange({ tone: v })} />
       <Field label="Max width (px)">
         <Input type="number" value={maxWidth} onChange={(e) => onChange({ maxWidth: Number(e.target.value) || 720 })} />
       </Field>
@@ -515,6 +631,7 @@ function FaqInspector({ data, onChange }) {
   const setItem = (i, patch) => onChange({ items: items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)) });
   return (
     <div className="space-y-3">
+      <ToneField value={data.tone || "muted"} onChange={(v) => onChange({ tone: v })} />
       {items.map((it, i) => (
         <div key={i} className="space-y-2 rounded-md border border-gray-200 p-2">
           <Field label={`Question ${i + 1}`}><Input value={it.q} onChange={(e) => setItem(i, { q: e.target.value })} /></Field>
@@ -615,6 +732,7 @@ function ButtonInspector({ data, onChange, ownerUid }) {
 function TestimonialInspector({ data, onChange, onPickImage }) {
   return (
     <div className="space-y-4">
+      <ToneField value={data.tone || "muted"} onChange={(v) => onChange({ tone: v })} />
       <Field label="Quote"><Textarea value={data.quote || ""} onChange={(e) => onChange({ quote: e.target.value })} className="h-24 w-full rounded-md border border-gray-200 p-2" /></Field>
       <Field label="Name"><Input value={data.name || ""} onChange={(e) => onChange({ name: e.target.value })} /></Field>
       <Field label="Role / context"><Input value={data.role || ""} onChange={(e) => onChange({ role: e.target.value })} placeholder="e.g. Verified buyer" /></Field>
@@ -633,9 +751,10 @@ function TestimonialInspector({ data, onChange, onPickImage }) {
 }
 
 function EndorsedReviewInspector({ data, onChange }) {
-  const { widgetType = "basic-stars", themeMode = "light", branding = true } = data;
+  const { widgetType = "basic-stars", themeMode = "light", branding = true, tone } = data;
   return (
     <div className="space-y-4">
+      <ToneField value={tone} onChange={(v) => onChange({ tone: v })} />
       <Field label="Widget style">
         <select
           value={widgetType}
@@ -659,6 +778,88 @@ function EndorsedReviewInspector({ data, onChange }) {
   );
 }
 
+function SplitInspector({ data, onChange, onPickImage }) {
+  const { eyebrow, heading, body, cta, media, variant = "media-left", tone } = data;
+  return (
+    <div className="space-y-4">
+      <VariantField
+        value={variant}
+        options={[{ value: "media-left", label: "Media left" }, { value: "media-right", label: "Media right" }]}
+        onChange={(v) => onChange({ variant: v })}
+      />
+      <ToneField value={tone} onChange={(v) => onChange({ tone: v })} />
+      <Field label="Eyebrow"><Input value={eyebrow || ""} onChange={(e) => onChange({ eyebrow: e.target.value })} /></Field>
+      <Field label="Heading"><Input value={heading || ""} onChange={(e) => onChange({ heading: e.target.value })} /></Field>
+      <Field label="Body"><Textarea value={body || ""} onChange={(e) => onChange({ body: e.target.value })} className="h-24 w-full rounded-md border border-gray-200 p-2" /></Field>
+      <Field label="Image">
+        <div className="flex items-center gap-2">
+          <Input placeholder="Image URL" value={media?.url || ""} onChange={(e) => onChange({ media: { ...(media || {}), url: e.target.value } })} />
+          {onPickImage && (
+            <Button size="sm" variant="outline" className="shrink-0 text-black" onClick={onPickImage}>
+              <Upload className="mr-1 inline h-3 w-3" />Upload
+            </Button>
+          )}
+        </div>
+      </Field>
+      <Field label="Focal point (e.g. 50% 30%)"><Input placeholder="50% 50%" value={media?.focal || ""} onChange={(e) => onChange({ media: { ...(media || {}), focal: e.target.value } })} /></Field>
+      <Field label="CTA label"><Input value={cta?.label || ""} onChange={(e) => onChange({ cta: { ...(cta || {}), label: e.target.value } })} /></Field>
+      <Field label="CTA link"><Input value={cta?.href || ""} onChange={(e) => onChange({ cta: { ...(cta || {}), href: e.target.value } })} /></Field>
+    </div>
+  );
+}
+
+const COLUMN_ICON_OPTIONS = [
+  { value: "truck", label: "Shipping" },
+  { value: "shield", label: "Guarantee" },
+  { value: "rotate-ccw", label: "Returns" },
+  { value: "award", label: "Quality" },
+  { value: "zap", label: "Fast" },
+  { value: "headphones", label: "Support" },
+  { value: "credit-card", label: "Payment" },
+  { value: "check", label: "Check" },
+];
+
+function ColumnsInspector({ data, onChange }) {
+  const { heading, items = [], variant = "icon", tone } = data;
+  const setItem = (idx, patch) => onChange({ items: items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) });
+  const addItem = () => onChange({ items: [...items, { icon: "check", title: "", text: "" }] });
+  const removeItem = (idx) => onChange({ items: items.filter((_, i) => i !== idx) });
+  return (
+    <div className="space-y-4">
+      <VariantField
+        value={variant}
+        options={[{ value: "icon", label: "Icon" }, { value: "numbered", label: "Numbered" }]}
+        onChange={(v) => onChange({ variant: v })}
+      />
+      <ToneField value={tone} onChange={(v) => onChange({ tone: v })} />
+      <Field label="Heading (optional)"><Input value={heading || ""} onChange={(e) => onChange({ heading: e.target.value })} /></Field>
+      <div className="space-y-3">
+        {items.map((it, idx) => (
+          <div key={idx} className="space-y-2 rounded-md border border-gray-200 p-2">
+            {variant === "icon" && (
+              <select
+                value={it.icon || "check"}
+                onChange={(e) => setItem(idx, { icon: e.target.value })}
+                className="w-full rounded-md border border-gray-200 px-2 py-1 text-sm"
+              >
+                {COLUMN_ICON_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            )}
+            <Input placeholder="Title" value={it.title || ""} onChange={(e) => setItem(idx, { title: e.target.value })} />
+            <Input placeholder="One line of text" value={it.text || ""} onChange={(e) => setItem(idx, { text: e.target.value })} />
+            <Button size="sm" variant="outline" className="text-red-600" onClick={() => removeItem(idx)}>
+              <Trash2 className="mr-1 inline h-3 w-3" />Remove
+            </Button>
+          </div>
+        ))}
+        <Button size="sm" variant="outline" className="text-black" onClick={addItem}>
+          <Plus className="mr-1 inline h-3 w-3" />Add item
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* =========================================================================
  * SHOP_BLOCKS registry — mirrors Funnel Builder's BLOCKS registry shape
  * (name/icon/Renderer/Inspector) so both editors work the same way.
@@ -672,6 +873,8 @@ export const SHOP_BLOCKS = {
   button: { name: "Button", icon: LinkIconLucide, Renderer: ButtonRenderer, Inspector: ButtonInspector },
   "collection-grid": { name: "Products", icon: LayoutGrid, Renderer: CollectionGridRenderer, Inspector: CollectionGridInspector },
   "rich-text": { name: "Rich Text", icon: Type, Renderer: RichTextRenderer, Inspector: RichTextInspector },
+  split: { name: "Split", icon: LayoutTemplate, Renderer: SplitRenderer, Inspector: SplitInspector },
+  columns: { name: "Columns", icon: Columns3, Renderer: ColumnsRenderer, Inspector: ColumnsInspector },
   faq: { name: "FAQ", icon: HelpCircle, Renderer: FaqRenderer, Inspector: FaqInspector },
   testimonial: { name: "Testimonial", icon: Quote, Renderer: TestimonialRenderer, Inspector: TestimonialInspector },
   "endorsed-review": { name: "Reviews", icon: Star, Renderer: EndorsedReviewRenderer, Inspector: EndorsedReviewInspector },
@@ -843,7 +1046,7 @@ export default function StoreCanvasBuilder({ value = [], onChange, onPickImage, 
           <CardContent className="min-h-0 flex-1 p-0">
             <div className="relative flex h-full items-start overflow-auto bg-white">
               <div className="relative mx-auto h-full w-full overflow-y-auto" style={{ width: containerWidth }}>
-                <div className="min-h-full border border-gray-200" style={{ ...themeVars, background: "var(--surface)" }}>
+                <div className="min-h-full border border-gray-200" style={{ ...themeVars, background: "var(--surface)", color: "var(--text)" }}>
                   <div className="flex flex-col p-6" style={{ gap: "var(--block-gap)" }}>
                     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
                       <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
