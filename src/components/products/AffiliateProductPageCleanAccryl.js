@@ -216,7 +216,11 @@ function ensureFont(family) {
 }
 
 export default function ProductPage() {
-  const { user, currentUser } = useAuth();
+  const { user, currentUser, userProfile } = useAuth();
+  // Same affiliate gate as the mirror designer's own Save Design feature
+  // (StandardMirrorDesigner.js / ProductPageClean.js) -- kept consistent so
+  // "who can save a reusable design" means the same thing everywhere.
+  const isAffiliate = !!userProfile?.affiliateCode;
   const canvasRef = useRef(null);
   const fabricCanvasRef = useRef(null);
   const [selectedSize] = useState(resolveAcrylicSize);
@@ -253,6 +257,14 @@ export default function ProductPage() {
   // Order success state
   const [orderSaved, setOrderSaved] = useState(false);
   const [savedOrderId, setSavedOrderId] = useState(null);
+
+  // Save Design state (affiliates only) -- separate from the order-on-
+  // purchase flow above: this saves the design itself, before any purchase,
+  // so it can be picked later from the Create Product modal's "My Saved
+  // Designs" and turned into a fixed, resellable listing.
+  const [designTitle, setDesignTitle] = useState("");
+  const [savingDesign, setSavingDesign] = useState(false);
+  const [saveDesignStatus, setSaveDesignStatus] = useState(null);
 
   // Get user ID for saving orders
   const uid = currentUser?.uid || user?.uid;
@@ -327,6 +339,61 @@ export default function ProductPage() {
     } catch (error) {
       console.error('Error saving acrylic order:', error);
       return null;
+    }
+  };
+
+  // Save the current design (structured Fabric JSON + thumbnail) so it can
+  // be picked later from the Create Product modal's "My Saved Designs" --
+  // same shape/path (designs/{uid}/{designId}) as StandardMirrorDesigner.js
+  // and ProductPageClean.js so all three product lines feed the same list.
+  // `type` records which of the two variants this page was showing at save
+  // time (isDesk is resolved once from ?size= on mount), so a later "reopen
+  // this design" feature can tell them apart.
+  const saveDesign = async () => {
+    if (!fabricCanvasRef.current) return;
+    if (!uid) {
+      setSaveDesignStatus({ ok: false, msg: 'Please log in to save your design.' });
+      return;
+    }
+    if (!isAffiliate) {
+      setSaveDesignStatus({ ok: false, msg: 'Saving designs is available to affiliate accounts.' });
+      return;
+    }
+    if (!designTitle.trim()) {
+      setSaveDesignStatus({ ok: false, msg: 'Give your design a name first.' });
+      return;
+    }
+
+    setSavingDesign(true);
+    setSaveDesignStatus(null);
+    try {
+      const c = fabricCanvasRef.current;
+      const canvasJSON = c.toJSON();
+      const dataUrl = await captureSnapshot({ maxWidth: 2000 });
+
+      const designId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const thumbRef = storageRef(storage, `designs/${uid}/${designId}.png`);
+      const blob = await (await fetch(dataUrl)).blob();
+      await uploadBytes(thumbRef, blob);
+      const thumbnailUrl = await getDownloadURL(thumbRef);
+
+      await set(dbRef(db, `designs/${uid}/${designId}`), {
+        id: designId,
+        title: designTitle.trim(),
+        type: isDesk ? 'edge-lit-desk' : 'edge-lit-wall',
+        basePrice: parseFloat(priceToAmount(displayPrice)) || 0,
+        thumbnailUrl,
+        canvasJSON: JSON.stringify(canvasJSON),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+
+      setSaveDesignStatus({ ok: true, msg: 'Design saved! You can now pick it when creating a product.' });
+    } catch (e) {
+      console.error('Failed to save design:', e);
+      setSaveDesignStatus({ ok: false, msg: e?.message || "Couldn't save your design." });
+    } finally {
+      setSavingDesign(false);
     }
   };
 
@@ -1712,6 +1779,33 @@ export default function ProductPage() {
                 </div>
               </div>
             </div>
+
+            {/* Save Design — affiliates only; everyone else just designs & buys via the checkout below */}
+            {isAffiliate && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur">
+                <h3 className="mb-3 text-lg font-semibold">Save This Design</h3>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={designTitle}
+                    onChange={(e) => setDesignTitle(e.target.value.slice(0, 80))}
+                    placeholder="Name this design…"
+                    className="w-full rounded-md bg-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none"
+                  />
+                  <button
+                    onClick={saveDesign}
+                    disabled={savingDesign}
+                    className="w-full rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white shadow hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {savingDesign ? 'Saving…' : 'Save Design'}
+                  </button>
+                  {saveDesignStatus && (
+                    <p className={`text-xs ${saveDesignStatus.ok ? 'text-emerald-400' : 'text-red-400'}`}>{saveDesignStatus.msg}</p>
+                  )}
+                  <p className="text-xs text-slate-400">Saved designs can be picked later when creating a product to sell.</p>
+                </div>
+              </div>
+            )}
             {/* Sidebar orientation select removed (left-hand select is authoritative) */}
           </aside>
         </div>

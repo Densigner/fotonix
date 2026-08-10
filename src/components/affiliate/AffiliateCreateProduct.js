@@ -1,6 +1,23 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Image as ImageIcon, CheckCircle2, AlertTriangle, Tag, Package, Layers, ExternalLink, RefreshCcw } from "lucide-react";
+import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY } from "../../data/acrylicSizes";
+
+// Every real designer an affiliate can save a design from -- each opens in a
+// new tab so this modal (and whatever's already typed into the fields below)
+// stays open. Kept as one list so a fourth product line only means adding an
+// entry here, not touching the JSX below.
+//
+// The ?size= has to sit BEFORE the #hash, not after: AffiliateProductPage-
+// CleanAccryl.js's resolveAcrylicSize() reads window.location.search (the
+// real query string), which only exists ahead of the fragment -- anything
+// appended after #affiliate-product-accryl becomes part of the hash instead
+// and is silently ignored, always falling back to the wall default.
+const DESIGNER_LINKS = [
+  { label: "Design a mirror", href: "/#product" },
+  { label: "Design a desk sign", href: `/?size=${DEFAULT_DESK_ACRYLIC_SIZE_KEY}#affiliate-product-accryl` },
+  { label: "Design a wall panel", href: `/?size=${DEFAULT_WALL_ACRYLIC_SIZE_KEY}#affiliate-product-accryl` },
+];
 
 /**
  * ProductUploadModal — Fotonix product creation flow
@@ -340,18 +357,24 @@ export default function ProductUploadModal({
                       </div>
                     ) : selectedCategory === "my-designs" && savedDesigns.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-zinc-300 p-3 text-xs text-zinc-500 dark:border-zinc-700">
-                        <p className="mb-2">No saved designs yet. Design a mirror and save it first, then it'll show up here.</p>
-                        {/* Opens in a new tab -- this modal (and whatever the affiliate has
-                            already typed into the fields below) stays open and untouched, so
-                            they just design, save, come back to this tab, and hit Refresh above. */}
-                        <a
-                          href="/#product"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-fuchsia-50 px-3 py-1.5 font-medium text-fuchsia-700 hover:bg-fuchsia-100 dark:bg-fuchsia-950/30 dark:text-fuchsia-300"
-                        >
-                          Design a mirror now <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
+                        <p className="mb-2">No saved designs yet. Design something and save it first, then it'll show up here.</p>
+                        {/* Each opens in a new tab -- this modal (and whatever's already
+                            typed into the fields below) stays open and untouched, so the
+                            affiliate just designs, saves, comes back to this tab, and hits
+                            Refresh above. */}
+                        <div className="flex flex-wrap gap-2">
+                          {DESIGNER_LINKS.map((d) => (
+                            <a
+                              key={d.href}
+                              href={d.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-fuchsia-50 px-3 py-1.5 font-medium text-fuchsia-700 hover:bg-fuchsia-100 dark:bg-fuchsia-950/30 dark:text-fuchsia-300"
+                            >
+                              {d.label} <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <div className="relative">
