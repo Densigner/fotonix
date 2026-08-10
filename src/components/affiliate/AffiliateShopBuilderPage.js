@@ -45,10 +45,14 @@ async function claimHandle(db, handle, uid) {
   return res.committed && res.snapshot.val() === uid;
 }
 
-export function buildPublicUrl(origin, handle, style) {
+// Always /@handle now — /u/handle was offered as a style choice but was
+// never actually a real route anywhere in App.js (only pathname.startsWith
+// ('/@') is handled), so picking it silently gave affiliates a broken link
+// to their own storefront.
+export function buildPublicUrl(origin, handle) {
   const h = sanitizeHandle(handle); if (!h) return "";
   const base = origin.replace(/\/$/, "");
-  return style === "at" ? `${base}/@${h}` : `${base}/u/${h}`;
+  return `${base}/@${h}`;
 }
 
 // createSection() only ever produces its own default data — this makes a
@@ -154,7 +158,6 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
     linkStyle: "bordered",
     linksHeading: "Find me online",
     linksDescription: "",
-    urlStyle: "at",
     productDisplayMode: "all",
     productIds: [],
   featuredLayout: false,
@@ -254,7 +257,7 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
     }
   };
 
-  const publicUrl = buildPublicUrl(siteOrigin, data.handle, data.urlStyle);
+  const publicUrl = buildPublicUrl(siteOrigin, data.handle);
 
   if (loading) return <div className="p-4 text-sm text-zinc-500">Loading storefront…</div>;
 
@@ -265,11 +268,6 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h3 className="text-sm font-semibold">Storefront Basics</h3>
           <div className="mt-3 grid grid-cols-1 gap-3">
-            <label className="text-xs text-zinc-600">Public URL style</label>
-            <div className="inline-flex gap-2 text-sm">
-              <label className="inline-flex items-center gap-2"><input type="radio" checked={data.urlStyle === "at"} onChange={() => setData({ ...data, urlStyle: "at" })} /> /@handle</label>
-              <label className="inline-flex items-center gap-2"><input type="radio" checked={data.urlStyle === "slash"} onChange={() => setData({ ...data, urlStyle: "slash" })} /> /u/handle</label>
-            </div>
             <label className="text-xs text-zinc-600">Handle (unique)</label>
             <input value={data.handle} onChange={(e) => setData({ ...data, handle: e.target.value })} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900" placeholder="your-name" />
             <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-300"><LinkIcon className="h-4 w-4" /> {publicUrl || "Choose a handle to see your URL"}</div>
