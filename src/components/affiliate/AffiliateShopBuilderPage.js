@@ -255,8 +255,13 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
       // -- deleting that block in the editor would never actually stick,
       // since the very next load would resurrect it from the still-present
       // legacy field.
+      // NOTE: `theme` is NOT in this strip list -- it looked like a dead
+      // legacy field when this list was first written (the old gradient/
+      // bgType shape), but the Design panel repurposed it for real
+      // (brand/mood/fonts/radius/density) afterward. Stripping it here
+      // would silently discard every Design-panel change on every save.
       const {
-        displayName, bio, bannerUrl, theme, links, linkAlignment, linkStyle,
+        displayName, bio, bannerUrl, links, linkAlignment, linkStyle,
         linksHeading, linksDescription, productDisplayMode, productIds,
         featuredLayout, featuredProductId, productsHeading, productsDescription,
         seo, urlStyle,

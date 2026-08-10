@@ -180,9 +180,14 @@ export function CollectionGridRenderer({ data, fullProducts, ownerUid }) {
     ? (featuredProductId && ordered.find((p) => p.id === featuredProductId)) || ordered[0]
     : null;
   const gridProducts = featuredProduct ? ordered.filter((p) => p.id !== featuredProduct.id) : ordered;
+  // auto-fit/minmax instead of fixed breakpoint column counts: a fixed
+  // `grid-cols-4` grid with a single product only fills one of four column
+  // tracks, leaving the rest of the row empty instead of stretching to
+  // fill it. auto-fit collapses unused tracks, so one product spans the
+  // full row and multiple products wrap the same as before.
   const gridCls = variant === "editorial-list"
-    ? "grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-3"
-    : "grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
+    ? "grid gap-x-8 gap-y-10 grid-cols-[repeat(auto-fit,minmax(320px,1fr))]"
+    : "grid gap-3 grid-cols-[repeat(auto-fit,minmax(240px,1fr))]";
 
   return (
     <section>
