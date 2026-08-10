@@ -151,7 +151,17 @@ function resolveProductClick(p, ownerUid) {
     return () => { window.location.hash = "affiliate-product-accryl"; };
   }
   if (p.templateId === "lumina-mirror-user") {
-    return () => { window.location.hash = "standard-mirror-designer"; };
+    // #product, not #standard-mirror-designer -- ProductPageClean.js (the
+    // page that hash actually renders, per App.js) is the real, already-
+    // live Lumina Mirror designer every other customer on the site already
+    // reaches from the homepage. StandardMirrorDesigner.js is a separate,
+    // currently-unlinked-from-anywhere rebuild of the same tool; routing
+    // here instead avoids affiliate-storefront traffic landing on a
+    // different, less-tested copy of the same experience. Neither page
+    // actually takes a product-id prop (ProductPageClean's own component
+    // function takes no props at all), so a bare hash jump is correct --
+    // there's nothing to pass.
+    return () => { window.location.hash = "product"; };
   }
   if (ownerUid) {
     return () => { window.location.href = `${window.location.origin}/product/${ownerUid}/${p.id}`; };

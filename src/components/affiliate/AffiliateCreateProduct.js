@@ -19,13 +19,17 @@ export default function ProductUploadModal({
   // Product templates by category
   const PRODUCT_TEMPLATES = useMemo(
     () => ({
+      // The "-affiliate" variants that used to sit here (lumina-mirror-affiliate,
+      // light-up-affiliate, lumina-cut-affiliate) were a manual-photo-upload
+      // path with no connection to the real designer -- nothing structured
+      // ever got saved, unlike "My Saved Designs" below, which stores the
+      // actual editable canvas (see StandardMirrorDesigner.js's saveDesign())
+      // gated to affiliate accounts. Removed in favor of that real mechanism
+      // rather than keeping two inconsistent ways to do the same thing.
       fotonix: [
         { id: "lumina-mirror-user", label: "Lumina Mirror User Design", basePrice: 29.99, category: "fotonix" },
-        { id: "lumina-mirror-affiliate", label: "Lumina Mirror Affiliate Design", basePrice: 29.99, category: "fotonix" },
         { id: "light-up-user", label: "Light Up User Design", basePrice: 19.99, category: "fotonix" },
-        { id: "light-up-affiliate", label: "Light Up Affiliate Design", basePrice: 19.99, category: "fotonix" },
         { id: "lumina-cut-user", label: "Lumina Mirror Cut To Shape User Design", basePrice: 40.00, category: "fotonix" },
-        { id: "lumina-cut-affiliate", label: "Lumina Mirror Cut To Shape Affiliate Design", basePrice: 40.00, category: "fotonix" },
       ]
     }),
     []
