@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link as LinkIcon, Eye, Image as ImageIcon } from "lucide-react";
+import { Link as LinkIcon, Image as ImageIcon } from "lucide-react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getDatabase, ref as dbRef, get, set, runTransaction } from "firebase/database";
@@ -388,9 +388,9 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
   if (loading) return <div className="p-4 text-sm text-zinc-500">Loading storefront…</div>;
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      {/* Editor side */}
-      <div className="space-y-4">
+    <div className="space-y-4">
+      {/* Editor — the "Page sections" canvas below is now the live preview,
+          same as the Funnel Builder: no separate static preview pane. */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h3 className="text-sm font-semibold">Storefront Basics</h3>
           <div className="mt-3 grid grid-cols-1 gap-3">
@@ -788,15 +788,6 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
         </section>
 
         <div className="flex items-center gap-2"><button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50">{saving ? "Saving…" : "Save Storefront"}</button>{err && <span className={`text-xs ${err.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>{err}</span>}</div>
-      </div>
-
-      {/* Live preview side */}
-      <div className="md:sticky md:top-4 md:self-start">
-        <div className="md:h-[calc(100vh-2rem)] overflow-y-auto">
-          <h2 className="mb-4 text-lg font-semibold">Live Preview</h2>
-          <StorefrontView data={data} products={products} compact />
-        </div>
-      </div>
     </div>
   );
 }
@@ -820,138 +811,6 @@ function RenderSections({ sections, fullProducts }) {
         const Renderer = block.Renderer;
         return <Renderer key={s.id} data={s.data} fullProducts={fullProducts} />;
       })}
-    </div>
-  );
-}
-
-// Public view (wire into your router)
-export function StorefrontView({ data, products = [], compact = false }) {
-  const bg = themeBackground(data.theme);
-  const light = (data.theme?.textColor || "light") === "light";
-  const curatedOrdered = data.productDisplayMode === "all"
-    ? products
-    : (data.productIds || []).map(id => products.find(p => p?.id === id)).filter(Boolean);
-  const featured = data.featuredLayout
-    ? ((data.featuredProductId && curatedOrdered.find(p => p.id === data.featuredProductId)) || curatedOrdered[0])
-    : null;
-  const subProducts = data.featuredLayout && featured
-    ? curatedOrdered.filter(p => p.id !== featured.id)
-    : curatedOrdered;
-
-  return (
-    <div className={compact ? "" : "min-h-screen"}>
-      <div className="h-40 w-full" style={bg} />
-      {data.bannerUrl && (<img src={data.bannerUrl} alt="Banner" className="-mt-24 mx-auto h-40 w-40 rounded-2xl border-4 border-white object-cover shadow-md" />)}
-      <div className="mx-auto max-w-4xl p-4" style={{ color: light ? "#0a0a0a" : "#f5f5f5" }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">{data.displayName}</h1>
-            {data.bio && <p className="text-sm opacity-80">{data.bio}</p>}
-          </div>
-          <a href="#products" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm"><Eye className="h-4 w-4" /> View products</a>
-        </div>
-        {/* Links heading/description (optional) */}
-        {(data.linksHeading || data.linksDescription) && (
-          <div className={[
-            "mt-4",
-            data.linkAlignment === "center" ? "text-center" : data.linkAlignment === "right" ? "text-right" : "text-left",
-          ].join(" ")}>
-            {data.linksHeading && (
-              <h2 className="text-lg font-semibold">{data.linksHeading}</h2>
-            )}
-            {data.linksDescription && (
-              <p className="mt-1 text-sm opacity-80 whitespace-pre-wrap">{data.linksDescription}</p>
-            )}
-          </div>
-        )}
-
-        {data.links && data.links.length > 0 && (
-          <div
-            className={[
-              "mt-4 flex flex-wrap gap-2",
-              data.linkAlignment === "center" ? "justify-center" : data.linkAlignment === "right" ? "justify-end" : "justify-start",
-            ].join(" ")}
-          >
-            {data.links.map((l) => {
-              const provider = (l.provider || "custom").toLowerCase();
-
-              const base = "inline-flex items-center gap-2 text-sm transition-all";
-              const style =
-                data.linkStyle === "pill"
-                  ? "rounded-full bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 font-medium text-white shadow-sm hover:brightness-110"
-                  : data.linkStyle === "minimal"
-                  ? "text-pink-600 hover:underline dark:text-pink-400"
-                  : "rounded-xl border border-zinc-200 px-3 py-2 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800";
-
-              return (
-                <a
-                  key={l.id}
-                  href={sanitizeUrl(l.url) || "#"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${base} ${style}`}
-                >
-                  <span className="inline-flex h-5 w-5 items-center justify-center">
-                    {getSocialIcon(provider, 16)}
-                  </span>
-                  <span>{l.label || l.url}</span>
-                </a>
-              );
-            })}
-          </div>
-        )}
-  {/* sections driven by data.pageSections */}
-  <RenderSections sections={data.pageSections} fullProducts={products} />
-        <div className="mt-8" id="products">
-          <h2 className="text-lg font-semibold">
-            {data.featuredLayout ? "Featured Products" : (data.productsHeading || "Products")}
-          </h2>
-          {(!data.featuredLayout && data.productsDescription) && (
-            <p className="mt-1 text-sm opacity-80 whitespace-pre-wrap">{data.productsDescription}</p>
-          )}
-        </div>
-        {data.featuredLayout && featured && (
-          <section className="mt-4">
-            <a
-              href={featured.href || `#product/${featured.id}`}
-              className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
-            >
-              {(() => {
-                const idx = featured.mainImageIndex ?? 0;
-                const fallback = featured.images && featured.images[idx] ? featured.images[idx].url : undefined;
-                const src = featured.imageUrl || fallback;
-                return src ? <img src={src} alt={featured.title} className="h-72 w-full object-cover sm:h-96" loading="lazy" /> : null;
-              })()}
-              <div className="p-5">
-                <h3 className="text-xl font-semibold">{featured.title}</h3>
-                {typeof featured.price === "number" && (
-                  <p className="mt-1 text-2xl font-bold text-pink-600 dark:text-pink-400">£{featured.price.toFixed(2)}</p>
-                )}
-                {featured.description && (
-                  <p className="mt-2 line-clamp-3 text-sm text-zinc-600 dark:text-zinc-300">{featured.description}</p>
-                )}
-              </div>
-            </a>
-          </section>
-        )}
-
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-          {subProducts.map((p) => (
-            <a key={p.id} href={p.href} target="_blank" rel="noopener noreferrer" className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900">
-              {(() => {
-                const idx = p.mainImageIndex ?? 0;
-                const fallback = p.images && p.images[idx] ? p.images[idx].url : undefined;
-                const src = p.imageUrl || fallback;
-                return src ? <img src={src} alt={p.title} className="h-48 w-full object-cover" /> : null;
-              })()}
-              <div className="p-4">
-                <h3 className="font-semibold">{p.title}</h3>
-                <p className="text-lg font-bold text-pink-600 dark:text-pink-400">£{p.price.toFixed(2)}</p>
-              </div>
-            </a>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
