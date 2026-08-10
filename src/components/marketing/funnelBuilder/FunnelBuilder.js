@@ -1471,8 +1471,8 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
           {/* Editor grid: two columns — left toggles between Blocks and Inspector, right is the canvas */}
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-4">
             {/* Left: Blocks or Inspector (toggle) */}
-            <Card className="h-[calc(100vh-180px)] overflow-hidden">
-              <CardHeader className="pb-2 flex items-center justify-between">
+            <Card className="flex h-[calc(100vh-180px)] flex-col overflow-hidden">
+              <CardHeader className="flex shrink-0 items-center justify-between pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     {selectedId ? <Settings2 className="h-4 w-4"/> : <LayoutTemplate className="h-4 w-4"/>}
                     {selectedId ? 'Inspector' : 'Blocks'}
@@ -1487,8 +1487,17 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                   </div>
                 </CardHeader>
               <Separator />
-              <CardContent className="p-0">
-                <ScrollArea className="h-[calc(100vh-240px)] p-3">
+              {/* flex-1 min-h-0 + ScrollArea's own h-full (not a second
+                  independently-guessed viewport calc) is what actually makes
+                  this fill exactly the remaining space below the header --
+                  two separate 100vh-Npx calcs only line up if the header's
+                  real height never changes, and when it doesn't, the card's
+                  own overflow-hidden clips the bottom of the scroll area
+                  before a field near the end (e.g. the Link URL input) can
+                  ever be scrolled into view. Same bug, same fix, as the Shop
+                  Builder's canvas/inspector panel had earlier. */}
+              <CardContent className="min-h-0 flex-1 p-0">
+                <ScrollArea className="h-full p-3">
                   {selectedId ? (
                     <div className="p-4">
                       <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} funnelOwnerUid={currentUserId} />
