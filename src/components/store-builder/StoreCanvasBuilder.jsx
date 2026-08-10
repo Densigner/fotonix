@@ -31,6 +31,7 @@ import {
   Rows3,
   Link as LinkIconLucide,
   Quote,
+  Star,
 } from "lucide-react";
 
 import { Button } from "../shared/ui/button";
@@ -46,6 +47,7 @@ import { createSection, uid } from "../shared/sections";
 // maintaining its own.
 import { CompactControls, ActionFields, CtaAction, SubscribeInlineForm, ClickableImage } from "../marketing/funnelBuilder/FunnelBuilder";
 import { deriveThemeVars, useGoogleFont } from "./theme";
+import { EndorsedWidget, ENDORSED_WIDGET_TYPES } from "../shared/endorsedWidget";
 
 /* =========================================================================
  * Block renderers — the single source of truth for what a section looks
@@ -275,6 +277,17 @@ export function TestimonialRenderer({ data }) {
   );
 }
 
+// Real, live reviews (Endorsed.Review's own widget.js loader), not a
+// hand-typed quote -- see src/components/shared/endorsedWidget.js.
+export function EndorsedReviewRenderer({ data }) {
+  const { widgetType = "basic-stars", themeMode = "light", branding = true } = data;
+  return (
+    <div className="text-center">
+      <EndorsedWidget type={widgetType} theme={themeMode} color="var(--accent)" branding={branding} />
+    </div>
+  );
+}
+
 // funnelOwnerUid here is the storefront owner's own uid — ClickableImage/
 // CtaAction/SubscribeInlineForm were written for the Funnel Builder, where
 // that prop name refers to whoever owns the funnel being viewed; the same
@@ -347,8 +360,8 @@ const AlignField = ({ align, onChange }) => (
     </div>
   </Field>
 );
-const VariantField = ({ value, options, onChange }) => (
-  <Field label="Layout">
+const VariantField = ({ value, options, onChange, label = "Layout" }) => (
+  <Field label={label}>
     <div className="flex flex-wrap gap-2">
       {options.map((opt) => (
         <Button key={opt.value} size="sm" variant={value === opt.value ? "default" : "outline"} className="text-black" onClick={() => onChange(opt.value)}>{opt.label}</Button>
@@ -619,6 +632,33 @@ function TestimonialInspector({ data, onChange, onPickImage }) {
   );
 }
 
+function EndorsedReviewInspector({ data, onChange }) {
+  const { widgetType = "basic-stars", themeMode = "light", branding = true } = data;
+  return (
+    <div className="space-y-4">
+      <Field label="Widget style">
+        <select
+          value={widgetType}
+          onChange={(e) => onChange({ widgetType: e.target.value })}
+          className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm"
+        >
+          {ENDORSED_WIDGET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </Field>
+      <VariantField
+        label="Appearance"
+        value={themeMode}
+        options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }]}
+        onChange={(v) => onChange({ themeMode: v })}
+      />
+      <ToggleField label='Show "Powered by Endorsed.Review"' checked={branding} onCheckedChange={(v) => onChange({ branding: v })} />
+      <p className="text-xs text-gray-500">
+        Pulls real, live reviews from Fotonix's own Endorsed.Review account — these are reviews of the products, not of your storefront specifically. Automatically matches your brand color above.
+      </p>
+    </div>
+  );
+}
+
 /* =========================================================================
  * SHOP_BLOCKS registry — mirrors Funnel Builder's BLOCKS registry shape
  * (name/icon/Renderer/Inspector) so both editors work the same way.
@@ -634,6 +674,7 @@ export const SHOP_BLOCKS = {
   "rich-text": { name: "Rich Text", icon: Type, Renderer: RichTextRenderer, Inspector: RichTextInspector },
   faq: { name: "FAQ", icon: HelpCircle, Renderer: FaqRenderer, Inspector: FaqInspector },
   testimonial: { name: "Testimonial", icon: Quote, Renderer: TestimonialRenderer, Inspector: TestimonialInspector },
+  "endorsed-review": { name: "Reviews", icon: Star, Renderer: EndorsedReviewRenderer, Inspector: EndorsedReviewInspector },
 };
 
 /* =========================================================================

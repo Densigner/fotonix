@@ -1,8 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
- 
+const ENDORSED_USER_ID = "RNLTUfrluHNAvmReypbok74OO8g1";
+
 export default function SocialProofSection({ showQuoteMark = false } ) {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    fetch(`https://api.endorsed.review/api/widget-embed/${ENDORSED_USER_ID}`)
+      .then((r) => r.json())
+      .then((data) => setStats(data))
+      .catch(() => setStats(null));
+  }, []);
+
   const slides = [
     {
       quote:
@@ -73,21 +83,27 @@ export default function SocialProofSection({ showQuoteMark = false } ) {
                 rel="noopener noreferrer"
                 className="review-link"
               >
-                <div className="rating">
-                  <svg
-                    className="rating-star"
-                    viewBox="0 0 40 40"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true"
-                  >
-                    <polygon
-                      fill="#FFD43B"
-                      points="20,0 24.755,12.36 38,12.36 27,20.04 30.9,32 20,24.8 9.1,32 13,20.04 2,12.36 15.245,12.36"
-                    />
-                  </svg>
-                  <strong>4.8/5</strong>
-                </div>
-                <div className="reviews">1218+ verified reviews</div>
+                {stats && stats.totalReviews > 0 ? (
+                  <>
+                    <div className="rating">
+                      <svg
+                        className="rating-star"
+                        viewBox="0 0 40 40"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <polygon
+                          fill="#FFD43B"
+                          points="20,0 24.755,12.36 38,12.36 27,20.04 30.9,32 20,24.8 9.1,32 13,20.04 2,12.36 15.245,12.36"
+                        />
+                      </svg>
+                      <strong>{stats.averageRating.toFixed(1)}/5</strong>
+                    </div>
+                    <div className="reviews">{stats.totalReviews} verified review{stats.totalReviews !== 1 ? "s" : ""}</div>
+                  </>
+                ) : (
+                  <div className="reviews">New on Endorsed.Review — be the first to leave a review</div>
+                )}
               </a>
             </div>
           </div>

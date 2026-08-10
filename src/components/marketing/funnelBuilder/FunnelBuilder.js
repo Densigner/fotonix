@@ -43,9 +43,11 @@ import {
   Rows3,
   ArrowUpRight,
   GripVertical,
+  Star,
 } from "lucide-react";
 import { useSearchParams } from 'react-router-dom';
 import { getStarterBlocks } from './templateRegistry';
+import { EndorsedWidget, ENDORSED_WIDGET_TYPES } from '../../shared/endorsedWidget';
 // Firebase storage helper (upload images to the project storage bucket)
 import { storage, db } from '../../../firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -1128,6 +1130,45 @@ const BLOCKS = {
             ))}
           </div>
         </Field>
+      </div>
+    )
+  },
+  endorsedReview: {
+    name: "Reviews",
+    icon: Star,
+    // Real, live reviews (Endorsed.Review's own widget.js loader), not a
+    // hand-typed testimonial -- see src/components/shared/endorsedWidget.js,
+    // shared with the Shop Builder's identical block so there's one copy
+    // of this integration, not two.
+    defaults: () => ({ widgetType: 'basic-stars', themeMode: 'light', color: '#6D28D9', branding: true }),
+    render: ({ data }) => (
+      <div style={{ textAlign: 'center' }}>
+        <EndorsedWidget type={data.widgetType} theme={data.themeMode} color={data.color} branding={data.branding} />
+      </div>
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Widget style">
+          <select
+            value={data.widgetType}
+            onChange={(e) => onChange({ widgetType: e.target.value })}
+            className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm"
+          >
+            {ENDORSED_WIDGET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Appearance">
+          <div className="flex gap-2">
+            {['light', 'dark'].map((m) => (
+              <Button key={m} size="sm" variant={data.themeMode === m ? 'default' : 'outline'} className="text-black" onClick={() => onChange({ themeMode: m })}>{m}</Button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Accent color">
+          <input type="color" value={data.color || '#6D28D9'} onChange={(e) => onChange({ color: e.target.value })} />
+        </Field>
+        <ToggleField label='Show "Powered by Endorsed.Review"' checked={data.branding} onCheckedChange={(v) => onChange({ branding: v })} />
+        <p className="text-xs text-gray-500">Pulls real, live reviews from Fotonix's own Endorsed.Review account.</p>
       </div>
     )
   },

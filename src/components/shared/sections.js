@@ -51,6 +51,8 @@ export function createSection(type) {
       return { id: uid("btn"), type, data: { label: "Follow me", href: "#", style: "default", full: false, actionType: "link" } };
     case "testimonial":
       return { id: uid("testi"), type, data: { quote: "What a customer actually said, word for word.", name: "", role: "", photo: "" } };
+    case "endorsed-review":
+      return { id: uid("reviews"), type, data: { widgetType: "basic-stars", themeMode: "light", branding: true } };
     default:
       return { id: uid("sec"), type, data: {} };
   }
