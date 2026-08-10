@@ -174,7 +174,7 @@ function AppContent() {
           window.history.replaceState({}, document.title, newUrl);
           
           // Redirect to affiliates page
-          setCurrentPage('affiliates');
+          handleNavigate('affiliates');
           
           // Show success message
           alert('Email verified successfully! Welcome to the affiliate program.');
@@ -189,12 +189,12 @@ function AppContent() {
   }, [auth]);
 
   const handleBackToHome = () => {
-    setCurrentPage('home');
+    handleNavigate('home');
     setSelectedProduct(null);
   };
 
   const handleShowLogin = () => {
-    setCurrentPage('login');
+    handleNavigate('login');
   };
 
   const handleSearch = (q) => {
@@ -218,19 +218,19 @@ function AppContent() {
   };
 
   const handleSwitchToLogin = () => {
-    setCurrentPage('login');
+    handleNavigate('login');
   };
 
   const handleSwitchToSignup = () => {
-    setCurrentPage('signup');
+    handleNavigate('signup');
   };
 
   const handleLogin = () => {
-    setCurrentPage('member-dashboard'); // Go to member dashboard after login
+    handleNavigate('member-dashboard'); // Go to member dashboard after login
   };
 
   const handleSignup = () => {
-    setCurrentPage('email-verification'); // Show email verification message after signup
+    handleNavigate('email-verification'); // Show email verification message after signup
   };
 
   const handleProductPageAccess = () => {
@@ -290,7 +290,7 @@ function AppContent() {
   // Handle chatbot conversion
   const handleChatbotConversion = () => {
     // User expressed high intent through chatbot - navigate to subscription
-    setCurrentPage('member-dashboard'); // This will trigger subscription gate
+    handleNavigate('member-dashboard'); // This will trigger subscription gate
   };
 
   async function fetchAffiliateProducts(uid) {
@@ -436,7 +436,7 @@ function AppContent() {
           onShowLogin={handleShowLogin}
           showInfoBar={currentPage === 'about'}
           onLogoClick={handleBackToHome}
-          onNavigate={(page) => setCurrentPage(page)}
+          onNavigate={handleNavigate}
           onSearch={handleSearch}
           onClearSearch={handleClearSearch}
         />
@@ -486,7 +486,7 @@ function AppContent() {
           <CustomerSignup 
             onSignup={handleSignup}
             onSwitchToLogin={handleSwitchToLogin}
-            onSwitchToMemberSignup={() => setCurrentPage('member-signup')}
+            onSwitchToMemberSignup={() => handleNavigate('member-signup')}
           />
         )}
         
@@ -557,7 +557,7 @@ function AppContent() {
               </div>
             )
           ) : (
-            <AffiliateSignupPage onSubmit={() => setCurrentPage('affiliates')} />
+            <AffiliateSignupPage onSubmit={() => handleNavigate('affiliates')} />
           )
         )}
 
@@ -571,7 +571,7 @@ function AppContent() {
             (auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development')) ? (
               <div className="mx-auto max-w-6xl px-6 py-8">
                 <button
-                  onClick={() => setCurrentPage('affiliates')}
+                  onClick={() => handleNavigate('affiliates')}
                   className="mb-4 text-sm text-zinc-500 hover:text-zinc-800"
                 >
                   ← Back to Affiliate Dashboard
@@ -592,7 +592,7 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in to access the commission dashboard.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
+                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => handleNavigate('login')}>Log In</button>
               </div>
             </div>
           )
@@ -616,7 +616,7 @@ function AppContent() {
                 setSelectedFunnelId(funnel.id);
                 setSelectedFunnelCompanySlug(companySlug);
                 setSelectedTemplateId(null);
-                setCurrentPage('funnel-builder/editor');
+                handleNavigate('funnel-builder/editor');
               }}
             />
           </React.Suspense>
@@ -628,7 +628,7 @@ function AppContent() {
               onSelectTemplate={(id) => {
                 // store selected template id and navigate to editor
                 setSelectedTemplateId(id);
-                setCurrentPage('funnel-builder/editor');
+                handleNavigate('funnel-builder/editor');
               }}
             />
           </React.Suspense>
@@ -656,7 +656,7 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in and verify your email to access the shop builder.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
+                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => handleNavigate('login')}>Log In</button>
               </div>
             </div>
           )
@@ -675,7 +675,7 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in and verify your email to access the modern store builder.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
+                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => handleNavigate('login')}>Log In</button>
               </div>
             </div>
           )
@@ -696,7 +696,7 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in and verify your email to add products.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
+                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => handleNavigate('login')}>Log In</button>
               </div>
             </div>
           )
@@ -731,7 +731,7 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in and verify your email to access the affiliate linker.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
+                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => handleNavigate('login')}>Log In</button>
               </div>
             </div>
           )
@@ -757,7 +757,7 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in and verify your email to access mail campaigns.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
+                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => handleNavigate('login')}>Log In</button>
               </div>
             </div>
           )
@@ -772,7 +772,7 @@ function AppContent() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-md text-center">
                 <h3 className="text-lg font-semibold mb-2">Access Required</h3>
                 <p className="text-sm text-gray-600 mb-4">Please log in to access email automation.</p>
-                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCurrentPage('login')}>Log In</button>
+                <button className="rounded-lg bg-gradient-to-r from-violet-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white" onClick={() => handleNavigate('login')}>Log In</button>
               </div>
             </div>
           )
@@ -783,7 +783,7 @@ function AppContent() {
       
         {/* Remove the auth requirement message since product page is now accessible */}
 
-        <Footer onNavigate={(page) => setCurrentPage(page)} onProductPageAccess={handleProductPageAccess} />
+        <Footer onNavigate={handleNavigate} onProductPageAccess={handleProductPageAccess} />
 
         {/* demo-nav removed */}
 
