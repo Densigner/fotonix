@@ -685,11 +685,12 @@ function AppContent() {
 
         {currentPage === 'affiliate-add-product' && (
           auth && auth.isAuthenticated && auth.currentUser && (auth.currentUser.emailVerified || process.env.NODE_ENV === 'development') ? (
-            <AffiliateProductsPanel 
+            <AffiliateProductsPanel
               products={affiliateProducts}
               loading={affiliateProductsLoading}
               onRefresh={() => fetchAffiliateProducts(auth.currentUser.uid)}
               onToggleStatus={(id) => console.log('toggle status', id)}
+              onCreateProduct={() => setShowCreateProductModal(true)}
             />
           ) : (
             <div className="mx-auto max-w-lg px-6 py-10">
@@ -790,7 +791,14 @@ function AppContent() {
         {/* Affiliate Create Product Modal */}
         <AffiliateCreateProduct
           isOpen={showCreateProductModal}
-          onClose={() => setShowCreateProductModal(false)}
+          onClose={() => {
+            setShowCreateProductModal(false);
+            // AffiliateCreateProduct also calls onClose after a successful
+            // save, so this is also how the products panel picks up a
+            // newly-created product without the affiliate having to hit
+            // its separate manual "Refresh" button.
+            if (auth?.currentUser?.uid) fetchAffiliateProducts(auth.currentUser.uid);
+          }}
           getCurrentUser={() => auth.currentUser ? { uid: auth.currentUser.uid } : null}
         />
 

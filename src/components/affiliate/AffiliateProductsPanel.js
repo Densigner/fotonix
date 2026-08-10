@@ -1,5 +1,5 @@
 import React from "react";
-import { TrendingUp, DollarSign, Package, MousePointerClick, RefreshCcw, Filter, Download, Search } from "lucide-react";
+import { TrendingUp, DollarSign, Package, MousePointerClick, RefreshCcw, Filter, Download, Search, Plus } from "lucide-react";
 import { API_URL } from "../../config/environment";
 
 // ==============================
@@ -45,6 +45,7 @@ export function AffiliateProductsPanel({
   loading = false,
   onRefresh,
   onToggleStatus,
+  onCreateProduct,
 }) {
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState("all");
@@ -111,6 +112,15 @@ export function AffiliateProductsPanel({
           >
             <RefreshCcw className="h-4 w-4" /> Refresh
           </button>
+
+          {onCreateProduct && (
+            <button
+              onClick={onCreateProduct}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:shadow-md"
+            >
+              <Plus className="h-4 w-4" /> Create Product
+            </button>
+          )}
         </div>
       </div>
 
@@ -201,10 +211,11 @@ export function AffiliateProductsPanel({
                 Start by adding products to your store, then they'll appear here for affiliate tracking.
               </p>
               <button
-                onClick={onRefresh}
+                onClick={onCreateProduct || onRefresh}
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-500 to-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm"
               >
-                <RefreshCcw className="h-4 w-4" /> Check for products
+                {onCreateProduct ? <Plus className="h-4 w-4" /> : <RefreshCcw className="h-4 w-4" />}
+                {onCreateProduct ? "Create Product" : "Check for products"}
               </button>
             </div>
           )}
