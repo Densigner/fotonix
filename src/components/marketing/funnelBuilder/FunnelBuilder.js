@@ -105,6 +105,39 @@ const CTA_BG_COLORS = {
   'light': '#f8fafc',
 };
 
+// Preset choices for the CTA block's *button* color, kept separate from
+// CTA_BG_COLORS (the section's own background) since they answer a
+// different question — the button always needs to contrast against
+// whatever the section background ends up being, not match a fixed palette
+// of its own. `null` (the "Auto" preset) keeps the existing smart default
+// (white on a dark/colored section, the theme accent on a light one); a
+// custom hex from the color picker below is run through contrastTextColor
+// so a button can never again render invisible text on its own background,
+// the exact failure mode this was added to fix for good.
+const CTA_BUTTON_PRESETS = [
+  { key: null, label: 'Auto', preview: null },
+  { key: 'accent', label: 'Brand', preview: 'var(--accent)' },
+  { key: '#ffffff', label: 'White', preview: '#ffffff' },
+  { key: '#0f172a', label: 'Dark', preview: '#0f172a' },
+  { key: '#4f46e5', label: 'Indigo', preview: '#4f46e5' },
+  { key: '#059669', label: 'Emerald', preview: '#059669' },
+  { key: '#e11d48', label: 'Rose', preview: '#e11d48' },
+  { key: '#d97706', label: 'Amber', preview: '#d97706' },
+];
+
+// Relative-luminance contrast pick (WCAG's own formula, simplified) — given
+// any hex background, always returns whichever of near-black/near-white
+// actually reads on it, so a custom color from the picker below can't ever
+// reproduce the invisible-button bug a fixed light/dark guess could.
+function contrastTextColor(hex) {
+  if (!hex || hex[0] !== '#' || hex.length < 7) return '#111827';
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.55 ? '#111827' : '#ffffff';
+}
+
 // Same reasoning as CTA_BG_COLORS above — resolves a "color-shade/opacity"
 // string (e.g. "emerald-900/70", the shape the Wildlife/Women's
 // Empowerment templates already store) into a real rgba() value instead of
@@ -1201,6 +1234,16 @@ const BLOCKS = {
       const bgColor = isLight ? CTA_BG_COLORS.light : (CTA_BG_COLORS[data.background?.color] || CTA_BG_COLORS['indigo-600']);
       const textColor = data.textColor === 'dark' || isLight ? '#0f172a' : '#ffffff';
       const alignCls = data.align === 'left' ? 'items-start text-left' : data.align === 'right' ? 'items-end text-right' : 'items-center text-center';
+      // "Auto" (no buttonColor chosen) keeps the existing smart default;
+      // "accent" reads the page theme's own accent/foreground pair; any
+      // other value is a real hex from the picker below, run through
+      // contrastTextColor so the label is always readable against it.
+      const buttonBg = !data.buttonColor
+        ? (isLight ? 'var(--accent)' : '#ffffff')
+        : data.buttonColor === 'accent' ? 'var(--accent)' : data.buttonColor;
+      const buttonTextColor = !data.buttonColor
+        ? (isLight ? 'var(--accent-foreground)' : '#111827')
+        : data.buttonColor === 'accent' ? 'var(--accent-foreground)' : contrastTextColor(data.buttonColor);
       return (
         <section
           className={`rounded-2xl flex flex-col ${alignCls} ${data.padding || 'py-16'} px-8`}
@@ -1232,16 +1275,14 @@ const BLOCKS = {
                 same-specificity Tailwind classes, and which one won was
                 decided by Tailwind's generated stylesheet order, not by
                 which came last in this string (see button.jsx's own
-                comments for this exact class of bug). Also theme-aware now:
-                a plain white button would have gone near-invisible against
-                the "light" section background too, same failure mode. */}
+                comments for this exact class of bug). */}
             <CtaAction
               data={data}
               onChange={onChange}
               editable={editable}
               funnelOwnerUid={funnelOwnerUid}
               buttonClassName="transition hover:opacity-90"
-              styleOverride={data.actionType === 'follow' ? undefined : (isLight ? { background: 'var(--accent)', color: 'var(--accent-foreground)' } : { background: '#ffffff', color: '#111827' })}
+              styleOverride={data.actionType === 'follow' ? undefined : { background: buttonBg, color: buttonTextColor }}
             />
           </div>
         </section>
@@ -1269,6 +1310,35 @@ const BLOCKS = {
               />
             ))}
           </div>
+        </Field>
+        <Field label="Button color">
+          <div className="flex flex-wrap gap-2">
+            {CTA_BUTTON_PRESETS.map((opt) => {
+              const selected = (data.buttonColor || null) === opt.key;
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  title={opt.label}
+                  onClick={() => onChange({ buttonColor: opt.key })}
+                  className={`h-8 w-8 rounded-full border-2 ${selected ? 'border-indigo-500' : 'border-gray-200'}`}
+                  style={opt.preview ? { background: opt.preview } : { background: 'repeating-linear-gradient(45deg, #e5e7eb, #e5e7eb 3px, #fff 3px, #fff 6px)' }}
+                />
+              );
+            })}
+            {/* Custom picker -- any hex chosen here is run through
+                contrastTextColor at render time, so this can't reproduce
+                the invisible-button bug a fixed preset list could. */}
+            <label className="h-8 w-8 rounded-full border-2 border-gray-200 overflow-hidden relative cursor-pointer" title="Custom color">
+              <input
+                type="color"
+                value={data.buttonColor && data.buttonColor !== 'accent' ? data.buttonColor : '#ffffff'}
+                onChange={(e) => onChange({ buttonColor: e.target.value })}
+                className="absolute -top-1 -left-1 h-10 w-10 cursor-pointer"
+              />
+            </label>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">Text color is picked automatically so the label always stays readable.</p>
         </Field>
         <Field label="Alignment">
           <div className="flex gap-2">
