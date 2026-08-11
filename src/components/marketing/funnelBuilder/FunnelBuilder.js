@@ -1487,7 +1487,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
   // this. See DEFAULT_THEME/deriveThemeVars in theme.js for what this
   // actually drives.
   const [theme, setTheme] = useState(DEFAULT_THEME);
-  const [showDesign, setShowDesign] = useState(false);
   const themeVars = useMemo(() => deriveThemeVars(theme), [theme]);
   useGoogleFont(theme.fonts);
   const [selectedId, setSelectedId] = useState(null);
@@ -1707,8 +1706,6 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
             importSchema={importSchema}
             editMode={editMode}
             setEditMode={setEditMode}
-            showDesign={showDesign}
-            setShowDesign={setShowDesign}
             saveStatus={saveStatus}
             publishStatus={publishStatus}
             publishFunnel={publishFunnel}
@@ -1717,19 +1714,28 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
 
           <div className="pt-[72px] md:pt-[86px]">
 
+          {/* Design lives here — a full-width bar between the header/Publish
+              row and the Blocks/Inspector panel, always visible. Previously
+              this was a palette-icon toggle that replaced the Blocks/
+              Inspector panel's own content, which hid it behind a click and
+              fought for the same space as block editing. See gotchas.md. */}
+          <div className="mt-4">
+            <DesignBar theme={theme} onChange={(patch) => setTheme((t) => ({ ...t, ...patch }))} />
+          </div>
+
           {/* Editor grid: two columns — left toggles between Blocks and Inspector, right is the canvas */}
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-4">
             {/* Left: Blocks or Inspector (toggle) */}
-            <Card className="flex h-[calc(100vh-180px)] flex-col overflow-hidden">
+            <Card className="flex h-[calc(100vh-244px)] flex-col overflow-hidden">
               <CardHeader className="flex shrink-0 items-center justify-between pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    {showDesign ? <Palette className="h-4 w-4"/> : selectedId ? <Settings2 className="h-4 w-4"/> : <LayoutTemplate className="h-4 w-4"/>}
-                    {showDesign ? 'Design' : selectedId ? 'Inspector' : 'Blocks'}
+                    {selectedId ? <Settings2 className="h-4 w-4"/> : <LayoutTemplate className="h-4 w-4"/>}
+                    {selectedId ? 'Inspector' : 'Blocks'}
                   </CardTitle>
-                  {/* Quick toggle back to Blocks when inspector/design is open */}
+                  {/* Quick toggle back to Blocks when inspector is open */}
                   <div>
-                    {(selectedId || showDesign) && (
-                      <Button size="sm" variant="ghost" onClick={() => { setSelectedId(null); setShowDesign(false); }} className="text-sm">
+                    {selectedId && (
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)} className="text-sm">
                         Show Blocks
                       </Button>
                     )}
@@ -1747,11 +1753,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                   Builder's canvas/inspector panel had earlier. */}
               <CardContent className="min-h-0 flex-1 p-0">
                 <ScrollArea className="h-full p-3">
-                  {showDesign ? (
-                    <div className="p-4">
-                      <DesignPanel theme={theme} onChange={(patch) => setTheme((t) => ({ ...t, ...patch }))} />
-                    </div>
-                  ) : selectedId ? (
+                  {selectedId ? (
                     <div className="p-4">
                       <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} funnelOwnerUid={currentUserId} />
                     </div>
@@ -1775,7 +1777,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
             </Card>
 
             {/* Right: Canvas (fuller, better fill) */}
-            <Card className="relative h-[calc(100vh-180px)] overflow-hidden">
+            <Card className="relative h-[calc(100vh-244px)] overflow-hidden">
   <CardContent className="p-0 h-full">
     <div className="relative flex items-start h-full overflow-auto bg-white rounded-none">
       <div className="relative w-full h-full overflow-y-auto" style={{ width: containerWidth }}>
@@ -1800,7 +1802,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                     key={block.id}
                     id={block.id}
                     selected={selectedId === block.id}
-                    onSelect={() => { setSelectedId(block.id); setShowDesign(false); }}
+                    onSelect={() => setSelectedId(block.id)}
                   >
                     <BLOCKRenderer
                       block={block}
@@ -2200,40 +2202,64 @@ function IconBtn({ label, onClick, children }) {
 // page (see deriveThemeVars in theme.js), same "no per-block color pickers"
 // philosophy already proven on the Shop Builder's identical panel
 // (AffiliateShopBuilderPage.js), ported here rather than redesigned.
-function DesignPanel({ theme, onChange }) {
+// A persistent, always-visible horizontal bar rather than a palette-icon
+// toggle that used to replace the Blocks/Inspector panel's own content --
+// that hid Design behind a click and made it compete with block editing
+// for the same space. Sits between the header/Publish row and the
+// Blocks/Inspector + canvas grid; every control here is a compact inline
+// input rather than the Shop Builder's stacked-field layout, since this
+// bar is one row tall by design. See gotchas.md.
+function DesignBar({ theme, onChange }) {
+  const selectCls = "rounded-md border border-gray-200 px-2 py-1.5 text-sm bg-white";
   return (
-    <div className="space-y-4">
-      <Field label="Brand color">
-        <input type="color" value={theme.brand || DEFAULT_THEME.brand} onChange={(e) => onChange({ brand: e.target.value })} />
-      </Field>
-      <Field label="Mood">
-        <select value={theme.mood || DEFAULT_THEME.mood} onChange={(e) => onChange({ mood: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
-          <option value="editorial">Editorial</option>
-          <option value="warm">Warm</option>
-          <option value="bold">Bold</option>
-          <option value="clinical">Clinical</option>
-        </select>
-      </Field>
-      <Field label="Fonts">
-        <select value={theme.fonts || DEFAULT_THEME.fonts} onChange={(e) => onChange({ fonts: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
-          {Object.entries(FONT_PAIRINGS).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
-        </select>
-      </Field>
-      <Field label="Corner radius">
-        <select value={theme.radius || DEFAULT_THEME.radius} onChange={(e) => onChange({ radius: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
-          <option value="none">None</option>
-          <option value="sm">Small</option>
-          <option value="lg">Large</option>
-        </select>
-      </Field>
-      <Field label="Spacing">
-        <select value={theme.density || DEFAULT_THEME.density} onChange={(e) => onChange({ density: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
-          <option value="airy">Airy</option>
-          <option value="tight">Tight</option>
-        </select>
-      </Field>
-      <p className="text-xs text-gray-500">Applies to every block on this funnel. Individual blocks can still override their own background via the "Background" control in their own inspector.</p>
-    </div>
+    <Card className="p-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-700 shrink-0">
+          <Palette className="h-4 w-4" />
+          Design
+        </div>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          Brand
+          <input
+            type="color"
+            value={theme.brand || DEFAULT_THEME.brand}
+            onChange={(e) => onChange({ brand: e.target.value })}
+            className="h-7 w-9 cursor-pointer rounded border border-gray-200"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          Fonts
+          <select value={theme.fonts || DEFAULT_THEME.fonts} onChange={(e) => onChange({ fonts: e.target.value })} className={selectCls}>
+            {Object.entries(FONT_PAIRINGS).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          Mood
+          <select value={theme.mood || DEFAULT_THEME.mood} onChange={(e) => onChange({ mood: e.target.value })} className={selectCls}>
+            <option value="editorial">Editorial</option>
+            <option value="warm">Warm</option>
+            <option value="bold">Bold</option>
+            <option value="clinical">Clinical</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          Radius
+          <select value={theme.radius || DEFAULT_THEME.radius} onChange={(e) => onChange({ radius: e.target.value })} className={selectCls}>
+            <option value="none">None</option>
+            <option value="sm">Small</option>
+            <option value="lg">Large</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          Spacing
+          <select value={theme.density || DEFAULT_THEME.density} onChange={(e) => onChange({ density: e.target.value })} className={selectCls}>
+            <option value="airy">Airy</option>
+            <option value="tight">Tight</option>
+          </select>
+        </label>
+        <p className="text-xs text-gray-400 ml-auto hidden xl:block">Applies to every block. Blocks can still override their own background via "Background" in their inspector.</p>
+      </div>
+    </Card>
   );
 }
 
@@ -2274,8 +2300,6 @@ function EditorHeader({
   importSchema,
   editMode,
   setEditMode,
-  showDesign,
-  setShowDesign,
   saveStatus,
   publishStatus,
   publishFunnel,
@@ -2299,15 +2323,6 @@ function EditorHeader({
               title="Toggle inline editing"
             >
               <Edit3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={showDesign ? "default" : "outline"}
-              size="icon"
-              onClick={() => setShowDesign((v) => !v)}
-              className={`transition-all hover:scale-105 ${showDesign ? "" : "text-black"}`}
-              title="Design — brand color, fonts, spacing"
-            >
-              <Palette className="h-4 w-4" />
             </Button>
           </div>
         </div>
