@@ -1,24 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Image as ImageIcon, CheckCircle2, AlertTriangle, Tag, Package, Layers, ExternalLink, RefreshCcw } from "lucide-react";
-import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY, findAcrylicSize, priceToAmount, priceForMaterial } from "../../data/acrylicSizes";
-
-// The template prices below used to be invented numbers that quietly
-// disagreed with what the real designer pages actually charge (e.g. "Light
-// Up User Design" listed at £19.99 here while the real wall panel it opens
-// defaults to £29.99) -- derived from the same canonical acrylicSizes.js
-// data the landing page and the real checkout page already share, instead
-// of a third, independently-maintained copy of "the price."
-const WALL_DEFAULT_PRICE = Number(priceToAmount(findAcrylicSize(DEFAULT_WALL_ACRYLIC_SIZE_KEY)?.price)) || 0;
-const DESK_DEFAULT_PRICE = Number(priceToAmount(findAcrylicSize(DEFAULT_DESK_ACRYLIC_SIZE_KEY)?.price)) || 0;
-const DESK_MIRROR_DEFAULT_PRICE = Number(priceToAmount(priceForMaterial(findAcrylicSize(DEFAULT_DESK_ACRYLIC_SIZE_KEY)?.price, 'mirror'))) || 0;
-// No equivalent shared constant exists for the Lumina Mirror (it's a bare
-// literal STANDARD_MIRROR_BASE_PRICE = 29.99 duplicated inside both
-// ProductPageClean.js and StandardMirrorDesigner.js, not exported from
-// anywhere) -- matches those today; if either ever changes, this needs
-// updating by hand same as they'd need updating to agree with each other.
-const LUMINA_MIRROR_PRICE = 29.99;
-const STENCIL_GENERATOR_PRICE = 9.99;
+import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY } from "../../data/acrylicSizes";
+// Owner uid of the real Fotonix product catalog (products/fotonix-official
+// in Firebase) -- see src/Bible/products/database.md, "The Fotonix catalog
+// (products/fotonix-official)". A synthetic uid, not a real login: nobody
+// signs in as it, it exists purely so Fotonix's five core products live in
+// the exact same products/{uid} shape as anything an affiliate creates,
+// readable by the same code paths (CollectionGridRenderer,
+// resolveProductClick, CustomerProductPage.jsx) with no special-casing.
+const FOTONIX_CATALOG_UID = "fotonix-official";
 
 // Every real designer an affiliate can save a design from -- each opens in a
 // new tab so this modal (and whatever's already typed into the fields below)
@@ -51,50 +42,37 @@ export default function ProductUploadModal({
   onClose,
   getCurrentUser,
 }) {
-  // Product templates by category
-  const PRODUCT_TEMPLATES = useMemo(
-    () => ({
-      // The "-affiliate" variants that used to sit here (lumina-mirror-affiliate,
-      // light-up-affiliate, lumina-cut-affiliate) were a manual-photo-upload
-      // path with no connection to the real designer -- nothing structured
-      // ever got saved, unlike "My Saved Designs" below, which stores the
-      // actual editable canvas (see StandardMirrorDesigner.js's saveDesign())
-      // gated to affiliate accounts. Removed in favor of that real mechanism
-      // rather than keeping two inconsistent ways to do the same thing.
-      //
-      // Labels now match productsData.js's real homepage names exactly
-      // (previously e.g. "Light Up User Design" here vs. "Side-lit Acrylic
-      // Designer" on the actual product) -- same five real products, one
-      // consistent set of names across every place an affiliate or a
-      // customer sees them.
-      fotonix: [
-        { id: "lumina-mirror-user", label: "LED Lumina Mirror - Classic Rectangle", basePrice: LUMINA_MIRROR_PRICE, category: "fotonix" },
-        { id: "light-up-user", label: "Side-lit Acrylic Designer", basePrice: WALL_DEFAULT_PRICE, category: "fotonix" },
-        { id: "lumina-cut-user", label: "Side-lit Acrylic Sign - Desk Mounted", basePrice: DESK_DEFAULT_PRICE, category: "fotonix" },
-        { id: "lumina-cut-mirror-user", label: "Custom Shape Sign - Back-Lit Mirror", basePrice: DESK_MIRROR_DEFAULT_PRICE, category: "fotonix" },
-        { id: "stencil-generator", label: "Stencil Generator", basePrice: STENCIL_GENERATOR_PRICE, category: "fotonix" },
-      ]
-    }),
-    []
-  );
-
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("fotonix");
   const [templateId, setTemplateId] = useState("lumina-mirror-user");
 
+  // Fotonix's own catalog (products/fotonix-official), fetched live rather
+  // than hardcoded here -- a previous version of this list hand-typed
+  // titles/prices that drifted from the real homepage products (see
+  // src/Bible/products/gotchas.md). Reading the same record every customer
+  // sees means this can't drift again: title, description, price, and
+  // photo all come from there, verbatim.
+  const [fotonixCatalog, setFotonixCatalog] = useState([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+
   // Affiliate's own saved designs (from the mirror/pattern designers), selectable
-  // alongside the fixed Fotonix templates
+  // alongside the Fotonix catalog
   const [savedDesigns, setSavedDesigns] = useState([]);
   const [loadingDesigns, setLoadingDesigns] = useState(false);
 
-  // Template groups: fixed Fotonix templates + the affiliate's own saved designs
-  const TEMPLATE_GROUPS = { ...PRODUCT_TEMPLATES, "my-designs": savedDesigns };
+  // Template groups: the live Fotonix catalog + the affiliate's own saved designs
+  const TEMPLATE_GROUPS = { fotonix: fotonixCatalog, "my-designs": savedDesigns };
 
   // Get selected template
   const allTemplates = Object.values(TEMPLATE_GROUPS).flat();
   const selectedTemplate = allTemplates.find((t) => t.id === templateId) || allTemplates[0];
   const price = selectedTemplate?.basePrice ?? 0;
+  // A Fotonix catalog pick needs no title/description/photo from the
+  // affiliate at all -- Fotonix already has all of that, it doesn't make
+  // sense to ask for it again. Only "My Saved Designs" (a genuinely unique,
+  // affiliate-made listing) still needs its own title.
+  const usingFotonixCatalog = selectedCategory === "fotonix";
 
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
@@ -150,8 +128,49 @@ export default function ProductUploadModal({
     }
   };
 
+  // Loads the live Fotonix catalog -- same shape/reasoning as loadDesigns
+  // above, pulled out of the effect so it can also be re-run on demand.
+  const loadFotonixCatalog = async () => {
+    if (!isOpen) return;
+
+    setLoadingCatalog(true);
+    try {
+      const dbm = await import("firebase/database");
+      const { getDatabase, ref: dbRef, get } = dbm;
+      const db = getDatabase();
+      const snapshot = await get(dbRef(db, `products/${FOTONIX_CATALOG_UID}`));
+
+      if (snapshot.exists()) {
+        const catalogData = snapshot.val();
+        const catalogList = Object.values(catalogData).map((p) => ({
+          // `id` here is the routing templateId (e.g. "lumina-mirror-user"),
+          // not the Firebase row key -- resolveProductClick and the other
+          // acrylic/mirror routing all key off templateId, so the copy this
+          // modal writes into the affiliate's own products/{uid} node has
+          // to carry that same value forward, not the catalog's row id.
+          id: p.templateId,
+          label: p.title,
+          basePrice: p.price ?? 0,
+          category: "fotonix",
+          title: p.title,
+          description: p.description || null,
+          images: p.images || [],
+        }));
+        setFotonixCatalog(catalogList);
+      } else {
+        setFotonixCatalog([]);
+      }
+    } catch (error) {
+      console.error('Error loading Fotonix catalog:', error);
+      setFotonixCatalog([]);
+    } finally {
+      setLoadingCatalog(false);
+    }
+  };
+
   useEffect(() => {
     loadDesigns();
+    loadFotonixCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -204,11 +223,15 @@ export default function ProductUploadModal({
 
   async function saveProduct() {
     const u = getCurrentUser();
-    const usingSavedDesign = !!(selectedTemplate?.sourceDesignId && selectedTemplate.thumbnailUrl);
+    const usingSavedDesign = !usingFotonixCatalog && !!(selectedTemplate?.sourceDesignId && selectedTemplate.thumbnailUrl);
     if (!u) return showError("You must be signed in");
-    if (!title.trim()) return showError("Add a product title");
     if (!templateId) return showError("Choose a product template");
-    if (files.length === 0 && !usingSavedDesign) return showError("Please upload at least one image");
+    // A Fotonix catalog pick already has a title/description/photo -- see
+    // usingFotonixCatalog above -- so none of this validation applies to it.
+    if (!usingFotonixCatalog) {
+      if (!title.trim()) return showError("Add a product title");
+      if (files.length === 0 && !usingSavedDesign) return showError("Please upload at least one image");
+    }
 
     try {
       setBusy(true);
@@ -222,31 +245,45 @@ export default function ProductUploadModal({
       const { getStorage, ref: stRef, uploadBytes, getDownloadURL } = stm;
 
       const storage = getStorage();
-      const uploadedImages = [];
+      let finalTitle, finalDescription, uploadedImages;
 
-      // If a saved design was chosen, its thumbnail becomes the main product image
-      if (usingSavedDesign) {
-        uploadedImages.push({
-          url: selectedTemplate.thumbnailUrl,
-          storagePath: null,
-          isMain: true,
-          sourceDesignId: selectedTemplate.sourceDesignId,
-        });
-      }
+      if (usingFotonixCatalog) {
+        // Straight copy of the catalog's own title/description/images --
+        // no upload, no typing, matching them exactly everywhere they're
+        // shown (this modal's preview, the storefront, the real product
+        // page) since it's the same data, not a re-entered duplicate.
+        finalTitle = selectedTemplate.title;
+        finalDescription = selectedTemplate.description || null;
+        uploadedImages = (selectedTemplate.images || []).map((img) => ({ ...img }));
+      } else {
+        finalTitle = title.trim();
+        finalDescription = description.trim() || null;
+        uploadedImages = [];
 
-      // Upload any additionally selected images
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const ext = file.name.split(".").pop() || "jpg";
-        const objectPath = `products/${u.uid}/${productId}/image_${i}.${ext}`;
-        const objRef = stRef(storage, objectPath);
-        await uploadBytes(objRef, file);
-        const imageUrl = await getDownloadURL(objRef);
-        uploadedImages.push({
-          url: imageUrl,
-          storagePath: objectPath,
-          isMain: !usingSavedDesign && i === mainImageIndex
-        });
+        // If a saved design was chosen, its thumbnail becomes the main product image
+        if (usingSavedDesign) {
+          uploadedImages.push({
+            url: selectedTemplate.thumbnailUrl,
+            storagePath: null,
+            isMain: true,
+            sourceDesignId: selectedTemplate.sourceDesignId,
+          });
+        }
+
+        // Upload any additionally selected images
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const ext = file.name.split(".").pop() || "jpg";
+          const objectPath = `products/${u.uid}/${productId}/image_${i}.${ext}`;
+          const objRef = stRef(storage, objectPath);
+          await uploadBytes(objRef, file);
+          const imageUrl = await getDownloadURL(objRef);
+          uploadedImages.push({
+            url: imageUrl,
+            storagePath: objectPath,
+            isMain: !usingSavedDesign && i === mainImageIndex
+          });
+        }
       }
 
       const db = getDatabase();
@@ -254,8 +291,8 @@ export default function ProductUploadModal({
       const payload = {
         id: productId,
         ownerId: u.uid,
-        title: title.trim(),
-        description: description.trim() || null,
+        title: finalTitle,
+        description: finalDescription,
         templateId,
         templateLabel: selectedTemplate.label,
         category: selectedTemplate.category,
@@ -290,7 +327,7 @@ export default function ProductUploadModal({
           const promises = channels.map((ch) => createTrackedLink({
             user_id: u.uid,
             destination_url: productPublicUrl,
-            title: `${title.trim()} (${ch})`,
+            title: `${finalTitle} (${ch})`,
             product_id: productId,
             channel: ch,
             meta: { origin: 'product-create', templateId, price, category: selectedTemplate.category }
@@ -336,7 +373,7 @@ export default function ProductUploadModal({
                 </div>
                 <button aria-label="Close" onClick={onClose} className="rounded-full p-1.5 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60"><X className="h-5 w-5" /></button>
               </div>
-              <p className="mt-1 text-xs/relaxed text-white/90">Choose a template and add your product photos.</p>
+              <p className="mt-1 text-xs/relaxed text-white/90">Pick a Fotonix product to list, or one of your own saved designs.</p>
             </div>
 
             {/* Body - Scrollable */}
@@ -375,8 +412,27 @@ export default function ProductUploadModal({
                           <RefreshCcw className={`h-3 w-3 ${loadingDesigns ? "animate-spin" : ""}`} /> Refresh
                         </button>
                       )}
+                      {selectedCategory === "fotonix" && (
+                        <button
+                          type="button"
+                          onClick={loadFotonixCatalog}
+                          disabled={loadingCatalog}
+                          className="inline-flex items-center gap-1 text-xs text-fuchsia-600 hover:text-fuchsia-700 disabled:opacity-50"
+                        >
+                          <RefreshCcw className={`h-3 w-3 ${loadingCatalog ? "animate-spin" : ""}`} /> Refresh
+                        </button>
+                      )}
                     </div>
-                    {selectedCategory === "my-designs" && loadingDesigns ? (
+                    {selectedCategory === "fotonix" && loadingCatalog ? (
+                      <div className="flex items-center gap-2 py-2 text-sm text-zinc-500">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-fuchsia-400 border-t-transparent"></div>
+                        Loading Fotonix products…
+                      </div>
+                    ) : selectedCategory === "fotonix" && fotonixCatalog.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-zinc-300 p-3 text-xs text-zinc-500 dark:border-zinc-700">
+                        Couldn't load the Fotonix catalog. Hit Refresh above, or check your connection.
+                      </div>
+                    ) : selectedCategory === "my-designs" && loadingDesigns ? (
                       <div className="flex items-center gap-2 py-2 text-sm text-zinc-500">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-fuchsia-400 border-t-transparent"></div>
                         Loading your designs…
@@ -427,86 +483,121 @@ export default function ProductUploadModal({
                   </div>
                 </section>
 
-                {/* Product Details */}
-                <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-                  <h3 className="text-sm font-semibold mb-3">Product Details</h3>
-                  <div className="space-y-3 text-sm">
-                    <div>
-                      <label className="block text-xs text-zinc-600 mb-1">Title</label>
-                      <input 
-                        value={title} 
-                        onChange={(e) => setTitle(e.target.value.slice(0, 120))} 
-                        placeholder="e.g. Warm White Rectangle Mirror"
-                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400 text-black dark:border-zinc-800 dark:bg-zinc-900 dark:text-white" 
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-zinc-600 mb-1">Description (optional)</label>
-                      <textarea 
-                        value={description} 
-                        onChange={(e) => setDescription(e.target.value.slice(0, 600))} 
-                        placeholder="Tell buyers about the product…" 
-                        className="h-24 w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400 text-black dark:border-zinc-800 dark:bg-zinc-900 dark:text-white" 
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                {/* Images */}
-                <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-                  <h3 className="text-sm font-semibold mb-3">Product Images</h3>
-                  <div className="space-y-3">
-                    <label className="block text-xs text-zinc-600">Upload images (JPG/PNG/WebP, &lt; 8 MB each)</label>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      multiple 
-                      onChange={(e) => onPickFiles(e.target.files)}
-                      className="w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-fuchsia-50 file:text-fuchsia-700 hover:file:bg-fuchsia-100"
-                    />
-                    
-                    {previews.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-xs text-zinc-600">Click an image to set as main</p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {previews.map((preview, index) => (
-                            <div key={index} className="relative">
-                              <img 
-                                src={preview} 
-                                alt={`Preview ${index + 1}`} 
-                                className={`w-full h-24 object-cover rounded-lg cursor-pointer border-2 ${
-                                  index === mainImageIndex 
-                                    ? 'border-fuchsia-500 ring-2 ring-fuchsia-300' 
-                                    : 'border-zinc-300 hover:border-zinc-400'
-                                }`}
-                                onClick={() => setMainImageIndex(index)}
-                              />
-                              {index === mainImageIndex && (
-                                <div className="absolute top-1 left-1 bg-fuchsia-500 text-white text-xs px-2 py-0.5 rounded font-semibold">
-                                  Main
-                                </div>
-                              )}
-                              <button
-                                onClick={() => removeImage(index)}
-                                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600 shadow-lg"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
+                {usingFotonixCatalog ? (
+                  /* Fotonix already has the title, description, and photo for
+                     every catalog product -- asking the affiliate to re-type
+                     or re-upload any of it would just risk it drifting from
+                     what's actually on the real product page. This is a
+                     preview of exactly what gets listed, nothing to edit. */
+                  <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+                    <h3 className="text-sm font-semibold mb-3">What you're listing</h3>
+                    {selectedTemplate ? (
+                      <div className="flex gap-3">
+                        {selectedTemplate.images?.[0]?.url && (
+                          <img
+                            src={selectedTemplate.images[0].url}
+                            alt={selectedTemplate.title}
+                            className="h-20 w-20 shrink-0 rounded-lg object-cover"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-medium text-zinc-900 dark:text-white">{selectedTemplate.title}</p>
+                          {selectedTemplate.description && (
+                            <p className="mt-1 text-xs text-zinc-500 line-clamp-3">{selectedTemplate.description}</p>
+                          )}
                         </div>
                       </div>
                     ) : (
-                      <div className="flex h-32 w-full items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-700 bg-zinc-50">
-                        <div className="flex flex-col items-center gap-2">
-                          <ImageIcon className="h-8 w-8" />
-                          <span className="text-xs">No images selected</span>
+                      <p className="text-xs text-zinc-500">Pick a product above to see its listing details here.</p>
+                    )}
+                    <p className="mt-3 text-xs text-zinc-500">
+                      This is one of Fotonix's core products -- the title, description, and photo are managed centrally, so there's nothing to fill in here.
+                    </p>
+                  </section>
+                ) : (
+                  <>
+                    {/* Product Details */}
+                    <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+                      <h3 className="text-sm font-semibold mb-3">Product Details</h3>
+                      <div className="space-y-3 text-sm">
+                        <div>
+                          <label className="block text-xs text-zinc-600 mb-1">Title</label>
+                          <input
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value.slice(0, 120))}
+                            placeholder="e.g. Warm White Rectangle Mirror"
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400 text-black dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-zinc-600 mb-1">Description (optional)</label>
+                          <textarea
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value.slice(0, 600))}
+                            placeholder="Tell buyers about the product…"
+                            className="h-24 w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400 text-black dark:border-zinc-800 dark:bg-zinc-900 dark:text-white"
+                          />
                         </div>
                       </div>
-                    )}
-                  </div>
-                </section>
+                    </section>
+
+                    {/* Images */}
+                    <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+                      <h3 className="text-sm font-semibold mb-3">Product Images</h3>
+                      <div className="space-y-3">
+                        <label className="block text-xs text-zinc-600">Upload images (JPG/PNG/WebP, &lt; 8 MB each)</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={(e) => onPickFiles(e.target.files)}
+                          className="w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-fuchsia-50 file:text-fuchsia-700 hover:file:bg-fuchsia-100"
+                        />
+
+                        {previews.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs text-zinc-600">Click an image to set as main</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {previews.map((preview, index) => (
+                                <div key={index} className="relative">
+                                  <img
+                                    src={preview}
+                                    alt={`Preview ${index + 1}`}
+                                    className={`w-full h-24 object-cover rounded-lg cursor-pointer border-2 ${
+                                      index === mainImageIndex
+                                        ? 'border-fuchsia-500 ring-2 ring-fuchsia-300'
+                                        : 'border-zinc-300 hover:border-zinc-400'
+                                    }`}
+                                    onClick={() => setMainImageIndex(index)}
+                                  />
+                                  {index === mainImageIndex && (
+                                    <div className="absolute top-1 left-1 bg-fuchsia-500 text-white text-xs px-2 py-0.5 rounded font-semibold">
+                                      Main
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={() => removeImage(index)}
+                                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600 shadow-lg"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex h-32 w-full items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-700 bg-zinc-50">
+                            <div className="flex flex-col items-center gap-2">
+                              <ImageIcon className="h-8 w-8" />
+                              <span className="text-xs">No images selected</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  </>
+                )}
               </div>
 
               {/* Footer Actions */}
