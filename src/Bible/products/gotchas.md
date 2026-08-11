@@ -67,6 +67,60 @@ CleanAccryl.js`'s `resolveAcrylicSize()` is a reasonable template to
 copy from) plus a `LUMINA_SIZES`-equivalent shared data file the same way
 `acrylicSizes.js` was pulled out.
 
+## The affiliate side had its own, separate chain of bugs (fixed 2026-08-11)
+
+Everything above is about the customer-facing landing page. A completely
+separate audit of the affiliate-facing side (`AffiliateCreateProduct.js`,
+`AffiliateProductsPanel.js`, `resolveProductClick`) turned up a chain of
+unrelated bugs that had accumulated over time, each hiding the next:
+
+1. **"Add Product" on the affiliate dashboard didn't add anything.** It
+   opened `AffiliateProductsPanel.js` — a read-only performance table
+   (clicks/conversions/earnings). The actual Create Product modal
+   (`AffiliateCreateProduct.js`) was fully built, wired to real Firebase
+   writes, and completely unreachable — nothing anywhere ever called
+   `setShowCreateProductModal(true)`. Fixed by adding a real "Create
+   Product" button to the panel.
+2. **`resolveProductClick`'s routing checked a field, `typeId`, that's
+   never set anywhere in the codebase** — the Create Product modal
+   actually saves the template under `templateId`. The `lumina-cut-user`/
+   `light-up-user` special cases had only ever "worked" via a coincidental
+   title-text fallback (`title.includes("light up")`), never via the
+   field the code looked like it was checking.
+3. **Once reachable, the modal's own template list had drifted from the
+   real products it's supposed to represent** — every single one:
+   "Light Up User Design" listed at £19.99 while the real wall panel it
+   opens defaults to £29.99; "Lumina Mirror Cut To Shape User Design"
+   listed at £40.00 vs. the real £24.99; none of the four labels matched
+   their real homepage product names at all. Same root cause as the
+   acrylic size bug above — a hand-typed, independently-maintained copy
+   of "the price"/"the name" that nobody kept in sync as the real
+   products changed.
+4. **The Title field's placeholder was "e.g. Premium Cotton T-Shirt."**
+   Fotonix doesn't sell t-shirts.
+5. **Stencil Generator, a real product with a real destination, had no
+   template option in the modal at all.**
+
+**The actual fix wasn't "correct the four numbers"** — that would just be
+the same class of bug waiting to drift again. Instead: added
+`products/fotonix-official`, a real Firebase catalog of the five core
+products (see `database.md`), and made the modal *fetch it live* rather
+than hand-typing a fourth copy of title/price/photo. Picking a Fotonix
+product now shows a read-only preview of exactly what's in that catalog
+record — no title/description/photo fields to fill in or drift out of
+sync, because there's nothing left to duplicate. See `architecture.md`'s
+"The affiliate side" section for the full routing table and modal
+behavior.
+
+**While fixing #2**, also noticed the wall/desk acrylic routes had no
+`?size=` at all (both silently landed on whatever the default resolves
+to) — fixed alongside it using the same before-the-hash placement as
+`goToProduct` already established. And while adding Custom Shape Mirror
+to the Fotonix catalog (previously believed to have no real destination
+— see the correction note in `database.md`), gave the desk
+designer's "Save Design" feature the ability to record mirror vs. acrylic
+material too, since it had been silently losing that distinction on save.
+
 ## A 152MB video nearly got committed (caught before it happened, not a live bug)
 
 Raw, uncompressed source photos/video the user was actively saving into

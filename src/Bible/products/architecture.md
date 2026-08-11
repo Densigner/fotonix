@@ -139,6 +139,68 @@ It is not a generic "pass a size to any product" system — extending it
 to the Lumina Mirror would mean building the equivalent read-the-query-
 string logic into `ProductPageClean.js` from scratch (see `gotchas.md`).
 
+## The affiliate side: `resolveProductClick` and the Create Product modal (added 2026-08-11)
+
+Everything above is the customer-facing landing page. This section is the
+mirror image — how an *affiliate* lists one of these five products (or
+their own design) for sale, and how a click on that listing gets routed
+back to the same real destination pages.
+
+### `resolveProductClick` (`StoreCanvasBuilder.jsx`) — the routing table
+
+When a customer clicks a product card on an affiliate's storefront (Shop
+Builder) or via the Funnel Builder's "Go to a Product" action, this
+function decides where the click actually goes, keyed off the product
+record's `templateId` field:
+
+| `templateId` | Destination | Notes |
+|---|---|---|
+| `lumina-mirror-user` | `#product` | The real, live Lumina Mirror designer (`ProductPageClean.js`) — deliberately not `#standard-mirror-designer`, an unfinished, unlinked rebuild of the same tool |
+| `light-up-user` | `#affiliate-product-accryl`, `?size=<wall default>` | Wall panel |
+| `lumina-cut-user` | `#affiliate-product-accryl`, `?size=<desk default>` | Desk sign, acrylic |
+| `lumina-cut-mirror-user` | `#affiliate-product-accryl`, `?size=<desk default>&material=mirror` | Desk sign, mirror (Custom Shape Mirror) |
+| `stencil-generator` | `/tools/stencil-generator` | Real React Router path, not a hash |
+| anything else | `/product/{ownerUid}/{productId}` | Generic, template-blind (`CustomerProductPage.jsx`) — correct behavior for a "My Saved Designs" product, which has no interactive designer to reopen, just a fixed photo + Buy Now |
+
+Same `?size=`-before-`#hash` rule as `goToProduct` above, same reason
+(`window.location.search`, not the hash fragment). `light-up-user` also
+still title-sniffs (`title.includes("fotonix") && title.includes("light up")`)
+as a legacy fallback — harmless, but the `templateId` check is what
+actually matters now (see `gotchas.md` for why the `templateId` checks
+were dead for a while: they used to read a field called `typeId` that's
+never set anywhere).
+
+### The Create Product modal (`AffiliateCreateProduct.js`)
+
+Two categories, deliberately handled completely differently:
+
+- **"🎨 Fotonix Products"** — reads `products/fotonix-official` live (see
+  `database.md`) and lets the affiliate pick one of the five core
+  products. Title, description, and photo are **not editable and not
+  asked for** — they're copied verbatim from the catalog record into the
+  affiliate's own `products/{uid}/{productId}` on save. This was a
+  deliberate fix: asking an affiliate to retype a Fotonix product's own
+  title/description, or upload their own photo of it, only risked it
+  drifting from the real thing (exactly what happened with the price
+  mismatches described in `gotchas.md`). The UI reflects this — no
+  Title/Description/Images sections at all for this category, just a
+  read-only "What you're listing" preview.
+- **"✏️ My Saved Designs"** — reads `designs/{uid}` (see `database.md`).
+  This *does* still need a title from the affiliate (there's no canonical
+  one — it's their own design), and the design's own thumbnail becomes
+  the main photo automatically (extra photos can still be added on top).
+
+Both categories write to the same `products/{uid}/{productId}` shape
+either way — the modal's own `templateId` field is what makes the
+listing behave correctly afterward (routing, price, everything above).
+
+**Prices**: never hand-type a second copy of what a product actually
+costs in this modal. `LUMINA_MIRROR_PRICE`/wall/desk/desk-mirror prices
+are derived from `acrylicSizes.js` (same file `MainLandingPage.js` and
+`AffiliateProductPageCleanAccryl.js` already share) specifically so this
+can't drift into a third, disagreeing copy again — see `gotchas.md` for
+what it looked like when it already had.
+
 ## Image and video assets — real imports, not base64
 
 Every photo/video used in `MainLandingPage.js` is a real file under

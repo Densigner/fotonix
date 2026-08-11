@@ -6,19 +6,27 @@ whether) an order for each one ends up saved anywhere. Written after
 replacing the whole homepage this session (`Hero`/`Products`/
 `TestimonialsSlider` → one new component) and shipping four rounds of
 follow-up fixes, so this reflects what's actually live, not a plan.
+**Updated 2026-08-11** to also cover the affiliate-facing side — the
+real Fotonix product catalog (`products/fotonix-official`) and the
+Create Product modal that reads it — which turned out to have its own,
+separate chain of bugs (see `gotchas.md`'s "The affiliate side").
 
 ## Files in this folder
 
-- **`architecture.md`** — how `MainLandingPage.js` is put together: the
-  product banners, the size selectors, real navigation (how a click here
-  actually reaches a real designer/checkout page), and the image/video
-  asset pipeline (compression, `raw-uploads/`, why these are real imports
-  and not base64).
+- **`architecture.md`** — how `MainLandingPage.js` is put together (the
+  product banners, size selectors, real navigation, image/video asset
+  pipeline) **and** the affiliate side: `resolveProductClick`'s full
+  templateId → destination routing table, and how the Create Product
+  modal behaves differently for a Fotonix catalog pick vs. a saved design.
 - **`database.md`** — where an order for each of the five products
-  actually lands, and the one product where nothing is saved anywhere yet.
-- **`gotchas.md`** — the real bug found and fixed (size picker was
-  cosmetic, price didn't match the checkout charge) plus the one still
-  open (same bug, different product, not yet fixed).
+  actually lands, **and** where the product *listings* themselves live
+  (`products/{uid}`, the `products/fotonix-official` catalog,
+  `designs/{uid}`) before any order exists.
+- **`gotchas.md`** — the landing-page bug found and fixed (size picker
+  was cosmetic, price didn't match the checkout charge), the same bug
+  still open on the Lumina Mirror, **and** the separate chain of
+  affiliate-side bugs (dead routing field, drifted prices/names,
+  unreachable modal) fixed in the same session as the catalog was built.
 
 ## The one-sentence version
 
