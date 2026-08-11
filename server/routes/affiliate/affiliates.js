@@ -47,20 +47,35 @@ router.get('/stats', (req, res) => {
     const approvedCommissionCents = myAttrs.filter(a => a.status === 'approved').reduce((s, a) => s + (a.commissionCents || 0), 0);
 
     // clicks: count unique clickIds known for this affiliate (from clicks.json)
-    const clickIds = Object.keys(clicks).filter(k => clicks[k] && clicks[k].affiliateId === code);
-    const clicksCount = clickIds.length;
+    const myClicks = Object.values(clicks).filter(c => c && c.affiliateId === code);
+    const clicksCount = myClicks.length;
 
-    // timeseries: group attributions by date and sum conversions + revenue
+    // timeseries: group both clicks and attributions by date. This used to
+    // only iterate `myAttrs` (conversions) -- the `clicks` field on each
+    // day bucket was initialized to 0 and never actually incremented, so
+    // the "Clicks (by day)" chart was really an (empty-looking, mislabeled)
+    // conversions-by-day chart: any affiliate with real clicks but zero
+    // conversions saw the KPI card correctly report N clicks while the
+    // chart below it always said "No click activity yet," since a day
+    // bucket was only ever created when a conversion happened.
     const map = new Map();
+    const bucket = (d) => {
+      const existing = map.get(d) || { date: d, clicks: 0, conversions: 0, revenue: 0 };
+      map.set(d, existing);
+      return existing;
+    };
+    for (const c of myClicks) {
+      const d = new Date(c.createdAt || Date.now()).toLocaleDateString();
+      bucket(d).clicks += 1;
+    }
     for (const a of myAttrs) {
       const d = new Date(a.createdAt || a.date || Date.now()).toLocaleDateString();
-      const existing = map.get(d) || { date: d, clicks: 0, conversions: 0, revenue: 0 };
+      const existing = bucket(d);
       existing.conversions += 1;
       // revenue: try to read order amount
       const order = orders[a.orderId] || orders[a.orderNumber] || null;
       const amount = order ? (order.amountCents || (order.amount && order.amount.value ? Math.round(Number(order.amount.value) * 100) : 0)) : 0;
       existing.revenue += amount;
-      map.set(d, existing);
     }
     const timeseries = Array.from(map.values()).sort((x, y) => new Date(x.date) - new Date(y.date));
 
