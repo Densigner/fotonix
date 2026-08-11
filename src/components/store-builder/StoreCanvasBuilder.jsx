@@ -497,7 +497,7 @@ const AlignField = ({ align, onChange }) => (
   <Field label="Align">
     <div className="flex gap-2">
       {["left", "center", "right"].map((al) => (
-        <Button key={al} size="sm" variant={align === al ? "default" : "outline"} className="text-black" onClick={() => onChange(al)}>{al}</Button>
+        <Button key={al} size="sm" variant={align === al ? "default" : "outline"} className={align === al ? "" : "text-black"} onClick={() => onChange(al)}>{al}</Button>
       ))}
     </div>
   </Field>
@@ -506,7 +506,7 @@ const VariantField = ({ value, options, onChange, label = "Layout" }) => (
   <Field label={label}>
     <div className="flex flex-wrap gap-2">
       {options.map((opt) => (
-        <Button key={opt.value} size="sm" variant={value === opt.value ? "default" : "outline"} className="text-black" onClick={() => onChange(opt.value)}>{opt.label}</Button>
+        <Button key={opt.value} size="sm" variant={value === opt.value ? "default" : "outline"} className={value === opt.value ? "" : "text-black"} onClick={() => onChange(opt.value)}>{opt.label}</Button>
       ))}
     </div>
   </Field>
@@ -571,8 +571,8 @@ function CollectionGridInspector({ data, onChange, fullProducts }) {
       <Field label="Title"><Input value={title || ""} onChange={(e) => onChange({ title: e.target.value })} /></Field>
       <Field label="Which products">
         <div className="flex gap-2">
-          <Button size="sm" variant={displayMode === "curated" ? "default" : "outline"} className="text-black" onClick={() => onChange({ displayMode: "curated" })}>Curated list</Button>
-          <Button size="sm" variant={displayMode === "all" ? "default" : "outline"} className="text-black" onClick={() => onChange({ displayMode: "all" })}>All active products</Button>
+          <Button size="sm" variant={displayMode === "curated" ? "default" : "outline"} className={displayMode === "curated" ? "" : "text-black"} onClick={() => onChange({ displayMode: "curated" })}>Curated list</Button>
+          <Button size="sm" variant={displayMode === "all" ? "default" : "outline"} className={displayMode === "all" ? "" : "text-black"} onClick={() => onChange({ displayMode: "all" })}>All active products</Button>
         </div>
       </Field>
       {displayMode === "curated" && (
@@ -777,7 +777,7 @@ function ButtonInspector({ data, onChange, ownerUid }) {
       <Field label="Style">
         <div className="flex gap-2">
           {["default", "outline", "ghost"].map((s) => (
-            <Button key={s} size="sm" variant={data.style === s ? "default" : "outline"} className="text-black" onClick={() => onChange({ style: s })}>{s}</Button>
+            <Button key={s} size="sm" variant={data.style === s ? "default" : "outline"} className={data.style === s ? "" : "text-black"} onClick={() => onChange({ style: s })}>{s}</Button>
           ))}
         </div>
       </Field>

@@ -226,16 +226,16 @@ function ActionFields({ data, onChange, funnelOwnerUid, allowSubscribe = true, a
       <Field label="Action">
         <div className="flex flex-wrap gap-2">
           {allowNone && (
-            <Button size="sm" variant={effectiveType === 'none' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'none' })}>No click action</Button>
+            <Button size="sm" variant={effectiveType === 'none' ? 'default':'outline'} className={effectiveType === 'none' ? '' : 'text-black'} onClick={()=>onChange({ actionType: 'none' })}>No click action</Button>
           )}
-          <Button size="sm" variant={effectiveType === 'link' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
+          <Button size="sm" variant={effectiveType === 'link' ? 'default':'outline'} className={effectiveType === 'link' ? '' : 'text-black'} onClick={()=>onChange({ actionType: 'link' })}>Link to a URL</Button>
           {allowSubscribe && (
-            <Button size="sm" variant={effectiveType === 'subscribe' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
+            <Button size="sm" variant={effectiveType === 'subscribe' ? 'default':'outline'} className={effectiveType === 'subscribe' ? '' : 'text-black'} onClick={()=>onChange({ actionType: 'subscribe' })}>Join mailing list</Button>
           )}
           <Button
             size="sm"
             variant={effectiveType === 'follow' ? 'default':'outline'}
-            className="text-black"
+            className={effectiveType === 'follow' ? '' : 'text-black'}
             onClick={() => {
               const platform = data.platform || 'youtube';
               const patch = { actionType: 'follow', platform };
@@ -249,8 +249,8 @@ function ActionFields({ data, onChange, funnelOwnerUid, allowSubscribe = true, a
           >
             Follow / Subscribe
           </Button>
-          <Button size="sm" variant={effectiveType === 'shop' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'shop' })}>Go to my Shop</Button>
-          <Button size="sm" variant={effectiveType === 'product' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ actionType: 'product' })}>Go to a Product</Button>
+          <Button size="sm" variant={effectiveType === 'shop' ? 'default':'outline'} className={effectiveType === 'shop' ? '' : 'text-black'} onClick={()=>onChange({ actionType: 'shop' })}>Go to my Shop</Button>
+          <Button size="sm" variant={effectiveType === 'product' ? 'default':'outline'} className={effectiveType === 'product' ? '' : 'text-black'} onClick={()=>onChange({ actionType: 'product' })}>Go to a Product</Button>
         </div>
       </Field>
       {effectiveType === 'shop' && (
@@ -599,8 +599,8 @@ const BLOCKS = {
         <ImageUrlField label="Image URL" value={data.image} onChange={(image) => onChange({ image })} />
         <Field label="Alignment">
           <div className="flex items-center gap-2">
-            <Button variant={data.align === "center" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "center" })}>Center</Button>
-            <Button variant={data.align === "left" ? "default" : "outline"} size="sm" className="text-black" onClick={()=>onChange({ align: "left" })}>Left</Button>
+            <Button variant={data.align === "center" ? "default" : "outline"} size="sm" className={data.align === "center" ? "" : "text-black"} onClick={()=>onChange({ align: "center" })}>Center</Button>
+            <Button variant={data.align === "left" ? "default" : "outline"} size="sm" className={data.align === "left" ? "" : "text-black"} onClick={()=>onChange({ align: "left" })}>Left</Button>
           </div>
         </Field>
         {!data.gradientOverlay && (
@@ -637,8 +637,8 @@ const BLOCKS = {
             </Field>
             <Field label="Text color">
               <div className="flex gap-2">
-                <Button size="sm" variant={data.textColor !== 'dark' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ textColor: 'white' })}>White</Button>
-                <Button size="sm" variant={data.textColor === 'dark' ? 'default':'outline'} className="text-black" onClick={()=>onChange({ textColor: 'dark' })}>Dark</Button>
+                <Button size="sm" variant={data.textColor !== 'dark' ? 'default':'outline'} className={data.textColor !== 'dark' ? '' : 'text-black'} onClick={()=>onChange({ textColor: 'white' })}>White</Button>
+                <Button size="sm" variant={data.textColor === 'dark' ? 'default':'outline'} className={data.textColor === 'dark' ? '' : 'text-black'} onClick={()=>onChange({ textColor: 'dark' })}>Dark</Button>
               </div>
             </Field>
           </>
@@ -785,7 +785,7 @@ const BLOCKS = {
         <Field label="Alignment">
           <div className="flex gap-2">
             {["left", "center"].map((align) => (
-              <Button key={align} size="sm" variant={data.align === align ? "default" : "outline"} className="text-black" onClick={() => onChange({ align })}>{align}</Button>
+              <Button key={align} size="sm" variant={data.align === align ? "default" : "outline"} className={data.align === align ? "" : "text-black"} onClick={() => onChange({ align })}>{align}</Button>
             ))}
           </div>
         </Field>
@@ -812,7 +812,7 @@ const BLOCKS = {
         <Field label="Align">
           <div className="flex gap-2">
             {['left','center','right'].map(al=> (
-              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className="text-black" onClick={()=>onChange({ align: al })}>{al}</Button>
+              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className={data.align===al ? '' : 'text-black'} onClick={()=>onChange({ align: al })}>{al}</Button>
             ))}
           </div>
         </Field>
@@ -841,7 +841,7 @@ const BLOCKS = {
         <Field label="Align">
           <div className="flex gap-2">
             {['left','center','right'].map(al=> (
-              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className="text-black" onClick={()=>onChange({ align: al })}>{al}</Button>
+              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className={data.align===al ? '' : 'text-black'} onClick={()=>onChange({ align: al })}>{al}</Button>
             ))}
           </div>
         </Field>
@@ -1126,7 +1126,7 @@ const BLOCKS = {
         <Field label="Alignment">
           <div className="flex gap-2">
             {['left','center','right'].map(al=> (
-              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className="text-black" onClick={()=>onChange({ align: al })}>{al}</Button>
+              <Button key={al} size="sm" variant={data.align===al? 'default':'outline'} className={data.align===al ? '' : 'text-black'} onClick={()=>onChange({ align: al })}>{al}</Button>
             ))}
           </div>
         </Field>
@@ -1160,7 +1160,7 @@ const BLOCKS = {
         <Field label="Appearance">
           <div className="flex gap-2">
             {['light', 'dark'].map((m) => (
-              <Button key={m} size="sm" variant={data.themeMode === m ? 'default' : 'outline'} className="text-black" onClick={() => onChange({ themeMode: m })}>{m}</Button>
+              <Button key={m} size="sm" variant={data.themeMode === m ? 'default' : 'outline'} className={data.themeMode === m ? '' : 'text-black'} onClick={() => onChange({ themeMode: m })}>{m}</Button>
             ))}
           </div>
         </Field>
