@@ -49,6 +49,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../shared/ui/card";
 import { Separator } from "../shared/ui/separator";
 import { Input, Label, Switch, Textarea, ScrollArea, Badge } from "../shared/ui/inlineFallbacks";
 import { createSection, uid } from "../shared/sections";
+import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY } from "../../data/acrylicSizes";
 // Reusing the exact device-preview toggle and CTA/action system from the
 // Funnel Builder for visual and behavioral parity — see
 // src/Bible/funnel-builder/architecture.md for why these two editors are
@@ -147,8 +148,22 @@ export function HeroRenderer({ data, editable }) {
 // it looks like it's checking. Fixed to read the real field.
 function resolveProductClick(p, ownerUid) {
   const title = (p.title || "").toLowerCase();
-  if ((title.includes("fotonix") && title.includes("light up")) || p.templateId === "lumina-cut-user" || p.templateId === "light-up-user") {
-    return () => { window.location.hash = "affiliate-product-accryl"; };
+  // lumina-cut-user is the desk/cut-to-shape line, light-up-user (plus the
+  // title fallback) the wall panel -- both open the same accryl page but
+  // need a different starting size, or they'd both silently land on
+  // whatever DEFAULT_WALL_ACRYLIC_SIZE_KEY resolves to. The ?size= has to
+  // sit before the #hash (window.location.search, not the hash fragment)
+  // or resolveAcrylicSize() never sees it -- see architecture.md's "acrylic
+  // size hand-off" and the Create Product modal's DESIGNER_LINKS for the
+  // same fix applied there.
+  if (p.templateId === "lumina-cut-user") {
+    return () => { window.location.href = `${window.location.origin}/?size=${DEFAULT_DESK_ACRYLIC_SIZE_KEY}#affiliate-product-accryl`; };
+  }
+  if ((title.includes("fotonix") && title.includes("light up")) || p.templateId === "light-up-user") {
+    return () => { window.location.href = `${window.location.origin}/?size=${DEFAULT_WALL_ACRYLIC_SIZE_KEY}#affiliate-product-accryl`; };
+  }
+  if (p.templateId === "stencil-generator") {
+    return () => { window.location.href = `${window.location.origin}/tools/stencil-generator`; };
   }
   if (p.templateId === "lumina-mirror-user") {
     // #product, not #standard-mirror-designer -- ProductPageClean.js (the
