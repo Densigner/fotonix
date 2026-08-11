@@ -22,8 +22,9 @@ follow-up fixes, so this reflects what's actually live, not a plan.
 
 ## The one-sentence version
 
-`MainLandingPage.js` is a marketing/discovery layer in front of four
-pre-existing (mostly unrelated) real designer pages — it doesn't do any
+`MainLandingPage.js` is a marketing/discovery layer in front of three
+pre-existing (mostly unrelated) real designer pages, shared across five
+marketing entries — it doesn't do any
 checkout itself; every "Start Designing"/"View Product" button hands off
 to whichever real tool already existed for that product, and the landing
 page's job is just to get the visitor there with the right size/price
@@ -43,18 +44,19 @@ actually works today).
   wondering why `Products.js` still exists but the homepage doesn't use
   it)
 - The five products, canonical data: `src/data/productsData.js`
-- Acrylic sizing (both acrylic products share this):
+- Acrylic sizing (all three acrylic/mirror products share this):
   `src/data/acrylicSizes.js` — the single source both the landing page
   and the real designer page read, on purpose (see `gotchas.md` for what
   happens when two pages each hardcode their own copy of "the price")
-- The four real destination pages a click can land on:
+- The three real destination pages a click can land on:
   `src/components/products/ProductPageClean.js` (Lumina Mirror, hash
   `#product`), `src/components/products/AffiliateProductPageCleanAccryl.js`
-  (both acrylic products, hash `#affiliate-product-accryl`),
-  `src/components/stencilUpload/StencilGenerator.js` (path
-  `/tools/stencil-generator`), and — for the Custom Shape Mirror — no
-  destination page at all, just a quote-request modal built into
-  `MainLandingPage.js` itself (see `database.md`)
+  (all three acrylic/mirror products — wall panel, desk sign, and Custom
+  Shape Mirror via `?material=mirror` — hash `#affiliate-product-accryl`),
+  and `src/components/stencilUpload/StencilGenerator.js` (path
+  `/tools/stencil-generator`). Custom Shape Mirror does **not** open a
+  quote-request modal — that was true of an earlier version of the page;
+  see the correction note in `database.md`.
 
 ## Deploying a change in this area
 

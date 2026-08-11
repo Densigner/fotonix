@@ -37,8 +37,10 @@ on PayPal capture):
   here so a logged-in user can resume/reuse it later, distinct from
   `madeOrders`, which only gets written on an actual paid capture
 
-**Both acrylic products** (`AffiliateProductPageCleanAccryl.js`'s
-`saveAcrylicOrder`, fires on PayPal capture):
+**All three acrylic/mirror products** (Side-lit Acrylic wall panel,
+Side-lit Acrylic Sign desk-mounted, **and** Custom Shape Mirror — see
+the correction below) — `AffiliateProductPageCleanAccryl.js`'s
+`saveAcrylicOrder`, fires on PayPal capture:
 - `users/{uid}/stencilOrders/{orderId}` **and** `madeOrders/{orderId}`
   (spread of the same `orderData` object into both, plus `userId` on the
   `madeOrders` copy)
@@ -66,27 +68,26 @@ way, plus a separate `stencilDownloads` path (with an explicit
 photo-to-stencil downloads — don't confuse the two when reading data back
 out; only `stencilOrders`/`madeOrders` represent money changing hands.
 
-**Custom Shape Mirror — nothing is saved anywhere.** The "Get Custom
-Quote" button opens a modal built directly into `MainLandingPage.js`
-(`showQuoteModal` state, `handleQuoteSubmit`). Submitting it does exactly
-this:
-
-```js
-const handleQuoteSubmit = (e) => {
-  e.preventDefault();
-  console.log('Quote request:', quoteForm);
-  setQuoteSubmitted(true);
-};
-```
-
-That's it — a `console.log` and a local state flip to show the "Quote
-Request Received!" success screen. No Firebase write, no email, no
-backend call of any kind. **This is not a regression from this session**
-— it's a verbatim copy of what the old `Products.js`'s identical modal
-already did before the homepage rewrite (confirmed by diffing the two
-implementations side by side while porting it over). It was carried over
-faithfully rather than fixed because building real persistence for it
-wasn't part of what was asked when the landing page was rebuilt. If
-someone reports "I requested a custom mirror quote and never heard back,"
-this is why — the form was never wired to anything, on the old page or
-the new one.
+**Correction (2026-08-11) — "Custom Shape Mirror — nothing is saved
+anywhere" was wrong and has been removed.** This section originally
+described a "Get Custom Quote" modal built into `MainLandingPage.js`
+(`showQuoteModal`/`handleQuoteSubmit`, a bare `console.log` and nothing
+else) as this product's real destination. That modal doesn't exist in
+`MainLandingPage.js` at all anymore — grepped for `showQuoteModal`,
+`handleQuoteSubmit`, `quoteForm`, zero matches. At some point after this
+file was written, a later session gave Custom Shape Mirror a real
+"Start Designing →" button (`goToProduct(customMirror,
+DESK_ACRYLIC_SIZES[mirrorSize].key, 'mirror')`, see `architecture.md`)
+that lands it on `AffiliateProductPageCleanAccryl.js` with
+`?material=mirror`, exactly like the other two acrylic products — no
+Bible update happened at the time, so this file kept describing a dead
+end that had already been fixed. **It's covered by the "All three
+acrylic/mirror products" section above, not a separate case** — the
+only thing that differs for the mirror material is
+`orderData.metadata.material` (`selectedMaterial.key`, i.e. `'mirror'`
+instead of `'acrylic'`) and the higher price from
+`MIRROR_PRICE_MULTIPLIER`. If you're reading old context (a chat log,
+an old comment) that cites this file for "custom mirror quotes go
+nowhere," it's describing a state that no longer exists — verify
+against `MainLandingPage.js`/`AffiliateProductPageCleanAccryl.js`
+directly rather than trusting that specific claim.

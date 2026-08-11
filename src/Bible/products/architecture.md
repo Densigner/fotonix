@@ -4,16 +4,26 @@
 
 `src/data/productsData.js` is the canonical list — five entries, each with
 `id`, `name`, `description`, `price`, `imagePlaceholder`, `category`,
-`sku`, and either a `link` or `isCustomQuote: true`. `MainLandingPage.js`
-imports this array directly (`products[0]` through `products[4]`) rather
-than duplicating names/prices/skus as literals, so the two stay in sync
-automatically if the data file ever changes.
+`sku`, and a `link` (`linkQuery` also appears on one entry but is dead —
+see the note below the table). `MainLandingPage.js` imports this array
+directly (`products[0]` through `products[4]`) rather than duplicating
+names/prices/skus as literals, so the two stay in sync automatically if
+the data file ever changes.
+
+**Correction (2026-08-11): this table previously said the Custom Shape
+Mirror row (#2) had no real destination, just a dead quote modal — that
+was true of an earlier version of this page but is no longer accurate.
+It was corrected in a later session to a real "Start Designing →" button
+with no matching Bible update at the time; caught when a Fotonix catalog
+product pointing at the old (wrong) description was being set up and the
+live page didn't match what this file said. Table below now reflects
+what `MainLandingPage.js` actually does.**
 
 | # | Product | Real destination | How it's reached |
 |---|---|---|---|
 | 0 | LED Lumina Mirror | `ProductPageClean.js` | `link: "product"` → `/#product` |
 | 1 | Side-lit Acrylic Designer (**wall**, fixed-ish 30×30cm) | `AffiliateProductPageCleanAccryl.js` | `link: "affiliate-product-accryl"` → `/#affiliate-product-accryl` |
-| 2 | Custom Shape Mirror | *(none — quote modal)* | `isCustomQuote: true` → opens `MainLandingPage.js`'s own modal, no navigation |
+| 2 | Custom Shape Mirror (Back-Lit) | `AffiliateProductPageCleanAccryl.js` (same page as #1/#4, `material=mirror`) | `link: "affiliate-product-accryl"`, reached via the "Start Designing →" button → `/?size=<desk-key>&material=mirror#affiliate-product-accryl` |
 | 3 | Stencil Generator | `StencilGenerator.js` | `link: "tools/stencil-generator"` → `/tools/stencil-generator` (a real path, not a hash) |
 | 4 | Side-lit Acrylic Sign — Desk Mounted | `AffiliateProductPageCleanAccryl.js` (same page as #1) | `link: "affiliate-product-accryl"` |
 
@@ -27,14 +37,25 @@ still exists and is used elsewhere (its own `handleProductSelect` is
 `export`-free, defined inline) — see "Why `Products.js` still exists"
 below.
 
-**Note products #1 and #4 point at the exact same real page.** That page
-was built assuming one fixed 30×30cm product; it's now shared by two
-conceptually different marketing entries (a fixed wall panel and a cut-
-to-shape desk sign) with a size selector on each banner. How that
-selection actually reaches the shared page is the single most important
-thing to understand in this codebase area — see "The acrylic size
-hand-off" below, and `gotchas.md` for the Lumina Mirror's *un-fixed*
-version of the same problem.
+**`linkQuery: "material=mirror"` on entry #2 is dead** — nothing reads
+it (confirmed by grep: it appears nowhere else in `src/`). The real
+mirror material hand-off is `goToProduct(customMirror,
+DESK_ACRYLIC_SIZES[mirrorSize].key, 'mirror')`, called directly from
+that product's own "Start Designing →" button with `mirrorSize` (a
+`useState` tied to that banner's own size pills), not read from this
+static field. If you're ever tempted to "fix" a size/material hand-off
+by editing `linkQuery`, it won't do anything — the real logic lives in
+`goToProduct`/`computeProductHref`, described below.
+
+**Note products #1, #2, and #4 all point at the exact same real page.**
+That page was built assuming one fixed 30×30cm product; it's now shared
+by three conceptually different marketing entries (a fixed wall panel,
+a cut-to-shape desk sign, and that same desk sign in mirror material)
+with a size selector on each banner. How that selection actually reaches
+the shared page is the single most important thing to understand in
+this codebase area — see "The acrylic size hand-off" below, and
+`gotchas.md` for the Lumina Mirror's *un-fixed* version of the same
+problem.
 
 ## Why `Products.js` still exists but isn't used
 
@@ -67,17 +88,24 @@ checkout page can't quietly disagree about what something costs — see
 
 The hand-off, step by step:
 
-1. Each acrylic banner keeps its own `useState` index into its sizes
-   array (`deskAcrylicSize`, `wallAcrylicSize`) — clicking a size pill
-   just updates that index, which drives the displayed price
-   (`WALL_ACRYLIC_SIZES[wallAcrylicSize].price` etc.) live, no navigation.
-2. Clicking "Start Designing" calls `goToProduct(product, sizeKey)` —
-   `sizeKey` being `WALL_ACRYLIC_SIZES[wallAcrylicSize].key` (e.g.
-   `"30x40"`), passed only by the two acrylic banners (the other three
-   products call `goToProduct(product)` with no second argument).
+1. Each acrylic/mirror banner keeps its own `useState` index into its
+   sizes array (`deskAcrylicSize`, `wallAcrylicSize`, and `mirrorSize` for
+   the Custom Shape Mirror banner, which reuses `DESK_ACRYLIC_SIZES` since
+   it's the same cut-to-shape line, just a different material) — clicking
+   a size pill just updates that index, which drives the displayed price
+   live, no navigation.
+2. Clicking "Start Designing" calls `goToProduct(product, sizeKey,
+   materialKey)` — `sizeKey` being e.g. `WALL_ACRYLIC_SIZES[wallAcrylicSize].key`
+   (`"30x40"`), passed by all three acrylic/mirror banners (the other two
+   products, Lumina Mirror and Stencil Generator, call `goToProduct(product)`
+   with no second/third argument). `materialKey` is passed as `'mirror'`
+   by the Custom Shape Mirror banner only — that's the one banner of the
+   three that needs it, since the other two are always plain acrylic.
 3. `goToProduct` builds the href as usual via `computeProductHref`, then
-   — only if `sizeKey` was passed — rewrites it from `/#affiliate-
-   product-accryl` to `/?size=30x40#affiliate-product-accryl`. The query
+   appends whichever of `size`/`material` were actually passed as real
+   query params (`URLSearchParams`), rewriting `/#affiliate-product-accryl`
+   to e.g. `/?size=30x40#affiliate-product-accryl` or
+   `/?size=small&material=mirror#affiliate-product-accryl`. The query
    string goes **before** the hash deliberately: `App.js`'s router reads
    `window.location.hash` verbatim as the page name
    (`getInitialPage()`/its hashchange listener), so anything appended
@@ -85,25 +113,31 @@ The hand-off, step by step:
    change the literal string being matched against `currentPage ===
    'affiliate-product-accryl'` and silently break routing. Putting it in
    `location.search` instead keeps it completely invisible to the router.
-4. `AffiliateProductPageCleanAccryl.js`'s `ProductPage()` resolves this
-   once on mount via `useState(resolveAcrylicSize)` (lazy initializer, so
-   `window.location.search` is only read once, not on every render).
-   `resolveAcrylicSize()` reads `?size=`, looks it up with
-   `findAcrylicSize`, and falls back to the standard 30×30cm/£29.99 wall
-   entry if the param is missing or unrecognised — so a direct visit
-   (bookmark, typed URL, old link) still gets a sensible default instead
-   of breaking.
-5. The resolved `{ label, price }` then drives **five** separate spots in
-   that file that used to be hardcoded literals: the sticky header title
-   (`AppHeader`'s `sizeLabel` prop), two on-page price displays, the
-   `PayPalButton`'s `amount` prop (i.e. what's actually charged), and the
+4. `AffiliateProductPageCleanAccryl.js`'s `ProductPage()` resolves both
+   once on mount via `useState(resolveAcrylicSize)`/`useState(resolveMaterial)`
+   (lazy initializers, so `window.location.search` is only read once, not
+   on every render). `resolveAcrylicSize()` reads `?size=`, looks it up
+   with `findAcrylicSize`, and falls back to the standard 30×30cm/£29.99
+   wall entry if the param is missing or unrecognised.
+   `resolveMaterial()` reads `?material=` the same way via `findMaterial`,
+   defaulting to Acrylic — so a direct visit (bookmark, typed URL, old
+   link) always gets a sensible default instead of breaking, for both.
+5. The resolved size drives **five** separate spots in that file that
+   used to be hardcoded literals: the sticky header title (`AppHeader`'s
+   `sizeLabel` prop), two on-page price displays, the `PayPalButton`'s
+   `amount` prop (i.e. what's actually charged), and the
    `orderData.pricing`/`metadata.productSize` fields written to Firebase
-   on purchase (see `database.md`).
+   on purchase (see `database.md`). The resolved material only matters
+   on the desk/cut-to-shape line (`isDesk`) — it picks `productBaseName`/
+   `productFullName`/`productDescription` (Acrylic vs Mirror copy) and
+   applies `MIRROR_PRICE_MULTIPLIER` via `priceForMaterial`, since mirror
+   costs more than acrylic at the same size.
 
-**This mechanism only exists for the two acrylic products.** It is not a
-generic "pass a size to any product" system — extending it to the Lumina
-Mirror would mean building the equivalent read-the-query-string logic
-into `ProductPageClean.js` from scratch (see `gotchas.md`).
+**This mechanism only exists for the acrylic/mirror products (all three
+marketing entries that land on `AffiliateProductPageCleanAccryl.js`).**
+It is not a generic "pass a size to any product" system — extending it
+to the Lumina Mirror would mean building the equivalent read-the-query-
+string logic into `ProductPageClean.js` from scratch (see `gotchas.md`).
 
 ## Image and video assets — real imports, not base64
 
