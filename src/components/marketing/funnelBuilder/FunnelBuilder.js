@@ -48,11 +48,17 @@ import {
   ChevronDown,
   Quote,
   ShoppingBag,
+  Palette,
 } from "lucide-react";
 import { useSearchParams } from 'react-router-dom';
 import { getStarterBlocks } from './templateRegistry';
 import { EndorsedWidget, ENDORSED_WIDGET_TYPES } from '../../shared/endorsedWidget';
 import { resolveProductClick } from '../../store-builder/StoreCanvasBuilder';
+// Reused directly rather than building a second theme engine -- see
+// src/Bible/funnel-builder/architecture.md's "Design system" section.
+// Nothing in theme.js is Shop-Builder-specific: it's a plain hex-in,
+// CSS-custom-properties-out deriver.
+import { DEFAULT_THEME, deriveThemeVars, useGoogleFont, toneStyle, FONT_PAIRINGS } from '../../store-builder/theme';
 // Firebase storage helper (upload images to the project storage bucket)
 import { storage, db } from '../../../firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -458,21 +464,21 @@ function ProductsBlockRender({ data, funnelOwnerUid }) {
   }, [funnelOwnerUid]);
 
   if (products === null) {
-    return <div className="py-10 text-center text-sm text-gray-400">Loading products…</div>;
+    return <div className="py-10 text-center text-sm" style={{ color: "var(--muted-text)" }}>Loading products…</div>;
   }
 
   if (products.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-gray-300 py-10 text-center text-sm text-gray-500">
+      <div className="rounded-2xl border border-dashed py-10 text-center text-sm" style={{ borderColor: "var(--border)", color: "var(--muted-text)" }}>
         No products yet — add one from the affiliate dashboard's "Add Product," and it'll show up here automatically.
       </div>
     );
   }
 
   return (
-    <div className="w-full">
+    <div className={`w-full ${toneClass(data.tone)}`} style={toneStyle(data.tone)}>
       {data.title && (
-        <h3 className="mb-4 text-center text-xl font-semibold tracking-tight text-gray-900">{data.title}</h3>
+        <h3 className="mb-4 text-center text-xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)", color: "inherit" }}>{data.title}</h3>
       )}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
         {products.map((p) => {
@@ -488,16 +494,17 @@ function ProductsBlockRender({ data, funnelOwnerUid }) {
               key={p.id}
               href={`/product/${funnelOwnerUid}/${p.id}`}
               onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate(); } : undefined}
-              className="group block overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
+              className="group block overflow-hidden rounded-[var(--radius)] border shadow-sm transition hover:shadow-md"
+              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
             >
               {src && <img src={src} alt={p.title} className="h-40 w-full object-cover" loading="lazy" />}
               <div className="p-4">
-                <h4 className="line-clamp-2 text-sm font-semibold text-gray-900">{p.title}</h4>
+                <h4 className="line-clamp-2 text-sm font-semibold" style={{ fontFamily: "var(--font-body)", color: "var(--text)" }}>{p.title}</h4>
                 {data.showPrice !== false && typeof p.price === 'number' && (
-                  <div className="mt-1 font-medium text-indigo-600">£{p.price.toFixed(2)}</div>
+                  <div className="mt-1 font-medium" style={{ color: "var(--accent)" }}>£{p.price.toFixed(2)}</div>
                 )}
                 {data.showCTA !== false && (
-                  <div className="mt-2 text-xs font-medium text-gray-500 group-hover:text-indigo-600">View details →</div>
+                  <div className="mt-2 text-xs font-medium transition-colors" style={{ color: "var(--muted-text)" }}>View details →</div>
                 )}
               </div>
             </a>
@@ -573,10 +580,15 @@ const BLOCKS = {
         );
       }
 
+      // gradient (a decorative wash) is a per-block choice independent of
+      // tone (the page-theme background) -- when neither is set, falls
+      // back to the theme's own surface color instead of a hardcoded white.
+      const heroToneStyle = data.gradient ? {} : toneStyle(data.tone);
+      const heroOnContrast = !data.gradient && data.tone === "contrast";
       return (
-        <section className={`relative overflow-hidden rounded-2xl border border-gray-200 ${
-          data.gradient ? "bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10" : "bg-white"
-        } p-8 md:p-12`}>
+        <section className={`relative overflow-hidden rounded-2xl border p-8 md:p-12 ${
+          data.gradient ? "bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10" : ""
+        }`} style={{ borderColor: "var(--border)", ...(data.gradient ? {} : { background: "var(--surface)" }), ...heroToneStyle }}>
           <div className={`mx-auto ${data.align === "center" ? "text-center max-w-2xl" : "text-left grid md:grid-cols-2 gap-8 items-center"}`}>
             <div>
               <h1
@@ -584,6 +596,7 @@ const BLOCKS = {
                 suppressContentEditableWarning={true}
                 onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
                 className="text-3xl md:text-5xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
+                style={{ fontFamily: "var(--font-display)", color: heroOnContrast ? "inherit" : "var(--text)" }}
               >
                 {data.headline}
               </h1>
@@ -592,7 +605,8 @@ const BLOCKS = {
                 contentEditable={editable}
                 suppressContentEditableWarning={true}
                 onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
-                className="mt-3 text-gray-600 text-base md:text-lg focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+                className="mt-3 text-base md:text-lg focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+                style={{ fontFamily: "var(--font-body)", color: heroOnContrast ? "inherit" : "var(--muted-text)" }}
               >
                 {data.subhead}
               </p>
@@ -658,6 +672,7 @@ const BLOCKS = {
             </button>
           </div>
         </Field>
+        {!data.gradientOverlay && <ToneField value={data.tone} onChange={(v) => onChange({ tone: v })} />}
         <Field label="Headline">
           <Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} />
         </Field>
@@ -775,13 +790,19 @@ const BLOCKS = {
           </nav>
         )}
 
-        {/* Hero Text */}
+        {/* Hero Text -- always sits on a background photo (background is a
+            required field on this block, never optional), so this keeps
+            its own explicit darkText/overlay contrast system rather than
+            the page theme's text color, same reasoning as the plain Hero
+            block's own full-bleed-image variant. Font family still applies
+            for typographic consistency with the rest of the page. */}
         <div className={`relative z-10 mx-auto flex flex-col items-${data.align} justify-center h-full max-w-3xl px-6 text-${data.align} ${data.darkText ? "text-gray-900" : "text-white"}`}>
           <h1
             contentEditable={editable}
             suppressContentEditableWarning={true}
             onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
             className="text-4xl md:text-6xl font-bold leading-tight focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+            style={{ fontFamily: "var(--font-display)" }}
           >
             {data.headline}
           </h1>
@@ -790,6 +811,7 @@ const BLOCKS = {
             suppressContentEditableWarning={true}
             onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
             className="mt-3 text-base md:text-lg opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+            style={{ fontFamily: "var(--font-body)" }}
           >
             {data.subhead}
           </p>
@@ -874,16 +896,19 @@ const BLOCKS = {
     icon: Type,
     defaults: () => ({ text: "Powerful headline", size: 36, align: "center" }),
     render: ({ data, onChange, editable }) => (
-      <h2
-        contentEditable={editable}
-        suppressContentEditableWarning={true}
-        onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
-        className={`w-full font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded ${
-          data.align === "center" ? "text-center" : data.align === "right" ? "text-right" : "text-left"
-        }`} style={{ fontSize: `${data.size}px` }}>{data.text}</h2>
+      <div className={toneClass(data.tone)} style={toneStyle(data.tone)}>
+        <h2
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
+          className={`w-full font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded ${
+            data.align === "center" ? "text-center" : data.align === "right" ? "text-right" : "text-left"
+          }`} style={{ fontSize: `${data.size}px`, fontFamily: "var(--font-display)", color: "inherit" }}>{data.text}</h2>
+      </div>
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
+        <ToneField value={data.tone} onChange={(v) => onChange({ tone: v })} />
         <Field label="Text"><Input value={data.text} onChange={e=>onChange({ text: e.target.value })} /></Field>
         <Field label="Size"><Slider value={[data.size]} min={16} max={72} step={1} onValueChange={(v)=>onChange({ size: v[0] })} /></Field>
         <Field label="Align">
@@ -901,16 +926,19 @@ const BLOCKS = {
     icon: Rows3,
     defaults: () => ({ text: "Explain your offer in a concise, benefit‑driven way.", width: 700, align: "center" }),
     render: ({ data, onChange, editable }) => (
-      <p
-        contentEditable={editable}
-        suppressContentEditableWarning={true}
-        onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
-        className={`text-gray-600 leading-7 focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded ${
-        data.align === "center" ? "mx-auto text-center" : data.align === "right" ? "ml-auto text-right" : "text-left"
-      }`} style={{ maxWidth: data.width }}>{data.text}</p>
+      <div className={toneClass(data.tone)} style={toneStyle(data.tone)}>
+        <p
+          contentEditable={editable}
+          suppressContentEditableWarning={true}
+          onBlur={(e) => onChange && onChange({ text: e.target.textContent })}
+          className={`leading-7 focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded ${
+          data.align === "center" ? "mx-auto text-center" : data.align === "right" ? "ml-auto text-right" : "text-left"
+        }`} style={{ maxWidth: data.width, fontFamily: "var(--font-body)", color: data.tone === "contrast" ? "inherit" : "var(--muted-text)" }}>{data.text}</p>
+      </div>
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
+        <ToneField value={data.tone} onChange={(v) => onChange({ tone: v })} />
         <Field label="Text"><Textarea value={data.text} onChange={e=>onChange({ text: e.target.value })} /></Field>
         <Field label="Max width">
           <Slider value={[data.width]} min={320} max={1000} step={10} onValueChange={(v)=>onChange({ width: v[0] })} />
@@ -976,6 +1004,15 @@ const BLOCKS = {
           />
         );
       }
+      // Follow/Subscribe buttons keep their platform's own brand color
+      // (handled inside CtaAction itself via `platform`) -- everything else
+      // picks up the page theme's accent color instead of the shared
+      // Button component's generic slate default. Same substitution
+      // already made once for the Shop Builder's identical Button block.
+      const themedStyle = data.actionType === 'follow' ? undefined
+        : data.style === 'outline' ? { borderColor: 'var(--accent)', color: 'var(--accent)', background: 'transparent' }
+        : data.style === 'ghost' ? { color: 'var(--accent)', background: 'transparent' }
+        : { background: 'var(--accent)', color: 'var(--accent-foreground)', borderRadius: 'var(--radius)' };
       return (
         <div className={`flex ${data.full? '':'justify-center'}`}>
           <CtaAction
@@ -986,6 +1023,7 @@ const BLOCKS = {
             labelKey="label"
             buttonClassName={data.full ? 'w-full' : ''}
             buttonVariant={data.style === 'ghost' ? 'ghost' : data.style === 'outline' ? 'outline' : 'default'}
+            styleOverride={themedStyle}
           />
         </div>
       );
@@ -1016,12 +1054,13 @@ const BLOCKS = {
     icon: Mail,
     defaults: () => ({ headline: "Get early access", placeholder: "you@example.com", button: "Notify me", success: "Thanks! Check your inbox." }),
     render: ({ data, onChange, editable, funnelOwnerUid }) => (
-      <div className="mx-auto max-w-md w-full">
+      <div className={`mx-auto max-w-md w-full ${toneClass(data.tone)}`} style={toneStyle(data.tone)}>
         <h3
           contentEditable={editable}
           suppressContentEditableWarning={true}
           onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
           className="text-xl font-semibold tracking-tight text-center focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+          style={{ fontFamily: "var(--font-display)", color: "inherit" }}
         >
           {data.headline}
         </h3>
@@ -1035,11 +1074,12 @@ const BLOCKS = {
             editable={editable}
           />
         </div>
-  <p className="text-xs text-gray-600 mt-2 text-center">We respect your privacy.</p>
+        <p className="text-xs mt-2 text-center" style={{ fontFamily: "var(--font-body)", color: data.tone === "contrast" ? "inherit" : "var(--muted-text)", opacity: data.tone === "contrast" ? 0.85 : 1 }}>We respect your privacy.</p>
       </div>
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
+        <ToneField value={data.tone} onChange={(v) => onChange({ tone: v })} />
         <Field label="Headline"><Input value={data.headline} onChange={e=>onChange({ headline: e.target.value })} /></Field>
         <Field label="Placeholder"><Input value={data.placeholder} onChange={e=>onChange({ placeholder: e.target.value })} /></Field>
         <Field label="Button text"><Input value={data.button} onChange={e=>onChange({ button: e.target.value })} /></Field>
@@ -1059,19 +1099,20 @@ const BLOCKS = {
       ],
     }),
     render: ({ data, onChange, editable }) => (
-      <div className="w-full">
+      <div className={`w-full ${toneClass(data.tone)}`} style={toneStyle(data.tone)}>
         <h3
           contentEditable={editable}
           suppressContentEditableWarning={true}
           onBlur={(e) => onChange && onChange({ title: e.target.textContent })}
           className="text-xl font-semibold tracking-tight text-center focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+          style={{ fontFamily: "var(--font-display)", color: "inherit" }}
         >
           {data.title}
         </h3>
         <div className="grid md:grid-cols-3 gap-4 mt-4">
           {data.items.map((it, i)=> (
-            <Card key={it.id} className="h-full">
-              <CardHeader className="pb-2">
+            <Card key={it.id} className="h-full border" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+              <CardHeader className="pb-2" style={{ borderColor: "var(--border)" }}>
                 <CardTitle
                   contentEditable={editable}
                   suppressContentEditableWarning={true}
@@ -1082,6 +1123,7 @@ const BLOCKS = {
                     onChange({ items });
                   }}
                   className="text-base focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+                  style={{ fontFamily: "var(--font-display)", color: "var(--text)" }}
                 >
                   {it.title}
                 </CardTitle>
@@ -1095,7 +1137,8 @@ const BLOCKS = {
                   items[i] = { ...it, desc: e.target.textContent };
                   onChange({ items });
                 }}
-                className="text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+                className="text-sm focus:outline-none focus:ring-1 focus:ring-indigo-300 rounded"
+                style={{ fontFamily: "var(--font-body)", color: "var(--muted-text)" }}
               >
                 {it.desc}
               </CardContent>
@@ -1106,6 +1149,7 @@ const BLOCKS = {
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
+        <ToneField value={data.tone} onChange={(v) => onChange({ tone: v })} />
         <Field label="Title"><Input value={data.title} onChange={e=>onChange({ title: e.target.value })} /></Field>
         <Separator />
         <div className="space-y-3">
@@ -1158,6 +1202,7 @@ const BLOCKS = {
             suppressContentEditableWarning={true}
             onBlur={(e) => onChange && onChange({ headline: e.target.textContent })}
             className="text-3xl md:text-4xl font-bold focus:outline-none focus:ring-2 focus:ring-white/40 rounded"
+            style={{ fontFamily: "var(--font-display)" }}
           >
             {data.headline}
           </h2>
@@ -1167,6 +1212,7 @@ const BLOCKS = {
               suppressContentEditableWarning={true}
               onBlur={(e) => onChange && onChange({ subhead: e.target.textContent })}
               className="mt-3 max-w-xl opacity-90 focus:outline-none focus:ring-1 focus:ring-white/30 rounded"
+              style={{ fontFamily: "var(--font-body)" }}
             >
               {data.subhead}
             </p>
@@ -1258,6 +1304,7 @@ const BLOCKS = {
     ),
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
+        <ToneField value={data.tone} onChange={(v) => onChange({ tone: v })} />
         <Field label="Title (optional)">
           <Input value={data.title || ""} onChange={(e) => onChange({ title: e.target.value })} />
         </Field>
@@ -1280,20 +1327,20 @@ const BLOCKS = {
       const items = data.items || [];
       if (!items.length) return null;
       return (
-        <div className="w-full rounded-2xl border border-gray-200 bg-white p-6">
+        <div className="w-full rounded-[var(--radius)] border p-6" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
           {/* Kills the native <details> marker (a plain triangle) in favor of
               the rotating ChevronDown below -- same trick already built once
               for the Shop Builder's identical FAQ block, ported verbatim. */}
-          <style>{".fx-funnel-faq summary{list-style:none}.fx-funnel-faq summary::-webkit-details-marker{display:none}.fx-funnel-faq details[open] .fx-chevron{transform:rotate(180deg)}"}</style>
-          <h3 className="mb-3 text-xl font-semibold tracking-tight text-gray-900">Frequently asked questions</h3>
-          <div className="fx-funnel-faq divide-y divide-gray-100">
+          <style>{".fx-funnel-faq summary{list-style:none}.fx-funnel-faq summary::-webkit-details-marker{display:none}.fx-funnel-faq details[open] .fx-chevron{transform:rotate(180deg)}.fx-funnel-faq details{border-top:1px solid var(--border)}.fx-funnel-faq details:first-child{border-top:none}"}</style>
+          <h3 className="mb-3 text-xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)", color: "var(--text)" }}>Frequently asked questions</h3>
+          <div className="fx-funnel-faq">
             {items.map((it) => (
               <details key={it.id} className="py-3">
-                <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium text-gray-900">
+                <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium" style={{ fontFamily: "var(--font-body)", color: "var(--text)" }}>
                   {it.q}
-                  <ChevronDown className="fx-chevron h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
+                  <ChevronDown className="fx-chevron h-4 w-4 shrink-0 transition-transform duration-200" style={{ color: "var(--muted-text)" }} />
                 </summary>
-                <p className="mt-2 text-sm leading-relaxed text-gray-600">{it.a}</p>
+                <p className="mt-2 text-sm leading-relaxed" style={{ fontFamily: "var(--font-body)", color: "var(--muted-text)" }}>{it.a}</p>
               </details>
             ))}
           </div>
@@ -1333,14 +1380,14 @@ const BLOCKS = {
     render: ({ data }) => {
       if (!data.quote) return null;
       return (
-        <div className="w-full rounded-2xl bg-gray-50 p-8 text-center">
-          <p className="mx-auto max-w-2xl text-xl leading-relaxed text-gray-900 md:text-2xl">&ldquo;{data.quote}&rdquo;</p>
+        <div className="w-full rounded-[var(--radius)] p-8 text-center" style={data.tone && data.tone !== 'default' ? toneStyle(data.tone) : { background: 'var(--muted-surface)' }}>
+          <p className="mx-auto max-w-2xl text-xl leading-relaxed md:text-2xl" style={{ fontFamily: "var(--font-display)", color: "inherit" }}>&ldquo;{data.quote}&rdquo;</p>
           {(data.name || data.photo) && (
             <div className="mt-5 flex items-center justify-center gap-3">
               {data.photo && <img src={data.photo} alt="" className="h-10 w-10 rounded-full object-cover" />}
               <div className="text-left">
-                {data.name && <div className="text-sm font-semibold text-gray-900">{data.name}</div>}
-                {data.role && <div className="text-xs text-gray-500">{data.role}</div>}
+                {data.name && <div className="text-sm font-semibold" style={{ fontFamily: "var(--font-body)", color: "inherit" }}>{data.name}</div>}
+                {data.role && <div className="text-xs" style={{ fontFamily: "var(--font-body)", color: data.tone === "contrast" ? "inherit" : "var(--muted-text)", opacity: data.tone === "contrast" ? 0.8 : 1 }}>{data.role}</div>}
               </div>
             </div>
           )}
@@ -1349,6 +1396,7 @@ const BLOCKS = {
     },
     inspector: ({ data, onChange }) => (
       <div className="space-y-4">
+        <ToneField value={data.tone} onChange={(v) => onChange({ tone: v })} />
         <Field label="Quote"><Textarea value={data.quote || ""} onChange={(e) => onChange({ quote: e.target.value })} /></Field>
         <Field label="Name"><Input value={data.name || ""} onChange={(e) => onChange({ name: e.target.value })} /></Field>
         <Field label="Role / context"><Input value={data.role || ""} onChange={(e) => onChange({ role: e.target.value })} placeholder="e.g. Verified buyer" /></Field>
@@ -1433,6 +1481,15 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
   };
   const [device, setDevice] = useState('desktop');
   const [blocks, setBlocks] = useState(()=>loadInitial(initialTemplateId));
+  // Per-funnel Design settings (brand color, fonts, mood, radius, density)
+  // -- stored in the funnels table's metadata JSONB column, which already
+  // existed but was never actually read or written by anything before
+  // this. See DEFAULT_THEME/deriveThemeVars in theme.js for what this
+  // actually drives.
+  const [theme, setTheme] = useState(DEFAULT_THEME);
+  const [showDesign, setShowDesign] = useState(false);
+  const themeVars = useMemo(() => deriveThemeVars(theme), [theme]);
+  useGoogleFont(theme.fonts);
   const [selectedId, setSelectedId] = useState(null);
   const [showExport, setShowExport] = useState(false);
   const [importText, setImportText] = useState("");
@@ -1471,6 +1528,11 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
         if (Array.isArray(data.funnel?.blocks)) {
           setBlocks(data.funnel.blocks);
         }
+        // Falls back to DEFAULT_THEME for any funnel saved before this --
+        // metadata.theme simply won't exist on those yet.
+        if (data.funnel?.metadata?.theme) {
+          setTheme({ ...DEFAULT_THEME, ...data.funnel.metadata.theme });
+        }
         if (data.funnel?.published) {
           setPublishStatus('published');
         }
@@ -1481,8 +1543,12 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [funnelId]);
 
-  // Debounced autosave to the real backend whenever blocks change, if we
-  // have a funnel to save against.
+  // Debounced autosave to the real backend whenever blocks or the Design
+  // theme change, if we have a funnel to save against. metadata is a full
+  // replace, not a deep merge (COALESCE($5, metadata) on the backend), but
+  // theme is the only thing this codebase has ever put in metadata (grepped
+  // before this change: nothing else reads or writes it), so sending
+  // `{ theme }` as the whole object is safe -- nothing else to preserve.
   useEffect(() => {
     if (!funnelId) return;
     setSaveStatus('saving');
@@ -1491,7 +1557,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
         const res = await fetch(`${API_URL}/api/funnels/${funnelId}`, {
           method: 'PATCH',
           headers: authHeaders,
-          body: JSON.stringify({ blocks }),
+          body: JSON.stringify({ blocks, metadata: { theme } }),
         });
         setSaveStatus(res.ok ? 'saved' : 'error');
       } catch (e) {
@@ -1500,7 +1566,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
     }, 800);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocks, funnelId]);
+  }, [blocks, theme, funnelId]);
 
   async function publishFunnel() {
     if (!funnelId) {
@@ -1641,6 +1707,8 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
             importSchema={importSchema}
             editMode={editMode}
             setEditMode={setEditMode}
+            showDesign={showDesign}
+            setShowDesign={setShowDesign}
             saveStatus={saveStatus}
             publishStatus={publishStatus}
             publishFunnel={publishFunnel}
@@ -1655,13 +1723,13 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
             <Card className="flex h-[calc(100vh-180px)] flex-col overflow-hidden">
               <CardHeader className="flex shrink-0 items-center justify-between pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    {selectedId ? <Settings2 className="h-4 w-4"/> : <LayoutTemplate className="h-4 w-4"/>}
-                    {selectedId ? 'Inspector' : 'Blocks'}
+                    {showDesign ? <Palette className="h-4 w-4"/> : selectedId ? <Settings2 className="h-4 w-4"/> : <LayoutTemplate className="h-4 w-4"/>}
+                    {showDesign ? 'Design' : selectedId ? 'Inspector' : 'Blocks'}
                   </CardTitle>
-                  {/* Quick toggle back to Blocks when inspector is open */}
+                  {/* Quick toggle back to Blocks when inspector/design is open */}
                   <div>
-                    {selectedId && (
-                      <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)} className="text-sm">
+                    {(selectedId || showDesign) && (
+                      <Button size="sm" variant="ghost" onClick={() => { setSelectedId(null); setShowDesign(false); }} className="text-sm">
                         Show Blocks
                       </Button>
                     )}
@@ -1679,7 +1747,11 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                   Builder's canvas/inspector panel had earlier. */}
               <CardContent className="min-h-0 flex-1 p-0">
                 <ScrollArea className="h-full p-3">
-                  {selectedId ? (
+                  {showDesign ? (
+                    <div className="p-4">
+                      <DesignPanel theme={theme} onChange={(patch) => setTheme((t) => ({ ...t, ...patch }))} />
+                    </div>
+                  ) : selectedId ? (
                     <div className="p-4">
                       <Inspector block={blocks.find(b=>b.id===selectedId)} onChange={(patch)=>updateBlock(selectedId, patch)} funnelOwnerUid={currentUserId} />
                     </div>
@@ -1707,8 +1779,11 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
   <CardContent className="p-0 h-full">
     <div className="relative flex items-start h-full overflow-auto bg-white rounded-none">
       <div className="relative w-full h-full overflow-y-auto" style={{ width: containerWidth }}>
-        {/* Full-bleed content frame */}
-        <div className="min-h-full bg-white rounded-none border border-gray-200">
+        {/* Full-bleed content frame -- themeVars applied here, matching the
+            Shop Builder canvas's own device-frame wrapper, so every block
+            underneath can read var(--surface)/var(--text)/etc. instead of
+            hardcoding colors. */}
+        <div className="min-h-full rounded-none border" style={{ ...themeVars, background: "var(--surface)", borderColor: "var(--border)", color: "var(--text)" }}>
           <div className="p-6 space-y-6">
             <DndContext
               sensors={sensors}
@@ -1725,7 +1800,7 @@ export default function FunnelBuilder({ initialTemplateId = null, funnelId = nul
                     key={block.id}
                     id={block.id}
                     selected={selectedId === block.id}
-                    onSelect={() => setSelectedId(block.id)}
+                    onSelect={() => { setSelectedId(block.id); setShowDesign(false); }}
                   >
                     <BLOCKRenderer
                       block={block}
@@ -1912,6 +1987,11 @@ function SubscribeInlineForm({
           type="submit"
           disabled={status === 'submitting'}
           variant={style === 'ghost' ? 'ghost' : style === 'outline' ? 'outline' : 'default'}
+          style={
+            style === 'outline' ? { borderColor: 'var(--accent)', color: 'var(--accent)', background: 'transparent' }
+              : style === 'ghost' ? { color: 'var(--accent)', background: 'transparent' }
+              : { background: 'var(--accent)', color: 'var(--accent-foreground)', borderRadius: 'var(--radius)' }
+          }
         >
           {status === 'submitting' ? '…' : label}
         </Button>
@@ -2116,6 +2196,73 @@ function IconBtn({ label, onClick, children }) {
   );
 }
 
+// Per-funnel Design settings -- one brand color drives every color on the
+// page (see deriveThemeVars in theme.js), same "no per-block color pickers"
+// philosophy already proven on the Shop Builder's identical panel
+// (AffiliateShopBuilderPage.js), ported here rather than redesigned.
+function DesignPanel({ theme, onChange }) {
+  return (
+    <div className="space-y-4">
+      <Field label="Brand color">
+        <input type="color" value={theme.brand || DEFAULT_THEME.brand} onChange={(e) => onChange({ brand: e.target.value })} />
+      </Field>
+      <Field label="Mood">
+        <select value={theme.mood || DEFAULT_THEME.mood} onChange={(e) => onChange({ mood: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
+          <option value="editorial">Editorial</option>
+          <option value="warm">Warm</option>
+          <option value="bold">Bold</option>
+          <option value="clinical">Clinical</option>
+        </select>
+      </Field>
+      <Field label="Fonts">
+        <select value={theme.fonts || DEFAULT_THEME.fonts} onChange={(e) => onChange({ fonts: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
+          {Object.entries(FONT_PAIRINGS).map(([key, p]) => <option key={key} value={key}>{p.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Corner radius">
+        <select value={theme.radius || DEFAULT_THEME.radius} onChange={(e) => onChange({ radius: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
+          <option value="none">None</option>
+          <option value="sm">Small</option>
+          <option value="lg">Large</option>
+        </select>
+      </Field>
+      <Field label="Spacing">
+        <select value={theme.density || DEFAULT_THEME.density} onChange={(e) => onChange({ density: e.target.value })} className="w-full rounded-md border border-gray-200 px-2 py-2 text-sm">
+          <option value="airy">Airy</option>
+          <option value="tight">Tight</option>
+        </select>
+      </Field>
+      <p className="text-xs text-gray-500">Applies to every block on this funnel. Individual blocks can still override their own background via the "Background" control in their own inspector.</p>
+    </div>
+  );
+}
+
+// Section background -- every block reads this via theme.js's toneStyle()
+// instead of picking its own. Same three-tier default/muted/contrast
+// system already built for the Shop Builder, reused directly (not
+// ClickFunnels' 5-tier version -- 3 already proved sufficient there).
+// A muted/contrast band needs its own breathing room so text isn't flush
+// against the color change; blocks with no tone (or that already carry
+// their own padding) don't pick this up. Same helper already built for
+// the Shop Builder's identical tone system.
+const toneClass = (tone) => (tone && tone !== "default" ? "rounded-[var(--radius)] p-6 md:p-10" : "");
+const TONE_OPTIONS = [
+  { value: "default", label: "Default" },
+  { value: "muted", label: "Muted" },
+  { value: "contrast", label: "Contrast" },
+];
+function ToneField({ value, onChange }) {
+  return (
+    <Field label="Background">
+      <div className="flex flex-wrap gap-2">
+        {TONE_OPTIONS.map((opt) => (
+          <Button key={opt.value} size="sm" variant={(value || "default") === opt.value ? "default" : "outline"} className={(value || "default") === opt.value ? "" : "text-black"} onClick={() => onChange(opt.value)}>{opt.label}</Button>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
 function EditorHeader({
   device,
   setDevice,
@@ -2127,6 +2274,8 @@ function EditorHeader({
   importSchema,
   editMode,
   setEditMode,
+  showDesign,
+  setShowDesign,
   saveStatus,
   publishStatus,
   publishFunnel,
@@ -2147,8 +2296,18 @@ function EditorHeader({
               size="icon"
               onClick={() => setEditMode(!editMode)}
               className="transition-all hover:scale-105"
+              title="Toggle inline editing"
             >
               <Edit3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={showDesign ? "default" : "outline"}
+              size="icon"
+              onClick={() => setShowDesign((v) => !v)}
+              className={`transition-all hover:scale-105 ${showDesign ? "" : "text-black"}`}
+              title="Design — brand color, fonts, spacing"
+            >
+              <Palette className="h-4 w-4" />
             </Button>
           </div>
         </div>

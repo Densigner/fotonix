@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Loader, AlertCircle } from 'lucide-react';
 import { API_URL } from '../../../config/environment';
 import { BLOCKS } from './FunnelBuilder';
+import { DEFAULT_THEME, deriveThemeVars, useGoogleFont } from '../../store-builder/theme';
 
 /**
  * FunnelViewer - Public facing funnel page
@@ -43,6 +44,11 @@ export default function FunnelViewer() {
     return () => { mounted = false; };
   }, [companySlug, funnelSlug]);
 
+  // Called unconditionally (rules of hooks) -- `theme` is just
+  // DEFAULT_THEME while `funnel` hasn't loaded yet, which is harmless.
+  const theme = { ...DEFAULT_THEME, ...(funnel?.metadata?.theme || {}) };
+  useGoogleFont(theme.fonts);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-50 flex items-center justify-center">
@@ -75,9 +81,10 @@ export default function FunnelViewer() {
   }
 
   const blocks = Array.isArray(funnel.blocks) ? funnel.blocks : [];
+  const themeVars = deriveThemeVars(theme);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen" style={{ ...themeVars, background: "var(--surface)", color: "var(--text)" }}>
       {/* max-w-6xl to match the editor's own full-width canvas -- max-w-4xl
           left huge empty gutters on any normal desktop screen, since every
           block here is styled as a wide card (rounded-2xl, border), not a

@@ -112,9 +112,13 @@ beyond the field simply being disabled after the first claim.
 
 Block registry (`BLOCKS`, now `export`ed so `FunnelViewer.js` can reuse the
 exact same render functions) supports: `hero`, `volunteerHero`, `heading`,
-`paragraph`, `image`, `button`, `emailCapture`, `features`. No `product` or
-`checkout` block exists yet — that's Phase 2 of `roadmap.md`, still not
-built.
+`paragraph`, `image`, `button`, `emailCapture`, `features`, `cta`,
+`endorsedReview`, `products`, `faq`, `testimonial`. `products` (2026-08)
+self-fetches `products/{funnelOwnerUid}` from Firebase and reuses
+`resolveProductClick` — the same `templateId`→destination routing table
+`StoreCanvasBuilder.jsx` exports — rather than a second copy of that
+routing logic. No dedicated `checkout` block exists — that's still Phase 2
+of `roadmap.md`.
 
 **Images (2026-07-26)**: every "Image URL" field in the inspector (hero,
 `volunteerHero`'s background, the standalone image block) now has an
@@ -219,6 +223,83 @@ or auto-creating one — creating a funnel always goes through the
 dashboard's create flow (which also handles claiming/confirming the
 company slug), not through the editor itself.
 
+## Design system — per-funnel theming (2026-08)
+
+Before this, every block hardcoded its own Tailwind colors — nothing was
+customizable beyond field content. Researched how real competitors do this
+first (ClickFunnels 2.0's Style system, Leadpages' AI Brand Kit, Webflow/
+Framer's design tokens) before building anything; findings and the
+resulting scope decision:
+
+- **Reused the Shop Builder's `theme.js` engine directly** rather than
+  building a second, parallel one — `deriveThemeVars`/`toneStyle`/
+  `FONT_PAIRINGS`/`useGoogleFont` are already generic (single brand hex →
+  derived CSS-custom-property palette, Google Font pairings, mood presets)
+  and nothing in that file is Shop-Builder-specific. This mirrors the
+  validated industry pattern (Framer's own "Tokenit" plugin's entire pitch
+  is "one brand color in, full design system out") — not a one-off
+  invention.
+- **No schema change** — the `funnels.metadata` JSONB column already
+  existed (created as `{}`, already flowing through create/`PATCH`/the
+  public `SELECT *`) but nothing read or wrote it before this. It's now
+  used as `metadata: { theme }`.
+- **Explicitly not built**: ClickFunnels' full granularity (5 background
+  tiers, independent desktop/mobile font sizing, per-role letter-spacing),
+  Leadpages-style AI brand extraction (rejected — same reasoning as the
+  standing rejection of AI-driven page design elsewhere in this codebase),
+  per-block font overrides (page-wide consistency is the actual goal).
+
+**How it works**: `FunnelBuilder.js` holds `const [theme, setTheme] =
+useState(DEFAULT_THEME)`, loaded from `funnel.metadata?.theme` on fetch
+(falls back to `DEFAULT_THEME` for any funnel saved before this existed —
+no migration needed), and included in the existing debounced autosave
+(`PATCH .../:id` body gains `metadata: { theme }`). `deriveThemeVars(theme)`
+is applied as inline `style` on the canvas's device-frame wrapper (editor)
+and on `FunnelViewer.js`'s outer page wrapper (public), so every block
+underneath just reads CSS vars (`var(--surface)`, `var(--text)`,
+`var(--muted-text)`, `var(--accent)`, `var(--accent-foreground)`,
+`var(--border)`, `var(--radius)`, `var(--font-display)`, `var(--font-body)`)
+— the same substitution already proven across every Shop Builder block. A
+palette-icon button in `EditorHeader` opens a third left-panel mode
+(`showDesign`, alongside the existing Blocks/Inspector toggle) showing
+`DesignPanel` — brand color, mood, font pairing, corner radius, spacing —
+a direct, smaller port of `AffiliateShopBuilderPage.js`'s own Design
+section, not a new design.
+
+**Per-block `tone`**: most blocks (`hero`, `heading`, `paragraph`,
+`emailCapture`, `features`, `products`, `faq`, `testimonial`) gained a
+`tone` field (`default`/`muted`/`contrast`) via a shared `ToneField`
+control, applying `toneStyle(data.tone)` from `theme.js` — the same
+3-tier system already built for the Shop Builder, not ClickFunnels' 5-tier
+version (3 tiers already proved sufficient there; more granularity is a
+boundable follow-up if it's ever actually needed, not something to guess
+at now). Three blocks were **deliberately excluded**:
+- `image` and `cta`'s own background swatches (`CTA_BG_COLORS`) — `cta`
+  already had its own explicit per-block color-override system before
+  this (a CTA deliberately standing out from the page's palette is a real,
+  distinct feature from page-wide theming), so it keeps that system as-is
+  and only picked up font-family theming for its headline/subhead; adding
+  a redundant `tone` on top of an always-explicit swatch would just be
+  confusing.
+- `hero`'s full-bleed `gradientOverlay` layout and `volunteerHero` — both
+  always sit on a required background photo and already have their own
+  explicit overlay/`textColor` contrast system designed for that; forcing
+  page-theme colors on top would fight it. Both still picked up
+  `font-family: var(--font-display)`/`var(--font-body)` for typographic
+  consistency with the rest of the page.
+- `endorsedReview` — a third-party embedded widget with its own explicit
+  accent-color/light-dark controls (`EndorsedWidget`'s own `color`/
+  `themeMode` props) — the same kind of deliberate per-block override as
+  `cta`'s swatches, not something page theming should reach into.
+
+`SubscribeInlineForm` (shared by `emailCapture`, `volunteerHero`, and
+`button` with `actionType: 'subscribe'`) was themed once at the source —
+its submit button reads `var(--accent)`/`var(--accent-foreground)` — so
+all three call sites picked up the fix from a single edit, the same
+"fix shared components once" pattern already used for `AlignField`/
+`VariantField` and the shared `Button`'s `asChild` support (see
+`gotchas.md`).
+
 ## The dashboard — `FunnelBuilderDash.js`
 
 No longer a hardcoded mock array. On mount, fetches `GET /api/funnels`
@@ -230,6 +311,14 @@ funnel row (`POST /api/funnels`) and navigates straight into the editor
 with a real `funnelId`. Clicking an existing row does the same — opens the
 editor against that funnel's real id, which triggers the load-on-mount
 effect described above.
+
+**One funnel per affiliate (2026-08)**: `POST /api/funnels` 409s if
+`SELECT COUNT(*) FROM funnels WHERE user_id = $1` is already > 0 — an
+affiliate must delete their existing funnel before creating another. The
+dashboard's Create button is disabled with an explanatory note once
+`hasFunnel` is true, and the row-level Duplicate action was removed
+entirely (it could never succeed once this limit exists, since there's
+always already a funnel by the time Duplicate is clickable).
 
 **The modal's "goal" choice is real (2026-07-27)**: `handleCreate` calls
 `getStarterBlocks(form.goal)` (`templateRegistry.js`) and sends the result
