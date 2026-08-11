@@ -69,6 +69,18 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'A valid name or slug is required' });
     }
 
+    // One funnel per affiliate at a time -- delete the existing one (real
+    // DELETE /:id below) before a new one can be created. Checked before
+    // the slug-collision query since "you already have a funnel" is the
+    // more accurate error when that's actually why this is being rejected.
+    const countResult = await pool.query(
+      'SELECT COUNT(*)::int AS count FROM funnels WHERE user_id = $1',
+      [userId]
+    );
+    if (countResult.rows[0].count > 0) {
+      return res.status(409).json({ error: 'You already have a funnel. Delete it before creating a new one.' });
+    }
+
     const existing = await pool.query(
       'SELECT id FROM funnels WHERE user_id = $1 AND slug = $2',
       [userId, cleanedSlug]

@@ -168,6 +168,13 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
   const [err, setErr] = useState(null);
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
+  // The handle a storefront was first saved with, if any -- once set, it's
+  // locked for the lifetime of the storefront (see the load effect and
+  // save() below). Changing a handle after it's live would silently break
+  // every link already handed out (affiliate tracking links, anything
+  // shared/bookmarked, SEO), so this isn't just a UI nicety: save() itself
+  // refuses to write anything other than this value once it's non-null.
+  const [existingHandle, setExistingHandle] = useState(null);
   const [data, setData] = useState({
     handle: "",
     displayName: "",
@@ -204,6 +211,8 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
       const snap = await get(dbRef(db, `storefronts/${uid}`));
       if (snap.exists()) {
         const raw = snap.val();
+        const savedHandle = sanitizeHandle(raw.handle);
+        if (savedHandle) setExistingHandle(savedHandle);
         setData((d) => ({
           ...d,
           ...raw,
@@ -274,10 +283,15 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
       setSaving(true);
       setErr(null);
       const uid = uidOrThrow(currentUserId);
-      const handle = sanitizeHandle(data.handle);
+      // Once a storefront has a saved handle, it's locked -- ignore
+      // whatever's currently in the input (defense in depth alongside the
+      // disabled input below; this is what actually stops a changed handle
+      // from ever reaching Firebase, not just the UI being greyed out).
+      const handle = existingHandle || sanitizeHandle(data.handle);
       if (!handle) throw new Error("Please choose a handle (3–30 letters/numbers/dashes)");
       const ok = await claimHandle(getDatabase(), handle, uid);
       if (!ok) throw new Error("That handle is already taken. Try another.");
+      if (!existingHandle) setExistingHandle(handle);
       // Legacy pre-block fields (still present in local state because the
       // load effect spreads the raw Firebase record wholesale) must not be
       // written back out here. If they were, migrateLegacyFieldsToBlocks()
@@ -311,7 +325,7 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
     }
   };
 
-  const publicUrl = buildPublicUrl(siteOrigin, data.handle);
+  const publicUrl = buildPublicUrl(siteOrigin, existingHandle || data.handle);
 
   if (loading) return <div className="p-4 text-sm text-zinc-500">Loading storefront…</div>;
 
@@ -323,7 +337,16 @@ export function AffiliateStorefrontEditor({ currentUserId, siteOrigin = "https:/
           <h3 className="text-sm font-semibold">Storefront Basics</h3>
           <div className="mt-3 grid grid-cols-1 gap-3">
             <label className="text-xs text-zinc-600">Handle (unique)</label>
-            <input value={data.handle} onChange={(e) => setData({ ...data, handle: e.target.value })} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 dark:border-zinc-800 dark:bg-zinc-900" placeholder="your-name" />
+            <input
+              value={existingHandle || data.handle}
+              onChange={(e) => setData({ ...data, handle: e.target.value })}
+              disabled={!!existingHandle}
+              className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-fuchsia-400 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:disabled:bg-zinc-800"
+              placeholder="your-name"
+            />
+            {existingHandle && (
+              <p className="-mt-1 text-xs text-zinc-500">Locked once set, so links you've already shared keep working.</p>
+            )}
             <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-300"><LinkIcon className="h-4 w-4" /> {publicUrl || "Choose a handle to see your URL"}</div>
           </div>
         </section>

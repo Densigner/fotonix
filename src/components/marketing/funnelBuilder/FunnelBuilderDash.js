@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   XCircle,
   Pencil,
-  Copy,
   Trash2,
 } from "lucide-react";
 import { API_URL } from '../../../config/environment';
@@ -216,7 +215,7 @@ function StatusPill({ published }) {
 }
 
 /** --- Actions menu ------------------------------------------------------ */
-function RowActions({ funnel, onRename, onDuplicate, onTogglePublish, onDelete }) {
+function RowActions({ funnel, onRename, onTogglePublish, onDelete }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -250,7 +249,6 @@ function RowActions({ funnel, onRename, onDuplicate, onTogglePublish, onDelete }
       {open && (
         <div className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
           {item(<Pencil className="h-3.5 w-3.5" />, "Rename", () => onRename(funnel))}
-          {item(<Copy className="h-3.5 w-3.5" />, "Duplicate", () => onDuplicate(funnel))}
           {funnel.published
             ? item(<XCircle className="h-3.5 w-3.5" />, "Unpublish", () => onTogglePublish(funnel))
             : item(<CheckCircle2 className="h-3.5 w-3.5" />, "Publish", () => onTogglePublish(funnel))}
@@ -314,6 +312,11 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
     });
   }, [rows, query, status]);
 
+  // One funnel per affiliate at a time -- the real limit lives server-side
+  // (POST /api/funnels rejects a second one), this just keeps the UI from
+  // offering an action that would fail.
+  const hasFunnel = rows.length > 0;
+
   async function handleCreate(form) {
     setCreating(true);
     setCreateError(null);
@@ -371,28 +374,6 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
       setRows((s) => s.map((r) => (r.id === funnel.id ? updated : r)));
     } catch (e) {
       window.alert('Could not rename this funnel — please try again.');
-    }
-  }
-
-  async function handleDuplicate(funnel) {
-    try {
-      // Same slug-collision handling as manual creation: try the plain
-      // "name (copy)" slug first, then fall back to a timestamp suffix if
-      // that's already taken too (e.g. duplicating the same funnel twice).
-      const attempt = async (name) => fetch(`${API_URL}/api/funnels`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ name, blocks: funnel.blocks }),
-      });
-      let res = await attempt(`${funnel.name} (copy)`);
-      if (res.status === 409) {
-        res = await attempt(`${funnel.name} (copy ${Date.now().toString().slice(-4)})`);
-      }
-      if (!res.ok) throw new Error();
-      const { funnel: created } = await res.json();
-      setRows((s) => [created, ...s]);
-    } catch (e) {
-      window.alert('Could not duplicate this funnel — please try again.');
     }
   }
 
@@ -458,13 +439,20 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
         </button>
 
         <button
-          className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+          className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none"
           onClick={() => { setCreateError(null); setOpenCreate(true); }}
+          disabled={hasFunnel}
+          title={hasFunnel ? "Delete your existing funnel before creating a new one" : undefined}
         >
           <Plus className="h-4 w-4" />
           Create
         </button>
       </div>
+      {hasFunnel && (
+        <p className="-mt-2 mb-4 text-xs text-neutral-500">
+          One funnel at a time — delete your current one to create another.
+        </p>
+      )}
 
       {/* Card wrapper around table, to match your dashboard style */}
       <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
@@ -496,19 +484,28 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
                 <tr>
                   <td colSpan={5} className="px-5 py-10">
                     <div className="grid place-items-center text-center">
-                      <div className="mb-2 text-base font-medium">
-                        No records yet.
-                      </div>
-                      <div className="mb-4 text-sm text-neutral-600">
-                        Create your first funnel to start tracking performance.
-                      </div>
-                      <button
-                        onClick={() => { setCreateError(null); setOpenCreate(true); }}
-                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Create funnel
-                      </button>
+                      {hasFunnel ? (
+                        <>
+                          <div className="mb-1 text-base font-medium">No funnels match your filters.</div>
+                          <div className="text-sm text-neutral-600">Try a different search or status.</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="mb-2 text-base font-medium">
+                            No records yet.
+                          </div>
+                          <div className="mb-4 text-sm text-neutral-600">
+                            Create your first funnel to start tracking performance.
+                          </div>
+                          <button
+                            onClick={() => { setCreateError(null); setOpenCreate(true); }}
+                            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Create funnel
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -550,7 +547,6 @@ export default function FunnelsListPage({ currentUserId, onOpenFunnel }) {
                         <RowActions
                           funnel={r}
                           onRename={handleRename}
-                          onDuplicate={handleDuplicate}
                           onTogglePublish={handleTogglePublish}
                           onDelete={handleDelete}
                         />
