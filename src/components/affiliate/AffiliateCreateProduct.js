@@ -1,7 +1,24 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Image as ImageIcon, CheckCircle2, AlertTriangle, Tag, Package, Layers, ExternalLink, RefreshCcw } from "lucide-react";
-import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY, MIRROR_PRICE_MULTIPLIER } from "../../data/acrylicSizes";
+import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY, findAcrylicSize, priceToAmount, priceForMaterial } from "../../data/acrylicSizes";
+
+// The template prices below used to be invented numbers that quietly
+// disagreed with what the real designer pages actually charge (e.g. "Light
+// Up User Design" listed at £19.99 here while the real wall panel it opens
+// defaults to £29.99) -- derived from the same canonical acrylicSizes.js
+// data the landing page and the real checkout page already share, instead
+// of a third, independently-maintained copy of "the price."
+const WALL_DEFAULT_PRICE = Number(priceToAmount(findAcrylicSize(DEFAULT_WALL_ACRYLIC_SIZE_KEY)?.price)) || 0;
+const DESK_DEFAULT_PRICE = Number(priceToAmount(findAcrylicSize(DEFAULT_DESK_ACRYLIC_SIZE_KEY)?.price)) || 0;
+const DESK_MIRROR_DEFAULT_PRICE = Number(priceToAmount(priceForMaterial(findAcrylicSize(DEFAULT_DESK_ACRYLIC_SIZE_KEY)?.price, 'mirror'))) || 0;
+// No equivalent shared constant exists for the Lumina Mirror (it's a bare
+// literal STANDARD_MIRROR_BASE_PRICE = 29.99 duplicated inside both
+// ProductPageClean.js and StandardMirrorDesigner.js, not exported from
+// anywhere) -- matches those today; if either ever changes, this needs
+// updating by hand same as they'd need updating to agree with each other.
+const LUMINA_MIRROR_PRICE = 29.99;
+const STENCIL_GENERATOR_PRICE = 9.99;
 
 // Every real designer an affiliate can save a design from -- each opens in a
 // new tab so this modal (and whatever's already typed into the fields below)
@@ -44,16 +61,18 @@ export default function ProductUploadModal({
       // actual editable canvas (see StandardMirrorDesigner.js's saveDesign())
       // gated to affiliate accounts. Removed in favor of that real mechanism
       // rather than keeping two inconsistent ways to do the same thing.
+      //
+      // Labels now match productsData.js's real homepage names exactly
+      // (previously e.g. "Light Up User Design" here vs. "Side-lit Acrylic
+      // Designer" on the actual product) -- same five real products, one
+      // consistent set of names across every place an affiliate or a
+      // customer sees them.
       fotonix: [
-        { id: "lumina-mirror-user", label: "Lumina Mirror User Design", basePrice: 29.99, category: "fotonix" },
-        { id: "light-up-user", label: "Light Up User Design", basePrice: 19.99, category: "fotonix" },
-        { id: "lumina-cut-user", label: "Lumina Mirror Cut To Shape User Design", basePrice: 40.00, category: "fotonix" },
-        // Same cut-to-shape line as lumina-cut-user, mirror material instead
-        // of acrylic -- routes to the same designer with &material=mirror
-        // (see resolveProductClick in StoreCanvasBuilder.jsx). Mirror costs
-        // more than acrylic at the same size, same MIRROR_PRICE_MULTIPLIER
-        // the real designer page applies via priceForMaterial().
-        { id: "lumina-cut-mirror-user", label: "Custom Shape Mirror (Back-Lit)", basePrice: Number((40.00 * MIRROR_PRICE_MULTIPLIER).toFixed(2)), category: "fotonix" },
+        { id: "lumina-mirror-user", label: "LED Lumina Mirror - Classic Rectangle", basePrice: LUMINA_MIRROR_PRICE, category: "fotonix" },
+        { id: "light-up-user", label: "Side-lit Acrylic Designer", basePrice: WALL_DEFAULT_PRICE, category: "fotonix" },
+        { id: "lumina-cut-user", label: "Side-lit Acrylic Sign - Desk Mounted", basePrice: DESK_DEFAULT_PRICE, category: "fotonix" },
+        { id: "lumina-cut-mirror-user", label: "Custom Shape Sign - Back-Lit Mirror", basePrice: DESK_MIRROR_DEFAULT_PRICE, category: "fotonix" },
+        { id: "stencil-generator", label: "Stencil Generator", basePrice: STENCIL_GENERATOR_PRICE, category: "fotonix" },
       ]
     }),
     []
@@ -417,7 +436,7 @@ export default function ProductUploadModal({
                       <input 
                         value={title} 
                         onChange={(e) => setTitle(e.target.value.slice(0, 120))} 
-                        placeholder="e.g. Premium Cotton T-Shirt" 
+                        placeholder="e.g. Warm White Rectangle Mirror"
                         className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-fuchsia-400 text-black dark:border-zinc-800 dark:bg-zinc-900 dark:text-white" 
                       />
                     </div>
