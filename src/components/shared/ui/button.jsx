@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Button({ children, variant = 'default', className = '', ...p }) {
+export function Button({ children, variant = 'default', className = '', asChild, style, ...p }) {
   const base = 'px-3 py-2 rounded text-sm font-medium';
   // A caller-supplied text-COLOR class in `className` is meant to override
   // the variant's own text color, but both end up as plain same-specificity
@@ -31,8 +31,32 @@ export function Button({ children, variant = 'default', className = '', ...p }) 
   } else {
     styles = `bg-slate-800 ${hasCustomText ? '' : 'text-white'}`;
   }
+  const classes = `${base} ${styles} ${className}`;
+
+  // asChild was never actually implemented -- it just landed as a bogus
+  // DOM attribute on <button>, and the single child (always an <a> at
+  // every real call site, e.g. CtaAction in FunnelBuilder.js) got rendered
+  // *inside* that button instead of *becoming* the styled element. Two
+  // real problems from that: invalid nested-interactive HTML
+  // (<button><a>...</a></button>), and — the one that actually gets
+  // reported — none of this component's own background/text styling, or
+  // a caller's inline `style` override (e.g. CtaAction's Follow-platform
+  // brand color), ever reached the <a> that's actually visible, so a
+  // "Follow on YouTube" button just showed whatever the outer <button>'s
+  // own default classes resolved to. Real implementation, matching the
+  // one already working in store-builder/storeBuilder/StoreBuilder.js's
+  // own local Button: merge onto the child instead of wrapping it.
+  if (asChild) {
+    const child = React.Children.only(children);
+    return React.cloneElement(child, {
+      ...p,
+      className: `${classes} ${child.props.className || ''}`.trim(),
+      style: { ...style, ...child.props.style },
+    });
+  }
+
   return (
-    <button {...p} className={`${base} ${styles} ${className}`}>
+    <button {...p} style={style} className={classes}>
       {children}
     </button>
   );
