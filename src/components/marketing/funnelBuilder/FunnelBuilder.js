@@ -375,7 +375,7 @@ function CtaAction({ data, onChange, editable, funnelOwnerUid, buttonClassName, 
         href={disabled ? undefined : href}
         target={isExternal ? '_blank' : undefined}
         rel={isExternal ? 'noopener noreferrer' : undefined}
-        className={`inline-flex items-center gap-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+        className={`inline-flex items-center justify-center gap-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
         title={missing ? (data.actionType === 'shop' ? "No shop set up yet" : "No product selected yet") : undefined}
         onClick={(e) => { if (disabled) e.preventDefault(); }}
       >
