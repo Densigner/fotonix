@@ -85,11 +85,15 @@ export default function FunnelViewer() {
 
   return (
     <div className="min-h-screen" style={{ ...themeVars, background: "var(--surface)", color: "var(--text)" }}>
-      {/* max-w-6xl to match the editor's own full-width canvas -- max-w-4xl
-          left huge empty gutters on any normal desktop screen, since every
-          block here is styled as a wide card (rounded-2xl, border), not a
-          narrow-column-of-text like a blog post. */}
-      <main className="max-w-6xl mx-auto px-4 md:px-6 py-10 space-y-6">
+      {/* No max-width cap -- the editor's own desktop canvas renders blocks
+          at width:100% of the space left after its 320px left panel (see
+          `containerWidth` in FunnelBuilder.js), which on any real monitor
+          is already much wider than max-w-6xl (1152px) ever was. Capping
+          the published page narrower than what the editor actually showed
+          while building it is exactly the "weird side gaps" bug -- the
+          published output has to match the widest thing the editor ever
+          previewed, not an arbitrary blog-post-style reading column. */}
+      <main className="w-full px-4 md:px-10 py-10 space-y-6">
         {blocks.length === 0 ? (
           <p className="text-center text-slate-500 py-16">This funnel doesn't have any content yet.</p>
         ) : (
