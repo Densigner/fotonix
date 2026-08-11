@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Image as ImageIcon, CheckCircle2, AlertTriangle, Tag, Package, Layers, ExternalLink, RefreshCcw } from "lucide-react";
-import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY } from "../../data/acrylicSizes";
+import { DEFAULT_DESK_ACRYLIC_SIZE_KEY, DEFAULT_WALL_ACRYLIC_SIZE_KEY, MIRROR_PRICE_MULTIPLIER } from "../../data/acrylicSizes";
 
 // Every real designer an affiliate can save a design from -- each opens in a
 // new tab so this modal (and whatever's already typed into the fields below)
@@ -17,6 +17,7 @@ const DESIGNER_LINKS = [
   { label: "Design a mirror", href: "/#product" },
   { label: "Design a desk sign", href: `/?size=${DEFAULT_DESK_ACRYLIC_SIZE_KEY}#affiliate-product-accryl` },
   { label: "Design a wall panel", href: `/?size=${DEFAULT_WALL_ACRYLIC_SIZE_KEY}#affiliate-product-accryl` },
+  { label: "Design a custom mirror", href: `/?size=${DEFAULT_DESK_ACRYLIC_SIZE_KEY}&material=mirror#affiliate-product-accryl` },
 ];
 
 /**
@@ -47,6 +48,12 @@ export default function ProductUploadModal({
         { id: "lumina-mirror-user", label: "Lumina Mirror User Design", basePrice: 29.99, category: "fotonix" },
         { id: "light-up-user", label: "Light Up User Design", basePrice: 19.99, category: "fotonix" },
         { id: "lumina-cut-user", label: "Lumina Mirror Cut To Shape User Design", basePrice: 40.00, category: "fotonix" },
+        // Same cut-to-shape line as lumina-cut-user, mirror material instead
+        // of acrylic -- routes to the same designer with &material=mirror
+        // (see resolveProductClick in StoreCanvasBuilder.jsx). Mirror costs
+        // more than acrylic at the same size, same MIRROR_PRICE_MULTIPLIER
+        // the real designer page applies via priceForMaterial().
+        { id: "lumina-cut-mirror-user", label: "Custom Shape Mirror (Back-Lit)", basePrice: Number((40.00 * MIRROR_PRICE_MULTIPLIER).toFixed(2)), category: "fotonix" },
       ]
     }),
     []

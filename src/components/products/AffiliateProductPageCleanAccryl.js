@@ -380,7 +380,10 @@ export default function ProductPage() {
       await set(dbRef(db, `designs/${uid}/${designId}`), {
         id: designId,
         title: designTitle.trim(),
-        type: isDesk ? 'edge-lit-desk' : 'edge-lit-wall',
+        // Desk sign has two materials (Acrylic/Mirror, isDesk only) -- kept
+        // as its own type rather than a separate field so "My Saved
+        // Designs" doesn't need to know about materials at all, just types.
+        type: isDesk ? (selectedMaterial.key === 'mirror' ? 'edge-lit-desk-mirror' : 'edge-lit-desk') : 'edge-lit-wall',
         basePrice: parseFloat(priceToAmount(displayPrice)) || 0,
         thumbnailUrl,
         canvasJSON: JSON.stringify(canvasJSON),

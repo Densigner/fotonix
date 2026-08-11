@@ -159,6 +159,12 @@ function resolveProductClick(p, ownerUid) {
   if (p.templateId === "lumina-cut-user") {
     return () => { window.location.href = `${window.location.origin}/?size=${DEFAULT_DESK_ACRYLIC_SIZE_KEY}#affiliate-product-accryl`; };
   }
+  // Same cut-to-shape line, mirror material -- the desk size still applies,
+  // &material=mirror is what actually picks Mirror over Acrylic on that page
+  // (see resolveMaterial() in AffiliateProductPageCleanAccryl.js).
+  if (p.templateId === "lumina-cut-mirror-user") {
+    return () => { window.location.href = `${window.location.origin}/?size=${DEFAULT_DESK_ACRYLIC_SIZE_KEY}&material=mirror#affiliate-product-accryl`; };
+  }
   if ((title.includes("fotonix") && title.includes("light up")) || p.templateId === "light-up-user") {
     return () => { window.location.href = `${window.location.origin}/?size=${DEFAULT_WALL_ACRYLIC_SIZE_KEY}#affiliate-product-accryl`; };
   }
