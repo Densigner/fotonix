@@ -44,10 +44,15 @@ import {
   ArrowUpRight,
   GripVertical,
   Star,
+  HelpCircle,
+  ChevronDown,
+  Quote,
+  ShoppingBag,
 } from "lucide-react";
 import { useSearchParams } from 'react-router-dom';
 import { getStarterBlocks } from './templateRegistry';
 import { EndorsedWidget, ENDORSED_WIDGET_TYPES } from '../../shared/endorsedWidget';
+import { resolveProductClick } from '../../store-builder/StoreCanvasBuilder';
 // Firebase storage helper (upload images to the project storage bucket)
 import { storage, db } from '../../../firebase';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -429,6 +434,78 @@ function prefixedAction(data, onChange, prefix) {
     onChange(real);
   };
   return { data: remapped, onChange: remappedOnChange };
+}
+
+// Products block's own live fetch of products/{funnelOwnerUid} -- mirrors
+// useResolvedActionHref's self-contained shop-handle lookup above (a plain
+// db.ref().once('value') scoped to this one block) rather than threading a
+// new `products` prop through the whole editor/DragOverlay/FunnelViewer.js
+// tree just for this one block.
+function ProductsBlockRender({ data, funnelOwnerUid }) {
+  const [products, setProducts] = useState(null); // null = still loading
+
+  useEffect(() => {
+    if (!funnelOwnerUid) { setProducts([]); return undefined; }
+    let cancelled = false;
+    db.ref(`products/${funnelOwnerUid}`).once('value')
+      .then((snap) => {
+        if (cancelled) return;
+        const val = snap.val();
+        setProducts(val ? Object.entries(val).map(([id, p]) => ({ id, ...p })) : []);
+      })
+      .catch(() => { if (!cancelled) setProducts([]); });
+    return () => { cancelled = true; };
+  }, [funnelOwnerUid]);
+
+  if (products === null) {
+    return <div className="py-10 text-center text-sm text-gray-400">Loading products…</div>;
+  }
+
+  if (products.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-gray-300 py-10 text-center text-sm text-gray-500">
+        No products yet — add one from the affiliate dashboard's "Add Product," and it'll show up here automatically.
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full">
+      {data.title && (
+        <h3 className="mb-4 text-center text-xl font-semibold tracking-tight text-gray-900">{data.title}</h3>
+      )}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+        {products.map((p) => {
+          // resolveProductClick always returns a real navigate function here
+          // (falls back to the generic /product/{uid}/{id} route whenever a
+          // funnelOwnerUid is present, which it always is for a real funnel)
+          // -- same routing table the Shop Builder's own Products block
+          // uses, not a second copy of it.
+          const onNavigate = resolveProductClick(p, funnelOwnerUid);
+          const src = p.images?.[p.mainImageIndex ?? 0]?.url || p.images?.[0]?.url;
+          return (
+            <a
+              key={p.id}
+              href={`/product/${funnelOwnerUid}/${p.id}`}
+              onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate(); } : undefined}
+              className="group block overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
+            >
+              {src && <img src={src} alt={p.title} className="h-40 w-full object-cover" loading="lazy" />}
+              <div className="p-4">
+                <h4 className="line-clamp-2 text-sm font-semibold text-gray-900">{p.title}</h4>
+                {data.showPrice !== false && typeof p.price === 'number' && (
+                  <div className="mt-1 font-medium text-indigo-600">£{p.price.toFixed(2)}</div>
+                )}
+                {data.showCTA !== false && (
+                  <div className="mt-2 text-xs font-medium text-gray-500 group-hover:text-indigo-600">View details →</div>
+                )}
+              </div>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // ----- Block registry ----- //
@@ -1169,6 +1246,113 @@ const BLOCKS = {
         </Field>
         <ToggleField label='Show "Powered by Endorsed.Review"' checked={data.branding} onCheckedChange={(v) => onChange({ branding: v })} />
         <p className="text-xs text-gray-500">Pulls real, live reviews from Fotonix's own Endorsed.Review account.</p>
+      </div>
+    )
+  },
+  products: {
+    name: "Products",
+    icon: ShoppingBag,
+    defaults: () => ({ title: "Featured products", showPrice: true, showCTA: true }),
+    render: ({ data, funnelOwnerUid }) => (
+      <ProductsBlockRender data={data} funnelOwnerUid={funnelOwnerUid} />
+    ),
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Title (optional)">
+          <Input value={data.title || ""} onChange={(e) => onChange({ title: e.target.value })} />
+        </Field>
+        <ToggleField label="Show price" checked={data.showPrice !== false} onCheckedChange={(v) => onChange({ showPrice: v })} />
+        <ToggleField label="Show button" checked={data.showCTA !== false} onCheckedChange={(v) => onChange({ showCTA: v })} />
+        <p className="text-xs text-gray-500">Shows every product on this account automatically — nothing to pick, add a product from the affiliate dashboard and it appears here.</p>
+      </div>
+    )
+  },
+  faq: {
+    name: "FAQ",
+    icon: HelpCircle,
+    defaults: () => ({
+      items: [
+        { id: uuidv4(), q: "What is shipping time?", a: "2-5 business days." },
+        { id: uuidv4(), q: "What's the return policy?", a: "30 days, no questions asked, full refund." },
+      ],
+    }),
+    render: ({ data }) => {
+      const items = data.items || [];
+      if (!items.length) return null;
+      return (
+        <div className="w-full rounded-2xl border border-gray-200 bg-white p-6">
+          {/* Kills the native <details> marker (a plain triangle) in favor of
+              the rotating ChevronDown below -- same trick already built once
+              for the Shop Builder's identical FAQ block, ported verbatim. */}
+          <style>{".fx-funnel-faq summary{list-style:none}.fx-funnel-faq summary::-webkit-details-marker{display:none}.fx-funnel-faq details[open] .fx-chevron{transform:rotate(180deg)}"}</style>
+          <h3 className="mb-3 text-xl font-semibold tracking-tight text-gray-900">Frequently asked questions</h3>
+          <div className="fx-funnel-faq divide-y divide-gray-100">
+            {items.map((it) => (
+              <details key={it.id} className="py-3">
+                <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-medium text-gray-900">
+                  {it.q}
+                  <ChevronDown className="fx-chevron h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200" />
+                </summary>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">{it.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      );
+    },
+    inspector: ({ data, onChange }) => {
+      const items = data.items || [];
+      return (
+        <div className="space-y-3">
+          {items.map((it, idx) => (
+            <div className="rounded-lg border p-3" key={it.id}>
+              <Field label="Question">
+                <Input value={it.q} onChange={(e) => { const next = [...items]; next[idx] = { ...it, q: e.target.value }; onChange({ items: next }); }} />
+              </Field>
+              <Field label="Answer">
+                <Textarea value={it.a} onChange={(e) => { const next = [...items]; next[idx] = { ...it, a: e.target.value }; onChange({ items: next }); }} />
+              </Field>
+              <div className="mt-2 flex justify-end">
+                <Button size="sm" variant="destructive" onClick={() => onChange({ items: items.filter((_, i) => i !== idx) })}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            </div>
+          ))}
+          <Button size="sm" variant="outline" className="text-black" onClick={() => onChange({ items: [...items, { id: uuidv4(), q: "New question", a: "Answer…" }] })}>Add question</Button>
+        </div>
+      );
+    }
+  },
+  testimonial: {
+    name: "Testimonial",
+    icon: Quote,
+    // Deliberately reads as a builder instruction, not a real quote -- an
+    // invented "customer" name/quote here could get published as-is if an
+    // owner forgets to replace it, which would read as a fabricated review.
+    // Same reasoning as the Shop Builder's identical default (sections.js).
+    defaults: () => ({ quote: "Paste a real quote from a real customer here — their exact words work better than anything written for them.", name: "", role: "", photo: "" }),
+    render: ({ data }) => {
+      if (!data.quote) return null;
+      return (
+        <div className="w-full rounded-2xl bg-gray-50 p-8 text-center">
+          <p className="mx-auto max-w-2xl text-xl leading-relaxed text-gray-900 md:text-2xl">&ldquo;{data.quote}&rdquo;</p>
+          {(data.name || data.photo) && (
+            <div className="mt-5 flex items-center justify-center gap-3">
+              {data.photo && <img src={data.photo} alt="" className="h-10 w-10 rounded-full object-cover" />}
+              <div className="text-left">
+                {data.name && <div className="text-sm font-semibold text-gray-900">{data.name}</div>}
+                {data.role && <div className="text-xs text-gray-500">{data.role}</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    },
+    inspector: ({ data, onChange }) => (
+      <div className="space-y-4">
+        <Field label="Quote"><Textarea value={data.quote || ""} onChange={(e) => onChange({ quote: e.target.value })} /></Field>
+        <Field label="Name"><Input value={data.name || ""} onChange={(e) => onChange({ name: e.target.value })} /></Field>
+        <Field label="Role / context"><Input value={data.role || ""} onChange={(e) => onChange({ role: e.target.value })} placeholder="e.g. Verified buyer" /></Field>
+        <ImageUrlField label="Photo" value={data.photo} onChange={(photo) => onChange({ photo })} />
       </div>
     )
   },

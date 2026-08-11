@@ -146,7 +146,11 @@ export function HeroRenderer({ data, editable }) {
 // `templateId` — `typeId` is never set anywhere in the codebase, so this
 // only ever matched via the title-text fallback below, never via the field
 // it looks like it's checking. Fixed to read the real field.
-function resolveProductClick(p, ownerUid) {
+//
+// Exported so FunnelBuilder.js's own Products block can reuse this exact
+// routing table instead of maintaining a second, easily-drifting copy of
+// "which templateId goes to which real page."
+export function resolveProductClick(p, ownerUid) {
   const title = (p.title || "").toLowerCase();
   // lumina-cut-user is the desk/cut-to-shape line, light-up-user (plus the
   // title fallback) the wall panel -- both open the same accryl page but
