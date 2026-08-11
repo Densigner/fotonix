@@ -211,7 +211,7 @@ function ProductCardLink({ p, showPrice, showCTA, ownerUid, variant = "grid" }) 
 export function CollectionGridRenderer({ data, fullProducts, ownerUid }) {
   // Firebase RTDB prunes empty arrays on write, so a saved section with no
   // product IDs reloads with `productIds` missing, not [].
-  const { title, productIds = [], showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid", tone } = data;
+  const { title, productIds = [], showPrice, showCTA, displayMode = "all", featured, featuredProductId, variant = "grid", tone } = data;
   const all = fullProducts || [];
   const ordered = displayMode === "all" ? all : productIds.map((id) => all.find((p) => p?.id === id)).filter(Boolean);
   const featuredProduct = featured
@@ -535,7 +535,7 @@ function HeroInspector({ data, onChange, onPickImage }) {
 }
 
 function CollectionGridInspector({ data, onChange, fullProducts }) {
-  const { title, productIds = [], columns, showPrice, showCTA, displayMode = "curated", featured, featuredProductId, variant = "grid", tone } = data;
+  const { title, productIds = [], columns, showPrice, showCTA, displayMode = "all", featured, featuredProductId, variant = "grid", tone } = data;
   const setCols = (k, v) => onChange({ columns: { ...columns, [k]: v } });
   const all = fullProducts || [];
   const candidateProducts = displayMode === "all" ? all : all.filter((p) => productIds.includes(p.id));
@@ -555,12 +555,29 @@ function CollectionGridInspector({ data, onChange, fullProducts }) {
         </div>
       </Field>
       {displayMode === "curated" && (
-        <Field label="Product IDs">
-          <Input
-            placeholder="id1, id2, id3"
-            value={productIds.join(", ")}
-            onChange={(e) => onChange({ productIds: e.target.value.split(/[,\s]+/).filter(Boolean) })}
-          />
+        <Field label="Products">
+          {all.length === 0 ? (
+            <p className="text-xs text-gray-500">No products yet — create one first, then come back here to pick it.</p>
+          ) : (
+            <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-md border border-gray-200 p-1.5">
+              {all.map((p) => {
+                const checked = productIds.includes(p.id);
+                return (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = e.target.checked ? [...productIds, p.id] : productIds.filter((id) => id !== p.id);
+                        onChange({ productIds: next });
+                      }}
+                    />
+                    <span className="truncate">{p.title || "Untitled product"}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </Field>
       )}
       <Field label="Columns">

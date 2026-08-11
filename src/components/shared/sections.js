@@ -28,10 +28,14 @@ export function createSection(type) {
         type,
         data: {
           title: "The edit", productIds: [], columns: { base: 1, sm: 2, md: 3, lg: 4 }, showPrice: true, showCTA: true,
-          // displayMode "all" shows every active product instead of the
-          // curated productIds list; "featured" pulls one product out into
-          // a large hero card above the grid.
-          displayMode: "curated", featured: false, featuredProductId: "",
+          // "all" shows every product automatically -- "curated" needs the
+          // owner to explicitly pick which ones via the checklist in the
+          // Inspector, so it defaults to a visible, working block instead of
+          // a curated list that starts genuinely empty (an affiliate adding
+          // this block and seeing nothing render read as "my product didn't
+          // save," not "curated mode needs picks"). "featured" pulls one
+          // product out into a large hero card above the grid.
+          displayMode: "all", featured: false, featuredProductId: "",
           tone: "default",
         },
       };
