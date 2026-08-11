@@ -567,7 +567,16 @@ const BLOCKS = {
                 {data.subhead}
               </p>
               <div className={`mt-6 flex gap-3 ${data.align === 'center' ? 'justify-center' : 'justify-start'}`}>
-                <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-white text-gray-900 hover:bg-gray-100" showIcon />
+                {/* Real inline style, not bg-white/text-gray-900 classes --
+                    those fought Button's own bg-slate-800 default as two
+                    same-specificity Tailwind classes, and which one won was
+                    decided by Tailwind's generated stylesheet order, not by
+                    which came last in this string. That's exactly the class
+                    of bug button.jsx's own comments warn about; inline style
+                    always wins regardless, so it can't silently lose again.
+                    Only skipped for "follow" -- CtaAction already applies
+                    the platform's own brand color in that case. */}
+                <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="transition hover:opacity-90" styleOverride={data.actionType === 'follow' ? undefined : { background: '#ffffff', color: '#111827' }} showIcon />
               </div>
             </div>
 
@@ -1218,7 +1227,22 @@ const BLOCKS = {
             </p>
           )}
           <div className="mt-6">
-            <CtaAction data={data} onChange={onChange} editable={editable} funnelOwnerUid={funnelOwnerUid} buttonClassName="bg-white text-gray-900 hover:bg-gray-100" />
+            {/* Real inline style, not bg-white/text-gray-900 classes -- those
+                fought Button's own bg-slate-800 default as two
+                same-specificity Tailwind classes, and which one won was
+                decided by Tailwind's generated stylesheet order, not by
+                which came last in this string (see button.jsx's own
+                comments for this exact class of bug). Also theme-aware now:
+                a plain white button would have gone near-invisible against
+                the "light" section background too, same failure mode. */}
+            <CtaAction
+              data={data}
+              onChange={onChange}
+              editable={editable}
+              funnelOwnerUid={funnelOwnerUid}
+              buttonClassName="transition hover:opacity-90"
+              styleOverride={data.actionType === 'follow' ? undefined : (isLight ? { background: 'var(--accent)', color: 'var(--accent-foreground)' } : { background: '#ffffff', color: '#111827' })}
+            />
           </div>
         </section>
       );
