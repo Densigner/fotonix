@@ -29,6 +29,8 @@ raw-uploads/
 # SSH keys
 ssh
 *.pem
+cpanel-deploy-key
+cpanel-deploy-key.pub
 
 # Firebase service account key
 server/serviceAccountKey.json
