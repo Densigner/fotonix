@@ -1556,13 +1556,13 @@ export default function AdvancedInboxScreen() {
 
       {/* Compose modal */}
       {isComposing && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div 
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div
             ref={composeRef}
             className={clsx(
-              "border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden",
-              isDarkMode 
-                ? "bg-slate-900 border-white/10" 
+              "border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col",
+              isDarkMode
+                ? "bg-slate-900 border-white/10"
                 : "bg-white border-gray-200"
             )}
           >
@@ -1589,7 +1589,7 @@ export default function AdvancedInboxScreen() {
             </div>
 
             {/* Compose form */}
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
                 <label className={clsx(
                   "text-sm",
@@ -1747,13 +1747,14 @@ export default function AdvancedInboxScreen() {
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Compose actions */}
-              <div className={clsx(
-                "flex items-center justify-between pt-4 border-t",
-                isDarkMode ? "border-white/10" : "border-gray-200"
-              )}>
-                <div className="flex items-center gap-4">
+            {/* Compose actions */}
+            <div className={clsx(
+              "shrink-0 p-4 flex flex-wrap items-center justify-between gap-3 border-t",
+              isDarkMode ? "border-white/10" : "border-gray-200"
+            )}>
+                <div className="flex flex-wrap items-center gap-4">
                   <select
                     value={composeData.priority}
                     onChange={(e) => setComposeData(prev => ({ ...prev, priority: parseInt(e.target.value) }))}
@@ -1787,7 +1788,7 @@ export default function AdvancedInboxScreen() {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   {(() => {
                     const missing = [
                       !composeData.from && 'From',
@@ -1821,7 +1822,6 @@ export default function AdvancedInboxScreen() {
                     Send
                   </button>
                 </div>
-              </div>
             </div>
           </div>
         </div>
