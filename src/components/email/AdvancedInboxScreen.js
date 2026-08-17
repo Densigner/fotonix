@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { 
   Search, Archive, Trash2, Tag, Forward, Reply, ReplyAll,
   MoreHorizontal, Clock, Send, Paperclip, Eye, EyeOff, Flag,
-  ChevronDown, Filter, SortAsc, SortDesc, Settings, Plus,
+  ChevronDown, Filter, SortAsc, SortDesc, Settings, Plus, Menu,
   ArrowRight, ArrowLeft, Maximize2, Minimize2, X, Sun, Moon,
   ExternalLink, RotateCcw, User, Building, Phone, Mail, Globe,
   Image, Palette, Type, AlignLeft, AlignCenter, AlignRight,
@@ -60,6 +60,7 @@ export default function AdvancedInboxScreen() {
   const [signatures, setSignatures] = useState([]);
   const [previewMode, setPreviewMode] = useState('right'); // 'right', 'bottom', 'off'
   const [emailPopup, setEmailPopup] = useState(null); // For popup window
+  const [mobileFoldersOpen, setMobileFoldersOpen] = useState(false); // Folders drawer, mobile only
   const [isDarkMode, setIsDarkMode] = useState(() => {
     // Check localStorage for saved preference, default to dark
     const saved = localStorage.getItem('email-theme');
@@ -932,9 +933,6 @@ export default function AdvancedInboxScreen() {
         attachments: []
       });
 
-      // Show success message
-      alert('Message sent successfully! ✅');
-      
       // Refresh inbox
       fetchMessages({ reset: true });
     } catch (e) {
@@ -968,13 +966,27 @@ export default function AdvancedInboxScreen() {
           ? "border-white/10 bg-white/5" 
           : "border-gray-200 bg-white/80"
       )}>
-        <div className="mx-auto flex max-w-full items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex flex-wrap items-center gap-3 px-4 py-3">
+          {/* Folders drawer toggle — mobile only */}
+          <button
+            onClick={() => setMobileFoldersOpen(true)}
+            className={clsx(
+              "p-2 rounded-xl border transition-colors md:hidden",
+              isDarkMode
+                ? "border-white/10 bg-white/5 hover:bg-white/10"
+                : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+            )}
+            title="Folders"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+
           {/* Logo/Title */}
           <div className="flex items-center gap-2">
             <div className={clsx(
               "text-sm rounded-full px-2 py-1 border",
-              isDarkMode 
-                ? "border-white/10 bg-white/5" 
+              isDarkMode
+                ? "border-white/10 bg-white/5"
                 : "border-gray-200 bg-gray-50"
             )}>
               Advanced Inbox
@@ -983,7 +995,7 @@ export default function AdvancedInboxScreen() {
           </div>
 
           {/* Search */}
-          <div className="flex-1 max-w-md">
+          <div className="flex-1 basis-full sm:basis-auto min-w-[160px] max-w-md">
             <div className="relative">
               <Search className={clsx(
                 "absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4",
@@ -995,8 +1007,8 @@ export default function AdvancedInboxScreen() {
                 placeholder="Search emails..."
                 className={clsx(
                   "w-full pl-10 pr-4 py-2 rounded-xl text-sm outline-none border transition-colors",
-                  isDarkMode 
-                    ? "bg-white/5 border-white/10 focus:border-white/20 placeholder-slate-400" 
+                  isDarkMode
+                    ? "bg-white/5 border-white/10 focus:border-white/20 placeholder-slate-400"
                     : "bg-gray-50 border-gray-200 focus:border-gray-300 placeholder-gray-500"
                 )}
               />
@@ -1004,7 +1016,7 @@ export default function AdvancedInboxScreen() {
           </div>
 
           {/* Toolbar actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={startCompose}
               className="flex items-center gap-2 px-3 py-2 text-sm bg-indigo-500/20 border border-indigo-400/40 rounded-xl hover:bg-indigo-500/30 text-indigo-300"
@@ -1152,25 +1164,46 @@ export default function AdvancedInboxScreen() {
           list grew past its box instead of scrolling inside it (only visible
           with enough items to exceed the box — hence it never reproduced with
           a short local list). */}
-      <div className="flex h-[720px] max-h-[75vh] overflow-hidden">
-        {/* Sidebar */}
+      <div className="relative flex h-[720px] max-h-[75vh] overflow-hidden">
+        {/* Backdrop for the mobile folders drawer */}
+        {mobileFoldersOpen && (
+          <div
+            className="absolute inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => setMobileFoldersOpen(false)}
+          />
+        )}
+
+        {/* Sidebar — persistent column on md+, slide-over drawer on mobile */}
         <div className={clsx(
-          "w-64 border-r p-4",
-          isDarkMode 
-            ? "border-white/10 bg-white/5" 
-            : "border-gray-200 bg-gray-50"
+          "absolute inset-y-0 left-0 z-40 w-64 overflow-y-auto border-r p-4 transition-transform duration-200",
+          "md:static md:z-auto md:translate-x-0",
+          mobileFoldersOpen ? "translate-x-0" : "-translate-x-full",
+          isDarkMode
+            ? "border-white/10 bg-slate-900 md:bg-white/5"
+            : "border-gray-200 bg-white md:bg-gray-50"
         )}>
           <div className="space-y-2">
-            <div className={clsx(
-              "text-xs font-semibold uppercase tracking-wide mb-2",
-              isDarkMode ? "text-slate-400" : "text-gray-500"
-            )}>
-              Folders
+            <div className="flex items-center justify-between mb-2">
+              <div className={clsx(
+                "text-xs font-semibold uppercase tracking-wide",
+                isDarkMode ? "text-slate-400" : "text-gray-500"
+              )}>
+                Folders
+              </div>
+              <button
+                onClick={() => setMobileFoldersOpen(false)}
+                className={clsx(
+                  "p-1 rounded md:hidden",
+                  isDarkMode ? "hover:bg-white/10" : "hover:bg-gray-100"
+                )}
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
             {['inbox', 'sent', 'drafts', 'archive', 'spam', 'trash'].map(folder => (
               <button
                 key={folder}
-                onClick={() => setCurrentFilter(folder)}
+                onClick={() => { setCurrentFilter(folder); setMobileFoldersOpen(false); }}
                 className={clsx(
                   "w-full text-left px-3 py-2 text-sm rounded-lg capitalize flex items-center gap-2 transition-colors",
                   currentFilter === folder 
@@ -1198,7 +1231,7 @@ export default function AdvancedInboxScreen() {
                 {labels.filter(l => !l.is_system).map(label => (
                   <button
                     key={label.id}
-                    onClick={() => setCurrentFilter(`label:${label.name}`)}
+                    onClick={() => { setCurrentFilter(`label:${label.name}`); setMobileFoldersOpen(false); }}
                     className={clsx(
                       "w-full text-left px-3 py-2 text-sm rounded-lg flex items-center gap-2",
                       currentFilter === `label:${label.name}` 
@@ -1224,7 +1257,11 @@ export default function AdvancedInboxScreen() {
             // Was a plain block div — the inner list's flex-1/min-h-0/overflow-auto
             // had no effect at all without a flex column parent to size against,
             // which is why the list never actually became scrollable.
-            "w-96 border-r flex flex-col min-h-0",
+            // Below md, only one of [list, detail] is shown at a time (mobile has
+            // no room for a fixed w-96 column beside a detail pane) — list hides
+            // once a message is active, detail takes over full-width instead.
+            "w-full md:w-96 border-r flex-col min-h-0",
+            activeItem ? "hidden md:flex" : "flex",
             isDarkMode
               ? "border-white/10 bg-white/5"
               : "border-gray-200 bg-gray-50"
@@ -1371,7 +1408,10 @@ export default function AdvancedInboxScreen() {
           </div>
 
           {/* Message detail pane */}
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className={clsx(
+            "flex-1 w-full flex-col min-h-0",
+            activeItem ? "flex" : "hidden md:flex"
+          )}>
             {!activeItem ? (
               <div className={clsx(
                 "flex-1 flex items-center justify-center",
@@ -1384,17 +1424,28 @@ export default function AdvancedInboxScreen() {
                 {/* Message header */}
                 <div className={clsx(
                   "border-b p-4",
-                  isDarkMode 
-                    ? "border-white/10 bg-white/5" 
+                  isDarkMode
+                    ? "border-white/10 bg-white/5"
                     : "border-gray-200 bg-gray-50"
                 )}>
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="text-lg font-semibold mb-1">
+                  {/* Back to list — mobile only, since list+detail share one pane below md */}
+                  <button
+                    onClick={() => setActiveId(null)}
+                    className={clsx(
+                      "mb-3 flex items-center gap-1 text-sm md:hidden",
+                      isDarkMode ? "text-slate-300 hover:text-white" : "text-gray-600 hover:text-gray-900"
+                    )}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to inbox
+                  </button>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-lg font-semibold mb-1 break-words">
                         {detail?.subject || activeItem.subject || "(no subject)"}
                       </div>
                       <div className={clsx(
-                        "text-sm space-y-1",
+                        "text-sm space-y-1 break-words",
                         isDarkMode ? "text-slate-300" : "text-gray-700"
                       )}>
                         <div>
@@ -1413,7 +1464,7 @@ export default function AdvancedInboxScreen() {
                     </div>
                     
                     {/* Action buttons */}
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1">
                       <button
                         onClick={() => startReply('reply')}
                         className={clsx(

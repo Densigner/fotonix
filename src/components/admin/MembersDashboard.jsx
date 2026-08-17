@@ -269,6 +269,10 @@ export default function MembersDashboard() {
     }
   }
 
+  // Pure — must stay side-effect free. It's called directly in JSX to
+  // compute an href, which means React runs it on every render of the
+  // affiliate list; a clipboard write used to live here and fired on every
+  // one of those renders, not just when someone actually clicked the link.
   function paypalHrefFor(affiliate, amountCents) {
     const amount = (amountCents / 100).toFixed(2);
     if (affiliate.paypalMe) {
@@ -277,9 +281,9 @@ export default function MembersDashboard() {
       return `https://www.paypal.com/paypalme/${encodeURIComponent(username)}/${encodeURIComponent(amount)}`;
     }
     if (affiliate.paypalEmail) {
-      // We can open generic send page; user fills the email automatically from clipboard
-      // (There isn't a stable public URL param for email; we'll copy to clipboard for convenience.)
-      navigator.clipboard?.writeText(affiliate.paypalEmail).catch(() => {});
+      // No stable public URL param for email on PayPal's generic send page,
+      // so the email gets copied to the clipboard for convenience instead —
+      // but only from the onClick below, on a real click.
       return `https://www.paypal.com/myaccount/transfer/homepage/send`;
     }
     return `https://www.paypal.com/paypalme/`;
@@ -580,6 +584,11 @@ export default function MembersDashboard() {
                       href={paypalHrefFor(aff, aff.pendingCents)}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => {
+                        if (!aff.paypalMe && aff.paypalEmail) {
+                          navigator.clipboard?.writeText(aff.paypalEmail).catch(() => {});
+                        }
+                      }}
                       className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs shadow-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
                       title="Opens PayPal in a new tab (you complete the payment there)"
                     >
