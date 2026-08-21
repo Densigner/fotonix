@@ -59,6 +59,13 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
   const renderBlockContent = () => {
     const meta = block.meta || {}; // Defensive programming
     switch (block.type) {
+      case 'video':
+      case 'youtube-subscribe':
+        // Reuses the same renderer the 'columns' case below already calls
+        // for its nested blocks, instead of a third copy of this JSX —
+        // this switch previously had no case for either type at all, so
+        // both fell through to "Unknown block type" in the live canvas.
+        return renderBlockPreviewEmail(block);
       case 'text':
         return (
           <div 
@@ -1540,6 +1547,8 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, onSendGateChang
         case 'button': return `<div style="text-align:center"><a href="${b.meta.url}" style="display:inline-block;padding:8px 12px;background:${brandColor};color:#fff;border-radius:6px;text-decoration:none">${escapeHtml(b.meta.label)}</a></div>`;
         case 'divider': return `<div style="height:${b.meta.height}px;background:${b.meta.color};width:100%"></div>`;
         case 'spacer': return `<div style="height:${b.meta.height}px"></div>`;
+        case 'video': return videoBlockToHtml(b);
+        case 'youtube-subscribe': return youtubeSubscribeBlockToHtml(b);
         case 'columns': return `<div style="display:flex;gap:12px">${b.meta.blocks.map((col,ci)=>`<div style=\"flex:${b.meta.widths?b.meta.widths[ci]:1}\">${col.map(cb=>renderBlockHtml(cb)).join('')}</div>`).join('')}</div>`;
         default: return '';
       }
@@ -1689,6 +1698,8 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, onSendGateChang
           case 'button': return `<div style="text-align:center"><a href="${b.meta.url}" style="display:inline-block;padding:8px 16px;background:${brandColor};color:#fff;border-radius:6px;text-decoration:none;font-weight:600">${b.meta.label}</a></div>`;
           case 'divider': return `<div style="height:${b.meta.height}px;background:${b.meta.color};width:100%"></div>`;
           case 'spacer': return `<div style="height:${b.meta.height}px"></div>`;
+          case 'video': return videoBlockToHtml(b);
+          case 'youtube-subscribe': return youtubeSubscribeBlockToHtml(b);
           default: return '';
         }
       }).join('');
@@ -1866,6 +1877,30 @@ function ComposerPage({ onBack, onNext, onSend, sendCampaignRef, onSendGateChang
                 >
                   <div className="font-medium">🛍️ Product</div>
                   <div className="text-sm text-slate-600">Showcase products</div>
+                </button>
+                <button
+                  onClick={() => addBlock('video')}
+                  className="w-full p-3 text-left border border-slate-200 rounded hover:bg-slate-50 transition-colors cursor-grab active:cursor-grabbing"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-automation-block', JSON.stringify({ type: 'video' }));
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                >
+                  <div className="font-medium">🎬 Video</div>
+                  <div className="text-sm text-slate-600">YouTube, TikTok, Vimeo or Instagram — shown as a clickable thumbnail linking to the video</div>
+                </button>
+                <button
+                  onClick={() => addBlock('youtube-subscribe')}
+                  className="w-full p-3 text-left border border-slate-200 rounded hover:bg-slate-50 transition-colors cursor-grab active:cursor-grabbing"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-automation-block', JSON.stringify({ type: 'youtube-subscribe' }));
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                >
+                  <div className="font-medium">▶️ YouTube Subscribe</div>
+                  <div className="text-sm text-slate-600">A "Subscribe on YouTube" button linking to your channel</div>
                 </button>
               </div>
             </div>
@@ -2350,6 +2385,15 @@ function InspectorEmail({ block, onUpdate, realProducts = [], loadingProducts = 
     case 'image':
       inspectorContent = (
         <ImageBlockInspector block={block} onUpdate={onUpdate} />
+      );
+      break;
+    case 'video':
+      // VideoInspector was defined but never actually wired into this
+      // switch — selecting a video block fell through to the "No inspector
+      // available" default below, so there was no way to edit a video's
+      // URL/title/thumbnail after the initial add prompt.
+      inspectorContent = (
+        <VideoInspector block={block} onUpdate={onUpdate} />
       );
       break;
     case 'button':
@@ -2837,6 +2881,69 @@ function extractInstagramEmbedSrc(url) {
 
 /* AddVideoControls was removed — videos are now added via the toolbar +video button */
 
+// ---------- Shared email-HTML builders for video/youtube-subscribe ----------
+// Used by all three export paths (exportHTML, sendCampaign, renderBlockHtml
+// for nested columns) so the video/subscribe markup only lives in one place
+// instead of being copy-pasted a third and fourth time.
+//
+// A live <iframe> embed (what VideoBlockPreview shows in the *editor*) is
+// not an option in an actual sent email — Gmail, Outlook and most mail
+// clients strip iframes entirely. The only pattern that reliably works
+// everywhere is a clickable thumbnail image linking out to the real video,
+// so that's what both of these always produce, regardless of provider.
+function videoBlockToHtml(b) {
+  const src = b.meta?.src || '';
+  if (!src) return '';
+  const provider = b.meta?.provider || detectVideoProvider(src);
+  const thumb = b.meta?.thumbnail || getVideoThumbnail(src) || '';
+  const label = escapeHtml(b.meta?.title || (provider === 'youtube' ? 'Watch on YouTube' : 'Watch video'));
+
+  if (!thumb) {
+    // No thumbnail resolvable (non-YouTube provider with no thumbnail set) —
+    // fall back to a plain text link rather than showing nothing.
+    return `<div style="text-align:center"><a href="${src}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 18px;background:#000;color:#fff;border-radius:6px;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:14px">▶ ${label}</a></div>`;
+  }
+
+  // Play-button overlay via absolute positioning renders in Gmail, Apple
+  // Mail and most modern clients. Outlook desktop ignores position:absolute
+  // and simply shows the plain thumbnail — still a fully working link, so
+  // this degrades safely instead of breaking. The text link underneath is a
+  // guaranteed-visible fallback regardless of what the overlay does.
+  return `<div style="text-align:center">` +
+    `<a href="${src}" target="_blank" rel="noopener noreferrer" style="display:inline-block;position:relative;text-decoration:none;max-width:100%">` +
+      `<img src="${thumb}" alt="${label}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px" />` +
+      `<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:68px;height:48px;background:rgba(0,0,0,0.65);border-radius:10px;text-align:center;line-height:48px">` +
+        `<span style="display:inline-block;width:0;height:0;border-top:12px solid transparent;border-bottom:12px solid transparent;border-left:20px solid #fff;margin-left:4px;vertical-align:middle"></span>` +
+      `</span>` +
+    `</a>` +
+    `<div style="margin-top:8px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#555">` +
+      `<a href="${src}" target="_blank" rel="noopener noreferrer" style="color:#555;text-decoration:underline">▶ ${label}</a>` +
+    `</div>` +
+  `</div>`;
+}
+
+function youtubeSubscribeBlockToHtml(b) {
+  const chan = b.meta.channel || b.meta.channelHandleOrId || '';
+  let target = b.meta.url || '';
+  if (chan) {
+    if (chan.startsWith('UC') || /^\w{24,}$/.test(chan)) {
+      target = `https://www.youtube.com/channel/${encodeURIComponent(chan)}?sub_confirmation=1`;
+    } else {
+      target = `https://www.youtube.com/@${encodeURIComponent(chan)}?sub_confirmation=1`;
+    }
+  }
+  const utm = `utm_source=${encodeURIComponent(b.meta.utm_source||'newsletter')}&utm_medium=${encodeURIComponent(b.meta.utm_medium||'email')}&utm_campaign=${encodeURIComponent(b.meta.utm_campaign||'')}`;
+  const sep = target.includes('?') ? '&' : '?';
+  const finalUrl = `${target}${sep}${utm}`;
+  const thumb = b.meta.thumbnail || (b.meta.url ? getVideoThumbnail(b.meta.url) : '') || '';
+  const bg = b.meta.background || '#FF0000';
+  const color = b.meta.color || '#ffffff';
+  const placement = b.meta.placement || 'center';
+  const buttonHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 auto"><tr><td align="center" bgcolor="${bg}" style="background:${bg};border-radius:6px;padding:0"><a href="${finalUrl}" style="display:inline-block;padding:12px 20px;font-family:Arial, Helvetica, sans-serif;font-size:16px;line-height:20px;color:${color};text-decoration:none;border-radius:6px">${escapeHtml(b.meta.label || '▶ Subscribe on YouTube')}</a></td></tr></table>`;
+  const imgHtml = thumb ? `<div style="text-align:${placement}"><a href="${finalUrl}"><img src="${thumb}" alt="${escapeHtml(b.meta.label || 'Subscribe')}" style="max-width:100%;height:auto;border-radius:6px" /></a></div>` : '';
+  return `<div style="text-align:${placement}">${imgHtml}${buttonHtml}</div>`;
+}
+
 /* ---------- VideoBlockPreview (editor preview of embeds) ---------- */
 export function VideoBlockPreview({ block, style }) {
   const src = block?.meta?.src || '';
@@ -2927,28 +3034,12 @@ function renderBlockPreviewEmail(b) {
       return <div style={{ textAlign: placement }}><a href={b.meta.url} style={{ display:'inline-block', padding:'8px 12px', background: bg, color, borderRadius:6, border }}>{b.meta.label}</a></div>;
     }
     case 'youtube-subscribe': {
-      const chan = b.meta.channel || b.meta.channelHandleOrId || '';
-      let target = b.meta.url || '';
-      if (chan) {
-        if (chan.startsWith('UC') || /^\w{24,}$/.test(chan)) {
-          target = `https://www.youtube.com/channel/${encodeURIComponent(chan)}?sub_confirmation=1`;
-        } else {
-          target = `https://www.youtube.com/@${encodeURIComponent(chan)}?sub_confirmation=1`;
-        }
-      }
-      const utm = `utm_source=${encodeURIComponent(b.meta.utm_source||'newsletter')}&utm_medium=${encodeURIComponent(b.meta.utm_medium||'email')}&utm_campaign=${encodeURIComponent(b.meta.utm_campaign||'')}`;
-      const sep = target.includes('?') ? '&' : '?';
-      const finalUrl = `${target}${sep}${utm}`;
-      const thumb = b.meta.thumbnail || (b.meta.url ? getVideoThumbnail(b.meta.url) : '') || '';
-      const bg = b.meta.background || '#FF0000';
-      const color = b.meta.color || '#ffffff';
-      const placement = b.meta.placement || 'center';
-      const buttonHtml = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 auto"><tr><td align="center" bgcolor="${bg}" style="background:${bg};border-radius:6px;padding:0"><a href="${finalUrl}" style="display:inline-block;padding:12px 20px;font-family:Arial, Helvetica, sans-serif;font-size:16px;line-height:20px;color:${color};text-decoration:none;border-radius:6px">${escapeHtml(b.meta.label || '▶ Subscribe on YouTube')}</a></td></tr></table>`;
-      const imgHtml = thumb ? `<div style="text-align:${placement}"><a href="${finalUrl}"><img src="${thumb}" alt="${escapeHtml(b.meta.label || 'Subscribe')}" style="max-width:100%;height:auto;border-radius:6px" /></a></div>` : '';
-      return `<div style="text-align:${placement}">${imgHtml}${buttonHtml}</div>`;
-    }
-    case 'youtube-subscribe': {
-      // Editor preview: render a YouTube-style subscribe button (visual only)
+      // Editor preview: render a YouTube-style subscribe button (visual only).
+      // (This case used to be duplicated — an earlier copy above returned a
+      // raw HTML string instead of JSX, which silently shadowed this correct
+      // one since it's a switch and the first match wins. The string version
+      // was actually meant for the HTML-export path; it's now
+      // youtubeSubscribeBlockToHtml() above, used by all three export sites.)
       const chan = b.meta.channel || b.meta.channelHandleOrId || '';
       let target = b.meta.url || '';
       if (chan) {
@@ -3115,6 +3206,8 @@ function renderBlockHtml(b) {
     }
     case 'divider': return `<div style="height:${b.meta.height}px;background:${b.meta.color};width:100%"></div>`;
     case 'spacer': return `<div style="height:${b.meta.height}px"></div>`;
+    case 'video': return videoBlockToHtml(b);
+    case 'youtube-subscribe': return youtubeSubscribeBlockToHtml(b);
     case 'product': {
       const productData = b.meta?.productData || {
         title: 'Sample Product',

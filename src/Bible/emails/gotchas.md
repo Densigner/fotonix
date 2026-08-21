@@ -174,6 +174,76 @@ If you're debugging and find yourself in either of those two files, you're
 almost certainly in the wrong place — go to `server/routes/email/emails.js`
 instead.
 
+## A third, real (not dead) email-campaign builder exists: `AutomationsEditor.js` — and it had the same block type defined in 7 places, correctly, in only some of them (fixed 2026-08-18)
+
+Not the same system as `AdvancedInboxScreen.js`'s compose modal or the
+`MailBuilder`/`ActualEditor.js` template editor covered elsewhere in this
+file — a third one, `src/components/automationscomposer/AutomationsEditor.js`
+(~3200 lines), reachable at the `/automationscomposer` route, gated by
+`campaignSalesGate.js` (see `../affiliates/gotchas.md`'s "Send Campaign"
+sales-gate story for that part). It sends real campaigns — worth knowing it
+exists at all before assuming the other two are the only places email gets
+composed.
+
+Its block system (`text`, `image`, `button`, `divider`, `spacer`, `product`,
+`social-follow`, plus `video` and `youtube-subscribe`) is defined once
+(`defaultBlock()`) but then **switched on again separately in six more
+places** with no shared rendering function: the live editing canvas
+(`EmailBlock`'s `renderBlockContent`), the inspector panel
+(`InspectorEmail`), the read-only preview (`renderBlockPreviewEmail`, also
+reused for blocks nested inside `columns`), and three near-identical
+HTML-serializers (`exportHTML`'s download button, `sendCampaign`'s actual
+send path, `renderBlockHtml` for nested columns). Adding a block type
+correctly to `defaultBlock()` and one preview function is not the same as
+adding it everywhere it's used — that's exactly what had happened to `video`
+and `youtube-subscribe` before this session:
+
+- **Neither had a button in the "Available Blocks" palette at all.** Both
+  were fully built (data shape, preview, inspector) but literally
+  unreachable through the UI — the only way to invoke `addBlock('video')`
+  was to call it programmatically. Added both palette buttons.
+- **Both were missing from all three HTML-export switches**, silently
+  producing an empty string (`default: return ''`). A video or subscribe
+  block added to a campaign would render fine in-editor and then **vanish
+  from the actual sent email** with no error anywhere. This is why "the
+  video block doesn't work in real emails" would have looked like a
+  provider/rendering problem rather than "it was never implemented" — the
+  in-editor preview genuinely does show an embedded `<iframe>`
+  (`VideoBlockPreview`), which was never going to survive export anyway
+  since Gmail/Outlook/most mail clients strip iframes from email entirely.
+  Added `videoBlockToHtml()`/`youtubeSubscribeBlockToHtml()` — shared by all
+  three export sites — which always render the only pattern that actually
+  works in a real inbox: a clickable YouTube-thumbnail image (play-button
+  overlay via `position:absolute`, degrades safely to a plain clickable
+  thumbnail in Outlook, which ignores that CSS) linking straight to the
+  video, plus a guaranteed-visible text link underneath regardless of
+  whether the graphical overlay renders anywhere.
+- **`VideoInspector` was fully written and exported but never actually
+  referenced anywhere** (`grep -c "<VideoInspector"` was 0) — the inspector
+  switch had no `case 'video'` at all, so selecting a video block showed
+  "No inspector available," meaning there was no way to fix a wrong URL or
+  set a title after the initial add. Wired it in.
+- **`EmailBlock`'s own switch (the one that actually renders the live
+  editing canvas) had no `case` for either type**, falling to `default:
+  return <div>Unknown block type: {block.type}</div>` — visibly broken in
+  the editor itself, not just at send time. Fixed by reusing
+  `renderBlockPreviewEmail(block)` (the same function `columns` already
+  calls for its nested blocks) rather than writing a fourth copy of the
+  same JSX.
+- **A genuine duplicate `case 'youtube-subscribe':` inside the same switch**
+  in `renderBlockPreviewEmail` — one returned a raw HTML template-literal
+  *string* (clearly written for one of the export functions, but pasted
+  into the wrong one), the other returned real JSX. Since the string version
+  came first, it silently shadowed the correct JSX version — the canvas
+  would have shown literal `<div style="...">` text instead of a real
+  subscribe button had this case ever been reachable (it wasn't, until the
+  palette button above was added). Deleted the misplaced string version —
+  its logic is what became `youtubeSubscribeBlockToHtml()`.
+
+**If a new block type is ever added to this file**, it needs a case in all
+seven of the places listed above, not just `defaultBlock()` — that's the
+actual lesson here, not just "these two were broken."
+
 ## There is no "per-affiliate mailing list" — investigated 2026-07-26, one shared list exists
 
 Asked to wire up "add this email to the affiliate's mailing list" from the
@@ -412,6 +482,71 @@ one-to-one correspondence with one or two people, versus bulk campaign sends
 where engagement rate is an actually useful signal. Removed the checkbox,
 its `composeData.trackingEnabled` state, and the payload key entirely rather
 than build tracking a small personal-inbox compose box doesn't need.
+
+## The Advanced Inbox screen and its compose modal weren't usable on mobile at all (fixed 2026-08-15/16)
+
+Never tested below desktop width before. Three separate, stacked layout
+bugs, found by actually loading the screen in a real mobile viewport
+(375×667) rather than reading the JSX:
+
+1. **Compose modal**: the footer row (priority/signature selects + "Missing:
+   ..." warning + Cancel/Send buttons) was a non-wrapping `flex
+   items-center justify-between`. On a narrow screen that row is wider than
+   the modal, so Send got pushed past the right edge and clipped by the
+   modal's own `overflow-hidden` — invisible, not just hard to reach. Fixed
+   with `flex-wrap` on both the outer footer and the inner button group.
+2. **Main 3-pane layout** (`Folders` sidebar `w-64` + message list `w-96`,
+   both fixed pixel widths, side by side): those two columns alone total
+   640px, guaranteed horizontal overflow under any viewport narrower than
+   that. Sidebar is now a slide-over drawer below `md` (opened via a
+   hamburger button, `mobileFoldersOpen` state), and the list/detail panes
+   now show one at a time below `md` (`activeItem ? 'hidden md:flex' :
+   'flex'` and the inverse), with a "Back to inbox" button in the detail
+   header to return. Both stay exactly as before at `md`+ — verified
+   side-by-side rendering unchanged at 1280px.
+3. **Message detail header**: subject/from/to text plus 6 action buttons
+   (Reply/Reply All/Forward/Archive/Delete/More) in one non-wrapping
+   `justify-between` row — the 6 buttons alone (~360px) already didn't fit
+   under ~640px regardless of the sibling text. Now `flex-col` below `sm`
+   (stacks instead of squeezing), buttons wrapped.
+
+Verified with a real headless-Chromium pass at 375×667 (`document.scrollWidth
+=== document.clientWidth`, i.e. zero horizontal overflow, both closed and
+with a message open) and re-confirmed desktop at 1280px is pixel-identical
+to before.
+
+Also removed the blocking `alert('Message sent successfully! ✅')` after a
+successful send in the same compose modal (`AdvancedInboxScreen.js`) — the
+modal already closes and the inbox refreshes as visible confirmation; the
+extra native browser dialog was a leftover from early testing, not asked
+for since.
+
+## Short, guessable Message-ID; no unsubscribe mechanism at all (fixed 2026-08-17)
+
+An external mail deliverability tester flagged both. `/send` and
+`/send-bulk` were both setting `Message-ID: <${messageId}@fotonix.co.uk>`
+where `messageId` is just the sequential `email_messages.id` — reads as
+auto-generated/spammy to mail testers, and every message's ID is trivially
+guessable (increment-and-fetch). Fixed to `crypto.randomUUID()` in both
+routes — RFC 5322 only requires global uniqueness, a UUID is enough.
+
+No `List-Unsubscribe` header existed anywhere, and no one-click unsubscribe
+endpoint existed either — required for Gmail/Yahoo bulk-sender
+qualification at the volumes campaign sends run at. Built for `/send-bulk`
+only (same scoping as tracking, above): per-recipient HMAC token, `List-
+Unsubscribe`/`List-Unsubscribe-Post` headers, a visible unsubscribe link
+injected into the HTML footer, and `POST`/`GET /api/email/unsubscribe`
+routes. Removing this **actually stuck** required also fixing the three
+`contacts.js` auto-sync functions (see that file's `GET /` entry in
+`routes.md`) and a real bug in `contacts.js`'s own, separate `POST
+/unsubscribe` route — both documented there in full; the short version is
+neither one respected `email_suppressions` before this pass, so an
+unsubscribe could get silently undone by an unrelated page load. Full
+mechanism: `architecture.md`'s "One-click unsubscribe" section.
+
+**Still needs a real `UNSUB_SECRET` set in the VPS's `.env`** before this
+means anything security-wise — ships with a hardcoded dev fallback
+otherwise (see `architecture.md`).
 
 ## Campaign sends (`/send-bulk`) had the same dead tracking checkboxes — this time actually built (2026-07-28)
 
