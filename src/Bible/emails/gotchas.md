@@ -244,6 +244,24 @@ and `youtube-subscribe` before this session:
 seven of the places listed above, not just `defaultBlock()` — that's the
 actual lesson here, not just "these two were broken."
 
+**Confirmed the same day on a pre-existing block type, not just the new
+ones**: the `button` block's Style (Solid/Outline) dropdown updated
+`block.meta.style` correctly (the shared `updateBlock()` merge into `meta`
+was never the problem), but `EmailBlock`'s canvas-rendering case for
+`'button'` had the button's colors **hardcoded** (`backgroundColor:
+'#3b82f6'`, `border: 'none'`) instead of reading `meta.style`/
+`meta.background`/`meta.color` — so picking Outline in the inspector never
+visibly changed anything on the live canvas, while `renderBlockPreviewEmail`'s
+own `'button'` case (used by Preview and nested `columns` blocks) already
+read those fields correctly. Fixed to read them, verified live: canvas
+button background went `rgb(59,130,246)` solid → transparent with a
+matching border the instant Outline was selected. Worth checking the other
+block types' `EmailBlock` cases against their `InspectorEmail` counterparts
+if a similar "I changed a setting and nothing happened" report comes in —
+this file's structural problem (block logic scattered across switches with
+no shared source of truth) isn't unique to video/youtube-subscribe, it's
+just where it happened to be found first.
+
 ## There is no "per-affiliate mailing list" — investigated 2026-07-26, one shared list exists
 
 Asked to wire up "add this email to the affiliate's mailing list" from the

@@ -98,16 +98,24 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
             />
           </div>
         );
-      case 'button':
+      case 'button': {
+        // Was hardcoded to a fixed blue solid button regardless of meta —
+        // the inspector's Style (Solid/Outline) select updated block.meta
+        // correctly, but nothing here ever read it, so the canvas never
+        // visibly changed when you picked a different style.
+        const style = block.meta.style || 'solid';
+        const bg = block.meta.background ?? (style === 'solid' ? '#3b82f6' : 'transparent');
+        const color = block.meta.color ?? (style === 'solid' ? '#fff' : '#3b82f6');
+        const border = style === 'outline' ? `1px solid ${block.meta.color || '#3b82f6'}` : 'none';
         return (
           <div style={{ textAlign: block.meta.placement || 'center' }}>
-            <button 
+            <button
               style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
+                backgroundColor: bg,
+                color,
                 padding: '12px 24px',
                 borderRadius: '6px',
-                border: 'none',
+                border,
                 fontWeight: '600'
               }}
             >
@@ -115,6 +123,7 @@ const EmailBlock = ({ block, isSelected, onClick, onEdit, onDelete, onMoveUp, on
             </button>
           </div>
         );
+      }
       case 'spacer':
         return (
           <div 
