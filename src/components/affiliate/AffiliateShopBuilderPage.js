@@ -474,6 +474,7 @@ export function AffiliateStorefrontViewer({ handle }) {
   const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
   const [ownerUid, setOwnerUid] = useState(null);
+  const [creatorData, setCreatorData] = useState(null);
 
   useEffect(() => {
     const loadStore = async () => {
@@ -481,42 +482,77 @@ export function AffiliateStorefrontViewer({ handle }) {
         setLoading(true);
         setError(null);
 
-        // First, look up the user ID from the handle
-        const handleRef = dbRef(db, `storefrontHandles/${sanitizeHandle(handle)}`);
-        const handleSnap = await get(handleRef);
+        // Two independent handle claims share this URL: the pre-existing
+        // affiliate storefront system (`storefrontHandles/` -> `storefronts/`)
+        // and the newer in-app creator-profile claim (`handles/` -> `creators/`,
+        // lowercase-folded, no charset stripping — unlike sanitizeHandle,
+        // which was written for the storefront claim's own rules and would
+        // silently mangle a creator handle containing characters storefront
+        // handles never allowed). Look up both rather than assuming only one
+        // exists — a person can have a storefront, a creator profile, or both.
+        const rawHandle = (handle || '').toLowerCase().trim();
+        const [storefrontHandleSnap, creatorHandleSnap] = await Promise.all([
+          get(dbRef(db, `storefrontHandles/${sanitizeHandle(handle)}`)),
+          get(dbRef(db, `handles/${rawHandle}`)),
+        ]);
 
-        if (!handleSnap.exists()) {
+        const storefrontUid = storefrontHandleSnap.exists() ? storefrontHandleSnap.val() : null;
+        const creatorUid = creatorHandleSnap.exists() ? creatorHandleSnap.val() : null;
+
+        if (!storefrontUid && !creatorUid) {
           setError("Store not found");
           return;
         }
 
-        const userId = handleSnap.val();
+        // Same handle string claimed by two different accounts across the
+        // two separate indexes — shouldn't happen in normal operation, but
+        // don't silently blend two strangers' data if it does. The creator
+        // claim (the newer, in-app system) wins for display; logged so the
+        // collision can be reconciled by hand rather than hidden.
+        if (storefrontUid && creatorUid && storefrontUid !== creatorUid) {
+          console.warn(
+            `Handle "${handle}" resolves to different owners in storefrontHandles (${storefrontUid}) and handles (${creatorUid}) — showing the creator claim.`
+          );
+        }
+
+        const userId = creatorUid || storefrontUid;
         setOwnerUid(userId);
 
-        // Load the storefront data
-        const storeRef = dbRef(db, `storefronts/${userId}`);
-        const storeSnap = await get(storeRef);
+        const [storeSnap, creatorSnap] = await Promise.all([
+          get(dbRef(db, `storefronts/${userId}`)),
+          get(dbRef(db, `creators/${userId}`)),
+        ]);
 
-        if (!storeSnap.exists()) {
+        const creator = creatorSnap.exists() ? creatorSnap.val() : null;
+        // An explicit `public: false` is an opt-out — a claimed-but-not-yet-
+        // published creator profile shouldn't render for strangers.
+        const creatorVisible = creator && creator.public !== false;
+        const hasStore = storeSnap.exists();
+
+        if (!hasStore && !creatorVisible) {
           setError("Store not found");
           return;
         }
 
-        const data = storeSnap.val();
-        setStoreData({ ...data, pageSections: migrateLegacyFieldsToBlocks(data) });
+        if (hasStore) {
+          const data = storeSnap.val();
+          setStoreData({ ...data, pageSections: migrateLegacyFieldsToBlocks(data) });
 
-        // Load the affiliate's products
-        const productsRef = dbRef(db, `products/${userId}`);
-        const productsSnap = await get(productsRef);
+          // Load the affiliate's products
+          const productsRef = dbRef(db, `products/${userId}`);
+          const productsSnap = await get(productsRef);
 
-        if (productsSnap.exists()) {
-          const productsData = productsSnap.val();
-          const productsArray = Object.entries(productsData).map(([id, product]) => ({
-            id,
-            ...product
-          }));
-          setProducts(productsArray);
+          if (productsSnap.exists()) {
+            const productsData = productsSnap.val();
+            const productsArray = Object.entries(productsData).map(([id, product]) => ({
+              id,
+              ...product
+            }));
+            setProducts(productsArray);
+          }
         }
+
+        setCreatorData(creatorVisible ? creator : null);
 
         // Record this as an affiliate click, same as visiting any ?ref= link
         // (see src/hooks/useAffiliateRef.js) — the handle picked for the
@@ -561,12 +597,14 @@ export function AffiliateStorefrontViewer({ handle }) {
   // typed-in form — applied only here (the real page), never in the editor,
   // so mid-edit changes don't rewrite the visitor's tab title.
   useEffect(() => {
-    if (!storeData) return undefined;
-    const seo = deriveSeo(storeData.pageSections, {
-      title: storeData.displayName || `@${handle}`,
-      description: storeData.bio,
-      ogImage: storeData.bannerUrl,
-    });
+    if (!storeData && !creatorData) return undefined;
+    const seo = storeData
+      ? deriveSeo(storeData.pageSections, {
+          title: storeData.displayName || `@${handle}`,
+          description: storeData.bio || creatorData?.bio,
+          ogImage: storeData.bannerUrl,
+        })
+      : { title: `@${handle}`, description: creatorData?.bio };
     const prevTitle = document.title;
     if (seo.title) document.title = `${seo.title} · Fotonix`;
 
@@ -582,7 +620,7 @@ export function AffiliateStorefrontViewer({ handle }) {
     if (seo.ogImage) upsertMeta('meta[property="og:image"]', { property: "og:image", content: seo.ogImage });
 
     return () => { document.title = prevTitle; };
-  }, [storeData, handle]);
+  }, [storeData, creatorData, handle]);
 
   // Real fonts on the public page too, same pairing chosen in the editor.
   useGoogleFont(storeData?.theme?.fonts);
@@ -598,7 +636,7 @@ export function AffiliateStorefrontViewer({ handle }) {
     );
   }
 
-  if (error || !storeData) {
+  if (error || (!storeData && !creatorData)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -612,17 +650,55 @@ export function AffiliateStorefrontViewer({ handle }) {
     );
   }
 
-  // Everything visible is now driven by the blocks themselves (including
-  // any legacy displayName/bio/bannerUrl/theme/links/products migrated into
-  // block form on load above) — no bespoke header or product grid of its
-  // own, matching how FunnelViewer.js is just "fetch blocks, render via the
-  // shared registry." The brand color chosen in the editor drives every
-  // color here via CSS custom properties (see deriveThemeVars) — nothing
-  // is a hardcoded Tailwind color anymore.
+  // A claimed creator handle with no storefront built yet (the common case
+  // for the app's own "claim your handle" flow) — show the profile on its
+  // own rather than "Store Not Found", since a real, published creator does
+  // exist at this handle.
+  const creatorHeader = creatorData && (
+    <div className="text-center mb-10">
+      <h1 className="text-2xl font-bold" style={{ color: storeData ? undefined : '#1f2937' }}>@{creatorData.handle || handle}</h1>
+      {creatorData.bio && <p className="mt-2 text-gray-600 max-w-xl mx-auto">{creatorData.bio}</p>}
+      {creatorData.location && <p className="mt-1 text-sm text-gray-400">{creatorData.location}</p>}
+      {(creatorData.instagram || creatorData.tiktok || creatorData.twitch) && (
+        <div className="mt-3 flex items-center justify-center gap-4 text-sm">
+          {creatorData.instagram && (
+            <a href={`https://instagram.com/${creatorData.instagram}`} target="_blank" rel="noreferrer" className="text-pink-600 hover:underline">Instagram</a>
+          )}
+          {creatorData.tiktok && (
+            <a href={`https://tiktok.com/@${creatorData.tiktok}`} target="_blank" rel="noreferrer" className="text-pink-600 hover:underline">TikTok</a>
+          )}
+          {creatorData.twitch && (
+            <a href={`https://twitch.tv/${creatorData.twitch}`} target="_blank" rel="noreferrer" className="text-pink-600 hover:underline">Twitch</a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  if (!storeData) {
+    return (
+      <div className="min-h-screen">
+        <div className="mx-auto max-w-3xl px-6 py-16">
+          {creatorHeader}
+        </div>
+      </div>
+    );
+  }
+
+  // Everything visible below is still driven by the storefront's own blocks
+  // (including any legacy displayName/bio/bannerUrl/theme/links/products
+  // migrated into block form on load above) — no bespoke header or product
+  // grid of its own, matching how FunnelViewer.js is just "fetch blocks,
+  // render via the shared registry." The brand color chosen in the editor
+  // drives every color here via CSS custom properties (see deriveThemeVars)
+  // — nothing is a hardcoded Tailwind color anymore. When the same handle
+  // also has a creator profile, its header renders above the storefront
+  // blocks rather than replacing them.
   const themeVars = deriveThemeVars(storeData.theme);
   return (
     <div className="min-h-screen" style={{ ...themeVars, background: "var(--surface)", color: "var(--text)" }}>
       <div className="mx-auto max-w-6xl px-6 py-12">
+        {creatorHeader}
         <RenderSections sections={storeData.pageSections} fullProducts={products} ownerUid={ownerUid} reveal={storeData.motion?.reveal} />
       </div>
     </div>
